@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>智能血糖记录本</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+    <style>
+        .measurement-card { transition: all 0.2s; }
+        .measurement-card:hover { transform: translateY(-2px); box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
+        .unit-badge { font-size: 0.8em; opacity: 0.8; }
+    </style>
+</head>
+<body class="bg-light">
+
+<div class="container py-4">
+    <header class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="h3"><i class="bi bi-activity text-danger"></i> 血糖记录</h1>
+        <a href="/export" class="btn btn-outline-success btn-sm"><i class="bi bi-file-earmark-spreadsheet"></i> 导出 CSV</a>
+    </header>
+
+    <!-- Input Section -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-white">
+            <ul class="nav nav-tabs card-header-tabs" id="inputTab" role="tablist">
+                <li class="nav-item">
+                    <a class="nav-link active" id="ai-tab" data-bs-toggle="tab" href="#ai" role="tab"><i class="bi bi-stars"></i> 智能输入</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" id="manual-tab" data-bs-toggle="tab" href="#manual" role="tab"><i class="bi bi-pencil-square"></i> 手动录入</a>
+                </li>
+            </ul>
+        </div>
+        <div class="card-body">
+            <div class="tab-content" id="inputTabContent">
+                
+                <!-- AI Input -->
+                <div class="tab-pane fade show active" id="ai" role="tabpanel">
+                    <div class="input-group mb-3">
+                        <textarea class="form-control" id="aiInput" rows="3" placeholder="例如：今天空腹6.5，喝了一杯奶茶后两小时8.0..."></textarea>
+                        <button class="btn btn-outline-secondary" type="button" id="speechBtn" onclick="startSpeechRecognition()">
+                            <i class="bi bi-mic-fill"></i>
+                        </button>
+                    </div>
+                    <button class="btn btn-primary" onclick="analyzeText()" id="analyzeBtn">
+                        <span id="btnText">识别并添加</span>
+                        <div class="spinner-border spinner-border-sm d-none" id="btnSpinner" role="status"></div>
+                    </button>
+                    
+                    <!-- Preview Area -->
+                    <div id="aiPreview" class="mt-3 d-none">
+                        <h6 class="text-muted">识别结果 (请确认):</h6>
+                        <div id="previewList" class="list-group mb-3"></div>
+                        <div class="d-flex gap-2">
+                            <button class="btn btn-success btn-sm" onclick="confirmBatchAdd()">确认保存</button>
+                            <button class="btn btn-outline-secondary btn-sm" onclick="cancelPreview()">取消</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Manual Input -->
+                <div class="tab-pane fade" id="manual" role="tabpanel">
+                    <form action="/add" method="POST" class="row g-3">
+                        <div class="col-md-4">
+                            <label class="form-label">数值</label>
+                            <input type="number" step="0.1" name="value" class="form-control" required>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">单位</label>
+                            <select name="unit" class="form-select">
+                                <option value="mmol/L">mmol/L</option>
+                                <option value="mg/dL">mg/dL</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">类型</label>
+                            <input type="text" name="type" class="form-control" list="typeOptions" placeholder="如：空腹">
+                            <datalist id="typeOptions">
+                                <option value="空腹">
+                                <option value="餐前">
+                                <option value="餐后1小时">
+                                <option value="餐后2小时">
+                                <option value="睡前">
+                                <option value="运动后">
+                            </datalist>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">时间</label>
+                            <input type="datetime-local" name="timestamp" class="form-control" id="manualTime">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">备注</label>
+                            <input type="text" name="notes" class="form-control" placeholder="饮食、药物、运动...">
+                        </div>
+                        <div class="col-12">
+                            <button type="submit" class="btn btn-primary">保存</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Chart Section -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-white">
+            <h5 class="mb-0"><i class="bi bi-graph-up text-primary"></i> 血糖趋势</h5>
+        </div>
+        <div class="card-body">
+            <canvas id="glucoseChart" height="100"></canvas>
+        </div>
+    </div>
+
+    <!-- Data List -->
+    <div class="card shadow-sm">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">历史记录</h5>
+            <span class="badge bg-secondary">{{ records|length }} 条</span>
+        </div>
+        <div class="list-group list-group-flush">
+            {% for r in records %}
+            <div class="list-group-item measurement-card">
+                <div class="d-flex w-100 justify-content-between align-items-center">
+                    <div>
+                        <h5 class="mb-1 text-primary">
+                            {{ r.value }} 
+                            <span class="unit-badge text-muted">{{ r.unit }}</span>
+                        </h5>
+                        <p class="mb-1">
+                            <span class="badge bg-info text-dark">{{ r.type }}</span> 
+                            <small class="text-muted">{{ r.timestamp }}</small>
+                        </p>
+                        {% if r.notes %}
+                        <small class="text-secondary"><i class="bi bi-sticky"></i> {{ r.notes }}</small>
+                        {% endif %}
+                    </div>
+                    <div>
+                        <a href="/delete/{{ r.id }}" class="btn btn-outline-danger btn-sm border-0" onclick="return confirm('确定删除？')"><i class="bi bi-trash"></i></a>
+                    </div>
+                </div>
+            </div>
+            {% else %}
+            <div class="list-group-item text-center text-muted py-5">
+                暂无记录，快去添加第一条吧！
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+<script>
+    // Data Preparation for Chart
+    // Injecting server-side data safely
+    const rawRecords = [
+        {% for r in records %}
+        {
+            value: {{ r.value }},
+            unit: "{{ r.unit }}",
+            type: "{{ r.type }}",
+            timestamp: "{{ r.timestamp }}"
+        },
+        {% endfor %}
+    ];
+
+    // Reverse to chronological order
+    const chartData = rawRecords.slice().reverse();
+
+    if (chartData.length > 0) {
+        const ctx = document.getElementById('glucoseChart').getContext('2d');
+        
+        // Helper to categorize data
+        const datasets = {
+            '空腹': { label: '早空腹', data: [], pointBackgroundColor: [], pointBorderColor: [], borderColor: '#0d6efd', backgroundColor: '#0d6efd' }, // Blue
+            '餐前': { label: '餐前 / 运动后', data: [], pointBackgroundColor: [], pointBorderColor: [], borderColor: '#0dcaf0', backgroundColor: '#0dcaf0' }, // Cyan
+            '餐后1小时': { label: '餐后1h', data: [], pointBackgroundColor: [], pointBorderColor: [], borderColor: '#fd7e14', backgroundColor: '#fd7e14' }, // Orange
+            '餐后2小时': { label: '餐后2h', data: [], pointBackgroundColor: [], pointBorderColor: [], borderColor: '#dc3545', backgroundColor: '#dc3545' }, // Red
+            '睡前': { label: '睡前', data: [], pointBackgroundColor: [], pointBorderColor: [], borderColor: '#6610f2', backgroundColor: '#6610f2' }, // Purple
+            '其他': { label: '其他', data: [], pointBackgroundColor: [], pointBorderColor: [], borderColor: '#6c757d', backgroundColor: '#6c757d' }  // Grey
+        };
+
+        // Traffic Light Color Logic
+        function getPointColor(key, value) {
+            const green = '#198754'; // Success
+            const yellow = '#ffc107'; // Warning
+            const red = '#dc3545';    // Danger
+
+            if (value < 3.9) return red; // Low blood sugar warning for all
+
+            if (key === '空腹' || key === '餐前' || key === '睡前') {
+                // Strict: < 6.1 Green, 6.1-7.0 Yellow, > 7.0 Red
+                if (value < 6.1) return green;
+                if (value <= 7.0) return yellow;
+                return red;
+            } else {
+                // Post-meal: < 7.8 Green, 7.8-10.0 Yellow, > 10.0 Red
+                if (value < 7.8) return green;
+                if (value <= 10.0) return yellow;
+                return red;
+            }
+        }
+
+        chartData.forEach(r => {
+            const point = { x: r.timestamp, y: r.value, notes: r.notes };
+            let key = '其他';
+            const t = r.type || '';
+            
+            // 优先级 1: 早空腹
+            if (t.includes('空腹')) {
+                key = '空腹';
+            }
+            // 优先级 2: 运动后 -> 归入 餐前
+            else if (t.includes('运动')) {
+                key = '餐前';
+            }
+            // 优先级 3: 睡前
+            else if (t.includes('睡前')) {
+                key = '睡前';
+            }
+            // 优先级 4: 餐后 (检查"餐"或"饭" + 时间)
+            else if ((t.includes('餐') || t.includes('饭')) && (t.includes('1') || t.includes('一'))) {
+                key = '餐后1小时';
+            }
+            else if ((t.includes('餐') || t.includes('饭')) && (t.includes('2') || t.includes('二'))) {
+                key = '餐后2小时';
+            }
+            // 优先级 5: 餐前 (检查"餐前"或"饭前")
+            else if (t.includes('餐前') || t.includes('饭前')) {
+                key = '餐前';
+            }
+            
+            datasets[key].data.push(point);
+            // Calculate and store point color
+            const pColor = getPointColor(key, r.value);
+            datasets[key].pointBackgroundColor.push(pColor);
+            datasets[key].pointBorderColor.push(pColor);
+        });
+
+        // Convert object to array of datasets, filtering out empty ones
+        const chartDatasets = Object.values(datasets)
+            .filter(ds => ds.data.length > 0)
+            .map(ds => ({
+                label: ds.label,
+                data: ds.data,
+                borderColor: ds.borderColor,
+                backgroundColor: ds.backgroundColor,
+                pointBackgroundColor: ds.pointBackgroundColor, // Apply dynamic colors
+                pointBorderColor: ds.pointBorderColor,         // Apply dynamic colors
+                borderWidth: 2,
+                pointRadius: 5,       // Slightly larger points to make color visible
+                pointHoverRadius: 7,
+                fill: false,
+                tension: 0.3,
+                spanGaps: true // Connect lines even if days are skipped
+            }));
+
+        new Chart(ctx, {
+            type: 'line',
+            data: { datasets: chartDatasets },
+            options: {
+                responsive: true,
+                interaction: {
+                    mode: 'index',
+                    intersect: false,
+                },
+                scales: {
+                    x: {
+                        type: 'time',
+                        time: {
+                            unit: 'day',
+                            tooltipFormat: 'yyyy-MM-dd HH:mm',
+                            displayFormats: { day: 'MM-dd' }
+                        },
+                        title: { display: false }
+                    },
+                    y: {
+                        beginAtZero: false,
+                        title: { display: true, text: '血糖 (mmol/L)' }
+                    }
+                },
+                plugins: {
+                    tooltip: {
+                        callbacks: {
+                            afterLabel: function(context) {
+                                const raw = context.raw;
+                                return raw.notes ? ' 备注: ' + raw.notes : '';
+                            }
+                        }
+                    },
+                    legend: {
+                        position: 'top',
+                    }
+                }
+            }
+        });
+    }
+
+    // Set default time for manual input
+    const now = new Date();
+    now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+    document.getElementById('manualTime').value = now.toISOString().slice(0, 16);
+
+    let parsedData = [];
+
+    async function analyzeText() {
+        const text = document.getElementById('aiInput').value;
+        if (!text) return;
+
+        toggleLoading(true);
+        
+        try {
+            const response = await fetch('/parse_ai', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({text: text})
+            });
+            parsedData = await response.json();
+            
+            if (parsedData.length > 0) {
+                renderPreview();
+            } else {
+                alert('未能识别出有效数据，请检查输入。');
+            }
+        } catch (e) {
+            alert('识别出错: ' + e);
+        } finally {
+            toggleLoading(false);
+        }
+    }
+
+    function renderPreview() {
+        const container = document.getElementById('previewList');
+        container.innerHTML = '';
+        parsedData.forEach((item, index) => {
+            container.innerHTML += `
+                <div class="list-group-item">
+                    <div class="d-flex justify-content-between">
+                        <strong>${item.value} ${item.unit}</strong>
+                        <span class="badge bg-warning text-dark">${item.type}</span>
+                    </div>
+                    <small class="text-muted">${item.datetime}</small>
+                    <p class="mb-0 small text-secondary">${item.notes || '无备注'}</p>
+                </div>
+            `;
+        });
+        document.getElementById('aiPreview').classList.remove('d-none');
+    }
+
+    async function confirmBatchAdd() {
+        try {
+            const res = await fetch('/batch_add', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({records: parsedData})
+            });
+            const result = await res.json();
+            if (result.status === 'success') {
+                window.location.reload();
+            }
+        } catch (e) {
+            alert('保存失败');
+        }
+    }
+
+    function cancelPreview() {
+        document.getElementById('aiPreview').classList.add('d-none');
+        parsedData = [];
+    }
+
+    function toggleLoading(isLoading) {
+        const btn = document.getElementById('analyzeBtn');
+        const text = document.getElementById('btnText');
+        const spinner = document.getElementById('btnSpinner');
+        
+        if (isLoading) {
+            btn.disabled = true;
+            text.textContent = ' 正在分析...';
+            spinner.classList.remove('d-none');
+        } else {
+            btn.disabled = false;
+            text.textContent = '识别并添加';
+            spinner.classList.add('d-none');
+        }
+    }
+
+    // Speech Recognition Logic
+    let recognition;
+    const speechBtn = document.getElementById('speechBtn');
+    const aiInput = document.getElementById('aiInput');
+
+    function startSpeechRecognition() {
+        if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+            alert('抱歉，您的浏览器不支持语音识别功能。请尝试使用 Chrome 桌面版或 Safari 移动版。');
+            return;
+        }
+
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        recognition = new SpeechRecognition();
+        
+        recognition.continuous = false; // 只识别一次
+        recognition.interimResults = false; // 只返回最终结果
+        recognition.lang = 'zh-CN'; // 设置语言为中文
+
+        recognition.onstart = function() {
+            speechBtn.classList.add('btn-danger'); // 录音开始变红色
+            speechBtn.innerHTML = '<i class="bi bi-mic-fill"></i> 录音中...';
+            console.log('语音识别已启动...');
+        };
+
+        recognition.onresult = function(event) {
+            const transcript = event.results[0][0].transcript;
+            aiInput.value = transcript; // 识别结果填入文本框
+            console.log('识别结果:', transcript);
+        };
+
+        recognition.onerror = function(event) {
+            console.error('语音识别错误:', event.error);
+            if (event.error === 'not-allowed') {
+                alert('请授权浏览器访问麦克风。');
+            } else if (event.error === 'no-speech') {
+                alert('未检测到语音，请重试。');
+            } else {
+                alert('语音识别出错: ' + event.error);
+            }
+        };
+
+        recognition.onend = function() {
+            speechBtn.classList.remove('btn-danger');
+            speechBtn.innerHTML = '<i class="bi bi-mic-fill"></i>';
+            console.log('语音识别已结束。');
+        };
+
+        recognition.start();
+    }
+</script>
+</body>
+</html>
