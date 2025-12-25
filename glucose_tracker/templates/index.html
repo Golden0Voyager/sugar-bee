@@ -6,145 +6,679 @@
     <title>智能血糖记录本</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css" rel="stylesheet">
+    <script src='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.js'></script>
     <style>
-        .measurement-card { transition: all 0.2s; }
-        .measurement-card:hover { transform: translateY(-2px); box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
+        :root {
+            --bs-primary-rgb: 13, 110, 253;
+            --bs-body-bg: #f8f9fa;
+        }
+        
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+
+        /* Card Styling */
+        .card { 
+            border: none; 
+            border-radius: 1rem; 
+            box-shadow: 0 2px 12px rgba(0,0,0,0.04); 
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .measurement-card:hover { transform: translateY(-2px); box-shadow: 0 8px 16px rgba(0,0,0,0.08); }
+        
         .unit-badge { font-size: 0.8em; opacity: 0.8; }
+        
+        @keyframes beat {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+            100% { transform: scale(1); }
+        }
+        .beat-animation { animation: beat 1s infinite; }
+        .border-dashed { border-style: dashed !important; }
+        
+        /* Timeline Styles */
+        .timeline-item { position: relative; padding-left: 25px; border-left: 2px solid #e9ecef; margin-left: 10px; padding-bottom: 24px; }
+        .timeline-item:last-child { border-left-color: transparent; }
+        .timeline-dot { 
+            position: absolute; left: -6px; top: 5px; width: 10px; height: 10px; 
+            border-radius: 50%; background: #adb5bd; border: 2px solid #fff; box-shadow: 0 0 0 2px #fff, 0 0 0 3px #adb5bd;
+        }
+        .timeline-dot.dot-glucose { background: #ffc107; box-shadow: 0 0 0 2px #fff, 0 0 0 3px #ffc107; }
+        .timeline-dot.dot-food { background: #fd7e14; box-shadow: 0 0 0 2px #fff, 0 0 0 3px #fd7e14; }
+        .timeline-dot.dot-snack { background: #e91e8c; box-shadow: 0 0 0 2px #fff, 0 0 0 3px #e91e8c; }
+        .timeline-dot.dot-run { background: #7cb889; box-shadow: 0 0 0 2px #fff, 0 0 0 3px #7cb889; }
+        
+        /* Calendar Customization */
+        .fc-theme-standard td, .fc-theme-standard th { border-color: #f0f0f0; }
+        .fc-event { cursor: pointer; border: none !important; border-radius: 4px; margin-bottom: 2px; }
+        .fc-daygrid-day { cursor: pointer; transition: background-color 0.2s; }
+        .fc-daygrid-day:active { background-color: rgba(var(--bs-primary-rgb), 0.1); }
+        .fc-event-title { font-size: 0.8em; font-weight: 500; padding: 1px 2px; }
+        .fc-toolbar-title { font-size: 1.1rem !important; font-weight: bold; color: #333; }
+        .fc-button-primary { background-color: white !important; border-color: #dee2e6 !important; color: #333 !important; box-shadow: none !important; }
+        .fc-button-active { background-color: #e9ecef !important; border-color: #dee2e6 !important; color: #000 !important; }
+        .fc .fc-daygrid-day-top { flex-direction: row; } 
+
+        /* FAB & Offcanvas */
+        .btn-fab { 
+            transition: transform 0.2s; 
+            background: linear-gradient(135deg, #0d6efd, #0a58ca);
+            border: none;
+        }
+        .btn-fab:active { transform: scale(0.95); }
+        .offcanvas-bottom { border-top-left-radius: 1.5rem; border-top-right-radius: 1.5rem; box-shadow: 0 -4px 20px rgba(0,0,0,0.1); }
+        
+        /* Nav Pills Segmented Control */
+        .nav-pills .nav-link { color: #6c757d; font-weight: 500; transition: all 0.2s; }
+        .nav-pills .nav-link.active { background-color: #fff; color: #0d6efd; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+
+        /* Circular Icon Buttons */
+        .btn-circle-icon {
+            width: 42px;
+            height: 42px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: white;
+            border: 1px solid #e9ecef;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+        .btn-circle-icon:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            border-color: #0d6efd;
+        }
+        .btn-circle-icon:active {
+            transform: translateY(0);
+            box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+        }
+        .btn-circle-icon i {
+            font-size: 1.2rem;
+            color: #6c757d;
+            transition: color 0.3s ease;
+        }
+        .btn-circle-icon:hover i {
+            color: #0d6efd;
+        }
+        .btn-circle-icon.active {
+            background: linear-gradient(135deg, #0d6efd, #0a58ca);
+            border-color: #0d6efd;
+        }
+        .btn-circle-icon.active i {
+            color: white;
+        }
     </style>
 </head>
 <body class="bg-light">
 
 <div class="container py-4">
-    <header class="d-flex justify-content-between align-items-center mb-4">
-        <h1 class="h3"><i class="bi bi-activity text-danger"></i> 血糖记录</h1>
-        <a href="/export" class="btn btn-outline-success btn-sm"><i class="bi bi-file-earmark-spreadsheet"></i> 导出 CSV</a>
-    </header>
-
-    <!-- Input Section -->
-    <div class="card shadow-sm mb-4">
-        <div class="card-header bg-white">
-            <ul class="nav nav-tabs card-header-tabs" id="inputTab" role="tablist">
-                <li class="nav-item">
-                    <a class="nav-link active" id="ai-tab" data-bs-toggle="tab" href="#ai" role="tab"><i class="bi bi-stars"></i> 智能输入</a>
-                </li>
-                <li class="nav-item">
-                    <a class="nav-link" id="manual-tab" data-bs-toggle="tab" href="#manual" role="tab"><i class="bi bi-pencil-square"></i> 手动录入</a>
-                </li>
-            </ul>
-        </div>
-        <div class="card-body">
-            <div class="tab-content" id="inputTabContent">
-                
-                <!-- AI Input -->
-                <div class="tab-pane fade show active" id="ai" role="tabpanel">
-                    <div class="input-group mb-3">
-                        <textarea class="form-control" id="aiInput" rows="3" placeholder="例如：今天空腹6.5，喝了一杯奶茶后两小时8.0..."></textarea>
-                        <button class="btn btn-outline-secondary" type="button" id="speechBtn" onclick="startSpeechRecognition()">
-                            <i class="bi bi-mic-fill"></i>
-                        </button>
-                    </div>
-                    <button class="btn btn-primary" onclick="analyzeText()" id="analyzeBtn">
-                        <span id="btnText">识别并添加</span>
-                        <div class="spinner-border spinner-border-sm d-none" id="btnSpinner" role="status"></div>
-                    </button>
-                    
-                    <!-- Preview Area -->
-                    <div id="aiPreview" class="mt-3 d-none">
-                        <h6 class="text-muted">识别结果 (请确认):</h6>
-                        <div id="previewList" class="list-group mb-3"></div>
-                        <div class="d-flex gap-2">
-                            <button class="btn btn-success btn-sm" onclick="confirmBatchAdd()">确认保存</button>
-                            <button class="btn btn-outline-secondary btn-sm" onclick="cancelPreview()">取消</button>
-                        </div>
-                    </div>
+    <!-- User Info Bar -->
+    <div class="d-flex justify-content-between align-items-center mb-3 bg-white p-2 rounded shadow-sm border">
+        <div class="d-flex align-items-center">
+            <div class="position-relative me-3" style="cursor: pointer;" onclick="openAvatarModal()" title="点击更换头像">
+                {% if stats.user.avatar %}
+                <img src="/static/avatars/{{ stats.user.avatar }}" class="rounded-circle" style="width: 50px; height: 50px; object-fit: cover;">
+                {% else %}
+                <div class="bg-primary bg-opacity-10 p-2 rounded-circle d-flex align-items-center justify-content-center" style="width: 50px; height: 50px;">
+                    <i class="bi bi-person-circle text-primary fs-4"></i>
                 </div>
+                {% endif %}
+                <span class="position-absolute bottom-0 end-0 bg-white rounded-circle p-1 border shadow-sm" style="width: 18px; height: 18px; display: flex; align-items: center; justify-content: center;">
+                   <i class="bi bi-camera-fill text-muted" style="font-size: 10px;"></i>
+                </span>
+            </div>
+            <div>
+                <h6 class="mb-0 fw-bold">{{ stats.user.name }} <small class="text-muted fw-normal">({{ stats.user.gender == 'male' and '男' or '女' }}, {{ 2025 - stats.user.birth_year }}岁)</small></h6>
+                <small class="text-muted">身高: {{ stats.user.height }}cm | 体重: {{ stats.user.weight }}kg</small>
+            </div>
+        </div>
+        <div class="d-flex gap-2">
+            <button class="btn btn-sm btn-outline-success" data-bs-toggle="modal" data-bs-target="#medicationPlanModal">
+                <i class="bi bi-capsule"></i> 药物管理
+            </button>
+            <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#userSettingsModal">
+                <i class="bi bi-gear"></i> 设置
+            </button>
+        </div>
+    </div>
 
-                <!-- Manual Input -->
-                <div class="tab-pane fade" id="manual" role="tabpanel">
-                    <form action="/add" method="POST" class="row g-3">
-                        <div class="col-md-4">
-                            <label class="form-label">数值</label>
-                            <input type="number" step="0.1" name="value" class="form-control" required>
-                        </div>
-                        <div class="col-md-4">
-                            <label class="form-label">单位</label>
-                            <select name="unit" class="form-select">
-                                <option value="mmol/L">mmol/L</option>
-                                <option value="mg/dL">mg/dL</option>
-                            </select>
-                        </div>
-                        <div class="col-md-4">
-                            <label class="form-label">类型</label>
-                            <input type="text" name="type" class="form-control" list="typeOptions" placeholder="如：空腹">
-                            <datalist id="typeOptions">
-                                <option value="空腹">
-                                <option value="餐前">
-                                <option value="餐后1小时">
-                                <option value="餐后2小时">
-                                <option value="睡前">
-                                <option value="运动后">
-                            </datalist>
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label">时间</label>
-                            <input type="datetime-local" name="timestamp" class="form-control" id="manualTime">
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label">备注</label>
-                            <input type="text" name="notes" class="form-control" placeholder="饮食、药物、运动...">
-                        </div>
-                        <div class="col-12">
-                            <button type="submit" class="btn btn-primary">保存</button>
-                        </div>
-                    </form>
+    <!-- Stats Dashboard -->
+    <div class="row g-3 mb-4">
+        <div class="col-md-3 col-6">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body text-center">
+                    <div class="text-muted small mb-1">平均血糖</div>
+                    <h3 class="mb-0 fw-bold {% if stats.avg_glucose > 7.0 %}text-danger{% elif stats.avg_glucose > 6.1 %}text-warning{% else %}text-primary{% endif %}">
+                        {{ "%.1f"|format(stats.avg_glucose) }}
+                    </h3>
+                    <small class="text-muted">mmol/L</small>
+                    {% if stats.avg_glucose > 7.0 %}
+                    <div class="mt-2"><span class="badge bg-danger">偏高</span></div>
+                    {% elif stats.avg_glucose > 6.1 %}
+                    <div class="mt-2"><span class="badge bg-warning text-dark">警戒</span></div>
+                    {% else %}
+                    <div class="mt-2"><span class="badge bg-success">正常</span></div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3 col-6">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body text-center">
+                    <div class="text-muted small mb-1">最低血糖</div>
+                    <h3 class="mb-0 fw-bold {% if stats.min_glucose < 3.9 %}text-danger{% else %}text-success{% endif %}">
+                        {{ "%.1f"|format(stats.min_glucose) }}
+                    </h3>
+                    <small class="text-muted">mmol/L</small>
+                    {% if stats.min_glucose < 3.9 %}
+                    <div class="mt-2"><span class="badge bg-danger">过低⚠️</span></div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3 col-6">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body text-center">
+                    <div class="text-muted small mb-1">最高血糖</div>
+                    <h3 class="mb-0 fw-bold {% if stats.max_glucose > 10.0 %}text-danger{% elif stats.max_glucose > 7.8 %}text-warning{% else %}text-success{% endif %}">
+                        {{ "%.1f"|format(stats.max_glucose) }}
+                    </h3>
+                    <small class="text-muted">mmol/L</small>
+                    {% if stats.max_glucose > 10.0 %}
+                    <div class="mt-2"><span class="badge bg-danger">危险⚠️</span></div>
+                    {% elif stats.max_glucose > 7.8 %}
+                    <div class="mt-2"><span class="badge bg-warning text-dark">警戒</span></div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3 col-6">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body text-center">
+                    <div class="text-muted small mb-1">记录总数</div>
+                    <h3 class="mb-0 fw-bold text-info">{{ stats.total_count }}</h3>
+                    <small class="text-muted">条</small>
+                    <div class="mt-2"><span class="badge bg-info text-dark">已记录</span></div>
                 </div>
             </div>
         </div>
     </div>
 
     <!-- Chart Section -->
-    <div class="card shadow-sm mb-4">
-        <div class="card-header bg-white">
-            <h5 class="mb-0"><i class="bi bi-graph-up text-primary"></i> 血糖趋势</h5>
+    <div class="card shadow-sm border-0 rounded-4 mb-4">
+        <div class="card-header bg-white border-0 rounded-top-4">
+            <h5 class="mb-0 fw-bold"><i class="bi bi-graph-up text-primary me-2"></i>血糖趋势</h5>
         </div>
         <div class="card-body">
-            <canvas id="glucoseChart" height="100"></canvas>
+            <canvas id="glucoseChart" height="80"></canvas>
         </div>
     </div>
 
-    <!-- Data List -->
-    <div class="card shadow-sm">
-        <div class="card-header bg-white d-flex justify-content-between align-items-center">
-            <h5 class="mb-0">历史记录</h5>
-            <span class="badge bg-secondary">{{ records|length }} 条</span>
+    <!-- Calendar View -->
+    <div class="card shadow-sm border-0 rounded-4">
+        <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center rounded-top-4">
+            <h5 class="mb-0 fw-bold"><i class="bi bi-calendar3 text-primary me-2"></i>每日复盘</h5>
+            <div class="d-flex gap-2 align-items-center">
+                <div class="btn-group btn-group-sm">
+                    <label class="btn btn-outline-success mb-0 rounded-pill" for="csvImport" title="导入 CSV">
+                        <i class="bi bi-upload"></i>
+                        <input type="file" id="csvImport" accept=".csv" class="d-none" onchange="importCSV(this)">
+                    </label>
+                    <a href="/export" class="btn btn-outline-primary rounded-pill ms-1" title="导出 CSV"><i class="bi bi-download"></i></a>
+                </div>
+            </div>
         </div>
-        <div class="list-group list-group-flush">
-            {% for r in records %}
-            <div class="list-group-item measurement-card">
-                <div class="d-flex w-100 justify-content-between align-items-center">
-                    <div>
-                        <h5 class="mb-1 text-primary">
-                            {{ r.value }} 
-                            <span class="unit-badge text-muted">{{ r.unit }}</span>
-                        </h5>
-                        <p class="mb-1">
-                            <span class="badge bg-info text-dark">{{ r.type }}</span> 
-                            <small class="text-muted">{{ r.timestamp }}</small>
-                        </p>
-                        {% if r.notes %}
-                        <small class="text-secondary"><i class="bi bi-sticky"></i> {{ r.notes }}</small>
-                        {% endif %}
+        <div class="card-body p-2">
+            <div id="calendar"></div>
+        </div>
+    </div>
+</div>
+
+<!-- Floating Action Button (FAB) -->
+<button class="btn btn-primary rounded-circle shadow-lg position-fixed d-flex align-items-center justify-content-center" 
+        style="bottom: 30px; right: 30px; width: 60px; height: 60px; z-index: 1050;" 
+        type="button" data-bs-toggle="offcanvas" data-bs-target="#inputOffcanvas">
+    <i class="bi bi-plus-lg fs-2"></i>
+</button>
+
+<!-- Input Offcanvas (Bottom Sheet) -->
+<div class="offcanvas offcanvas-bottom rounded-top-4 h-auto" tabindex="-1" id="inputOffcanvas" style="max-height: 90vh;">
+    <div class="offcanvas-header pb-0">
+        <h5 class="offcanvas-title fw-bold">记录健康</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="offcanvas"></button>
+    </div>
+    <div class="offcanvas-body">
+        <ul class="nav nav-pills nav-fill mb-3 bg-light rounded-pill p-1" id="inputTab" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active rounded-pill" id="ai-tab" data-bs-toggle="pill" data-bs-target="#ai" type="button" role="tab">
+                    <i class="bi bi-stars me-1"></i> 智能识别
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link rounded-pill" id="manual-tab" data-bs-toggle="pill" data-bs-target="#manual" type="button" role="tab">
+                    <i class="bi bi-pencil-square me-1"></i> 手动录入
+                </button>
+            </li>
+        </ul>
+        
+        <div class="tab-content" id="inputTabContent">
+            <!-- AI Input -->
+            <div class="tab-pane fade show active" id="ai" role="tabpanel">
+                <div class="mb-3">
+                    <textarea class="form-control rounded-4" id="aiInput" rows="3" placeholder="例如：今天空腹6.5... 或上传跑步截图"></textarea>
+                    <div class="d-flex gap-2 mt-2">
+                        <button class="btn-circle-icon" type="button" id="speechBtn" title="语音输入">
+                            <i class="bi bi-mic-fill"></i>
+                        </button>
+                        <label class="btn-circle-icon mb-0" for="imageUpload" title="上传图片">
+                            <i class="bi bi-image"></i>
+                            <input type="file" id="imageUpload" accept="image/*" class="d-none" onchange="previewImage(this)">
+                        </label>
                     </div>
-                    <div>
-                        <a href="/delete/{{ r.id }}" class="btn btn-outline-danger btn-sm border-0" onclick="return confirm('确定删除？')"><i class="bi bi-trash"></i></a>
+                </div>
+                
+                <!-- Image Preview Container -->
+                <div id="imagePreviewContainer" class="mb-3 d-none">
+                    <div class="position-relative d-inline-block">
+                        <img id="selectedImage" src="#" class="img-thumbnail rounded-3" style="max-height: 150px;">
+                        <button type="button" class="btn-close position-absolute top-0 end-0 bg-white m-1" onclick="clearImage()"></button>
+                    </div>
+                </div>
+
+                <button class="btn btn-primary w-100 py-2 rounded-pill fw-bold" onclick="analyzeText()" id="analyzeBtn">
+                    <span id="btnText">识别并添加</span>
+                    <div class="spinner-border spinner-border-sm d-none" id="btnSpinner" role="status"></div>
+                </button>
+                
+                <!-- Preview Area -->
+                <div id="aiPreview" class="mt-3 d-none">
+                    <h6 class="text-muted small fw-bold">识别结果 (请确认):</h6>
+                    <div id="previewList" class="list-group mb-3"></div>
+                    <div class="d-flex gap-2">
+                        <button class="btn btn-success flex-grow-1 rounded-pill" onclick="confirmBatchAdd()">确认保存</button>
+                        <button class="btn btn-outline-secondary rounded-pill px-4" onclick="cancelPreview()">取消</button>
                     </div>
                 </div>
             </div>
-            {% else %}
-            <div class="list-group-item text-center text-muted py-5">
-                暂无记录，快去添加第一条吧！
+
+            <!-- Manual Input -->
+            <div class="tab-pane fade" id="manual" role="tabpanel">
+                <form id="manualInputForm" class="row g-3">
+                    <!-- 记录类型选择 -->
+                    <div class="col-12">
+                        <label class="form-label small text-muted fw-bold">记录类型</label>
+                        <select id="recordType" class="form-select rounded-3" onchange="toggleRecordFields()">
+                            <option value="glucose">血糖测量</option>
+                            <option value="meal">餐食记录</option>
+                            <option value="exercise">运动记录</option>
+                            <option value="medication">药物方案</option>
+                        </select>
+                    </div>
+
+                    <!-- 血糖字段 -->
+                    <div id="glucoseFields" class="col-12">
+                        <div class="row g-3">
+                            <div class="col-md-4">
+                                <label class="form-label small text-muted">血糖值 <span class="text-danger">*</span></label>
+                                <input type="number" step="0.1" id="glucose_value" class="form-control rounded-3">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label small text-muted">单位</label>
+                                <select id="glucose_unit" class="form-select rounded-3">
+                                    <option value="mmol/L">mmol/L</option>
+                                    <option value="mg/dL">mg/dL</option>
+                                </select>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label small text-muted">测量类型</label>
+                                <input type="text" id="glucose_type" class="form-control rounded-3" list="glucoseTypeOptions" placeholder="如：空腹">
+                                <datalist id="glucoseTypeOptions">
+                                    <option value="空腹">
+                                    <option value="餐前">
+                                    <option value="运动后餐前">
+                                    <option value="餐后1小时">
+                                    <option value="餐后2小时">
+                                    <option value="睡前">
+                                    <option value="运动后">
+                                </datalist>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 餐食字段 -->
+                    <div id="mealFields" class="col-12 d-none">
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label small text-muted">餐食类型 <span class="text-danger">*</span></label>
+                                <select id="meal_type" class="form-select rounded-3">
+                                    <option value="早餐">早餐</option>
+                                    <option value="午餐">午餐</option>
+                                    <option value="晚餐">晚餐</option>
+                                    <option value="加餐">加餐/零食</option>
+                                </select>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label small text-muted">热量 (kcal)</label>
+                                <input type="number" id="meal_calories" class="form-control rounded-3" placeholder="估算值">
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label small text-muted">食物内容 <span class="text-danger">*</span></label>
+                                <textarea id="meal_notes" class="form-control rounded-3" rows="2" placeholder="例如：一碗米饭、西兰花、鸡胸肉"></textarea>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 运动字段 -->
+                    <div id="exerciseFields" class="col-12 d-none">
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label small text-muted">运动类型</label>
+                                <input type="text" id="exercise_type" class="form-control rounded-3" value="跑步" list="exerciseTypeOptions">
+                                <datalist id="exerciseTypeOptions">
+                                    <option value="跑步">
+                                    <option value="快走">
+                                    <option value="游泳">
+                                    <option value="骑车">
+                                    <option value="运动">
+                                </datalist>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label small text-muted">距离 (km)</label>
+                                <input type="number" step="0.1" id="exercise_distance" class="form-control rounded-3">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label small text-muted">时长</label>
+                                <input type="text" id="exercise_duration" class="form-control rounded-3" placeholder="如：30分钟">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label small text-muted">心率 (bpm)</label>
+                                <input type="number" id="exercise_heart_rate" class="form-control rounded-3">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label small text-muted">消耗 (kcal)</label>
+                                <input type="number" id="exercise_calories" class="form-control rounded-3">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 药物方案字段 -->
+                    <div id="medicationFields" class="col-12 d-none">
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label small text-muted">药物名称 <span class="text-danger">*</span></label>
+                                <input type="text" id="med_name_manual" class="form-control rounded-3" list="medOptions2" placeholder="如：二甲双胍">
+                                <datalist id="medOptions2">
+                                    <option value="二甲双胍">
+                                    <option value="阿卡波糖">
+                                    <option value="格列齐特">
+                                    <option value="门冬胰岛素">
+                                    <option value="甘精胰岛素">
+                                    <option value="西格列汀">
+                                </datalist>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label small text-muted">剂量</label>
+                                <input type="text" id="med_dosage_manual" class="form-control rounded-3" placeholder="如：500mg">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label small text-muted">每天次数 <span class="text-danger">*</span></label>
+                                <input type="number" id="med_times_manual" class="form-control rounded-3" value="1" min="1" max="10">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label small text-muted">服用时机</label>
+                                <input type="text" id="med_timing_manual" class="form-control rounded-3" placeholder="如：早晚餐前30分钟">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label small text-muted">开始日期 <span class="text-danger">*</span></label>
+                                <input type="date" id="med_start_manual" class="form-control rounded-3">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label small text-muted">结束日期 <small>(可选)</small></label>
+                                <input type="date" id="med_end_manual" class="form-control rounded-3">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 通用字段 -->
+                    <div class="col-md-6">
+                        <label class="form-label small text-muted">时间 <span class="text-danger">*</span></label>
+                        <input type="datetime-local" id="manual_timestamp" class="form-control rounded-3" required>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small text-muted">备注</label>
+                        <input type="text" id="manual_notes" class="form-control rounded-3" placeholder="其他说明...">
+                    </div>
+
+                    <div class="col-12 mt-4">
+                        <button type="submit" class="btn btn-primary w-100 rounded-pill py-2">
+                            <i class="bi bi-check-circle me-1"></i> 保存记录
+                        </button>
+                    </div>
+                </form>
             </div>
-            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<!-- Day Details Modal -->
+<div class="modal fade" id="dayDetailsModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title fw-bold" id="dayModalTitle">日期详情</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="dayModalBody">
+                <!-- Content will be injected by JS -->
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 编辑记录模态框 -->
+<div class="modal fade" id="editModal" tabindex="-1" style="z-index: 1060;">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">编辑记录</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="editId">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label">数值</label>
+                        <input type="number" step="0.1" id="editValue" class="form-control">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">单位</label>
+                        <select id="editUnit" class="form-select">
+                            <option value="mmol/L">mmol/L</option>
+                            <option value="mg/dL">mg/dL</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">类型</label>
+                        <input type="text" id="editType" class="form-control" list="editTypeOptions">
+                        <datalist id="editTypeOptions">
+                            <option value="空腹">
+                            <option value="餐前">
+                            <option value="运动后餐前">
+                            <option value="餐后1小时">
+                            <option value="餐后2小时">
+                            <option value="睡前">
+                            <option value="跑步">
+                        </datalist>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">时间</label>
+                        <input type="datetime-local" id="editTimestamp" class="form-control">
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label">备注</label>
+                        <input type="text" id="editNotes" class="form-control">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">热量 (kcal)</label>
+                        <input type="number" id="editCalories" class="form-control">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">距离 (km)</label>
+                        <input type="number" step="0.1" id="editDistance" class="form-control">
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" onclick="saveEdit()">保存</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 药物管理模态框 -->
+<div class="modal fade" id="medicationPlanModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-capsule me-2"></i>药物方案管理</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <!-- Current Plans List -->
+                <div id="medicationPlansList" class="mb-4"></div>
+
+                <!-- Add New Plan Section -->
+                <div class="border-top pt-3">
+                    <h6 class="text-muted mb-3"><i class="bi bi-plus-circle me-1"></i> 添加新药物方案</h6>
+                    <form id="medicationPlanForm" class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label small">药物名称 <span class="text-danger">*</span></label>
+                            <input type="text" id="plan_name" class="form-control" list="medOptions" placeholder="如：二甲双胍" required>
+                            <datalist id="medOptions">
+                                <option value="二甲双胍">
+                                <option value="阿卡波糖">
+                                <option value="格列齐特">
+                                <option value="门冬胰岛素">
+                                <option value="甘精胰岛素">
+                                <option value="西格列汀">
+                            </datalist>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label small">剂量</label>
+                            <input type="text" id="plan_dosage" class="form-control" placeholder="如：500mg">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label small">每天次数 <span class="text-danger">*</span></label>
+                            <input type="number" id="plan_times" class="form-control" value="1" min="1" max="10" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label small">服用时机</label>
+                            <input type="text" id="plan_timing" class="form-control" placeholder="如：早晚餐前30分钟">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label small">开始日期 <span class="text-danger">*</span></label>
+                            <input type="date" id="plan_start" class="form-control" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label small">结束日期 <small class="text-muted">(可选)</small></label>
+                            <input type="date" id="plan_end" class="form-control">
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label small">备注</label>
+                            <input type="text" id="plan_notes" class="form-control" placeholder="其他说明...">
+                        </div>
+                        <div class="col-12">
+                            <button type="submit" class="btn btn-success w-100">
+                                <i class="bi bi-capsule me-1"></i> 保存药物方案
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 用户设置模态框 -->
+<div class="modal fade" id="userSettingsModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">个人健康资料</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="userSettingsForm">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">姓名</label>
+                            <input type="text" id="set_name" class="form-control" value="{{ stats.user.name }}">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">出生年份</label>
+                            <input type="number" id="set_birth" class="form-control" value="{{ stats.user.birth_year }}">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">身高 (cm)</label>
+                            <input type="number" id="set_height" class="form-control" value="{{ stats.user.height }}">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">体重 (kg)</label>
+                            <input type="number" step="0.1" id="set_weight" class="form-control" value="{{ stats.user.weight }}">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">性别</label>
+                            <select id="set_gender" class="form-select">
+                                <option value="male" {% if stats.user.gender == 'male' %}selected{% endif %}>男</option>
+                                <option value="female" {% if stats.user.gender == 'female' %}selected{% endif %}>女</option>
+                            </select>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" onclick="saveUserSettings()">保存修改</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 头像上传与裁剪模态框 -->
+<div class="modal fade" id="avatarModal" tabindex="-1" data-bs-backdrop="static">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">更换头像</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" onclick="resetAvatarModal()"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <input type="file" id="avatarInput" class="form-control" accept="image/png, image/jpeg" onchange="loadAvatarImage(this)">
+                </div>
+                
+                <div class="row g-2 d-none" id="cropArea">
+                    <div class="col-8">
+                        <div style="height: 300px; background-color: #f8f9fa;">
+                            <img id="cropImage" src="" style="max-width: 100%; display: block;">
+                        </div>
+                    </div>
+                    <div class="col-4">
+                        <div class="small text-muted mb-2">预览:</div>
+                        <div class="overflow-hidden rounded-circle border shadow-sm mx-auto" style="width: 100px; height: 100px;" id="avatarPreview"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" onclick="resetAvatarModal()">取消</button>
+                <button type="button" class="btn btn-primary" id="saveAvatarBtn" onclick="cropAndUploadAvatar()" disabled>保存头像</button>
+            </div>
         </div>
     </div>
 </div>
@@ -152,162 +686,659 @@
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@2.2.1/dist/chartjs-plugin-annotation.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
 <script>
-    // Data Preparation for Chart
-    // Injecting server-side data safely
-    const rawRecords = [
-        {% for r in records %}
-        {
-            value: {{ r.value }},
-            unit: "{{ r.unit }}",
-            type: "{{ r.type }}",
-            timestamp: "{{ r.timestamp }}"
-        },
-        {% endfor %}
-    ];
+    // Injected from server
+    const timelineData = {{ timeline | tojson }};
+    const dayModal = new bootstrap.Modal(document.getElementById('dayDetailsModal'));
 
-    // Reverse to chronological order
-    const chartData = rawRecords.slice().reverse();
+    document.addEventListener('DOMContentLoaded', function() {
+        // Initialize Chart.js for glucose trend
+        initGlucoseChart();
 
-    if (chartData.length > 0) {
-        const ctx = document.getElementById('glucoseChart').getContext('2d');
-        
-        // Helper to categorize data
-        const datasets = {
-            '空腹': { label: '早空腹', data: [], pointBackgroundColor: [], pointBorderColor: [], borderColor: '#0d6efd', backgroundColor: '#0d6efd' }, // Blue
-            '餐前': { label: '餐前 / 运动后', data: [], pointBackgroundColor: [], pointBorderColor: [], borderColor: '#0dcaf0', backgroundColor: '#0dcaf0' }, // Cyan
-            '餐后1小时': { label: '餐后1h', data: [], pointBackgroundColor: [], pointBorderColor: [], borderColor: '#fd7e14', backgroundColor: '#fd7e14' }, // Orange
-            '餐后2小时': { label: '餐后2h', data: [], pointBackgroundColor: [], pointBorderColor: [], borderColor: '#dc3545', backgroundColor: '#dc3545' }, // Red
-            '睡前': { label: '睡前', data: [], pointBackgroundColor: [], pointBorderColor: [], borderColor: '#6610f2', backgroundColor: '#6610f2' }, // Purple
-            '其他': { label: '其他', data: [], pointBackgroundColor: [], pointBorderColor: [], borderColor: '#6c757d', backgroundColor: '#6c757d' }  // Grey
-        };
+        // Initialize Calendar
+        var calendarEl = document.getElementById('calendar');
+        var calendar = new FullCalendar.Calendar(calendarEl, {
+            initialView: 'dayGridMonth',
+            locale: 'zh-cn',
+            headerToolbar: {
+                left: 'prev,next today',
+                center: 'title',
+                right: 'dayGridMonth,dayGridWeek'
+            },
+            height: 'auto',
+            aspectRatio: 1.5,
+            events: generateCalendarEvents(),
+            dateClick: function(info) {
+                renderDayDetails(info.dateStr);
+            },
+            eventClick: function(info) {
+                // If clicked on an event (badge), open the modal for that day
+                // event.startStr gives 'YYYY-MM-DD' if allDay is true
+                renderDayDetails(info.event.startStr);
+            }
+        });
+        calendar.render();
+    });
 
-        // Traffic Light Color Logic
-        function getPointColor(key, value) {
-            const green = '#198754'; // Success
-            const yellow = '#ffc107'; // Warning
-            const red = '#dc3545';    // Danger
-
-            if (value < 3.9) return red; // Low blood sugar warning for all
-
-            if (key === '空腹' || key === '餐前' || key === '睡前') {
-                // Strict: < 6.1 Green, 6.1-7.0 Yellow, > 7.0 Red
-                if (value < 6.1) return green;
-                if (value <= 7.0) return yellow;
-                return red;
-            } else {
-                // Post-meal: < 7.8 Green, 7.8-10.0 Yellow, > 10.0 Red
-                if (value < 7.8) return green;
-                if (value <= 10.0) return yellow;
-                return red;
-            }
-        }
-
-        chartData.forEach(r => {
-            const point = { x: r.timestamp, y: r.value, notes: r.notes };
-            let key = '其他';
-            const t = r.type || '';
-            
-            // 优先级 1: 早空腹
-            if (t.includes('空腹')) {
-                key = '空腹';
-            }
-            // 优先级 2: 运动后 -> 归入 餐前
-            else if (t.includes('运动')) {
-                key = '餐前';
-            }
-            // 优先级 3: 睡前
-            else if (t.includes('睡前')) {
-                key = '睡前';
-            }
-            // 优先级 4: 餐后 (检查"餐"或"饭" + 时间)
-            else if ((t.includes('餐') || t.includes('饭')) && (t.includes('1') || t.includes('一'))) {
-                key = '餐后1小时';
-            }
-            else if ((t.includes('餐') || t.includes('饭')) && (t.includes('2') || t.includes('二'))) {
-                key = '餐后2小时';
-            }
-            // 优先级 5: 餐前 (检查"餐前"或"饭前")
-            else if (t.includes('餐前') || t.includes('饭前')) {
-                key = '餐前';
-            }
-            
-            datasets[key].data.push(point);
-            // Calculate and store point color
-            const pColor = getPointColor(key, r.value);
-            datasets[key].pointBackgroundColor.push(pColor);
-            datasets[key].pointBorderColor.push(pColor);
+    // Initialize glucose trend chart
+    function initGlucoseChart() {
+        // Extract all glucose records from timeline data (exclude AI predictions)
+        const allRecords = [];
+        timelineData.forEach(day => {
+            day.data.entries.forEach(entry => {
+                // 只显示真实记录的血糖值，不显示AI预测值
+                if (entry.value > 0 && !entry.is_predicted) {
+                    allRecords.push({
+                        timestamp: entry.timestamp,
+                        value: entry.value,
+                        type: entry.type,
+                        unit: entry.unit
+                    });
+                }
+            });
         });
 
-        // Convert object to array of datasets, filtering out empty ones
-        const chartDatasets = Object.values(datasets)
-            .filter(ds => ds.data.length > 0)
-            .map(ds => ({
+        if (allRecords.length === 0) return;
+
+        // Sort by timestamp
+        allRecords.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+
+        const ctx = document.getElementById('glucoseChart').getContext('2d');
+
+        // Categorize data by type
+        const datasets = {
+            '空腹': { label: '空腹', data: [], borderColor: '#0d6efd', backgroundColor: '#0d6efd' },
+            '餐前': { label: '餐前', data: [], borderColor: '#0dcaf0', backgroundColor: '#0dcaf0' },
+            '运动后餐前': { label: '运动后餐前', data: [], borderColor: '#0dcaf0', backgroundColor: '#0dcaf0' },
+            '餐后1小时': { label: '餐后1h', data: [], borderColor: '#fd7e14', backgroundColor: '#fd7e14' },
+            '餐后2小时': { label: '餐后2h', data: [], borderColor: '#dc3545', backgroundColor: '#dc3545' },
+            '睡前': { label: '睡前', data: [], borderColor: '#6610f2', backgroundColor: '#6610f2' },
+            '运动后': { label: '运动后', data: [], borderColor: '#198754', backgroundColor: '#198754' },
+            '其他': { label: '其他', data: [], borderColor: '#6c757d', backgroundColor: '#6c757d' }
+        };
+
+        // Populate datasets
+        allRecords.forEach(record => {
+            const key = datasets[record.type] ? record.type : '其他';
+            const pointColor = getPointColor(key, record.value);
+
+            datasets[key].data.push({
+                x: record.timestamp,
+                y: record.value
+            });
+        });
+
+        // Build Chart.js datasets array with enhanced visibility
+        const chartDatasets = [];
+        for (const [key, ds] of Object.entries(datasets)) {
+            if (ds.data.length === 0) continue;
+
+            chartDatasets.push({
                 label: ds.label,
                 data: ds.data,
                 borderColor: ds.borderColor,
                 backgroundColor: ds.backgroundColor,
-                pointBackgroundColor: ds.pointBackgroundColor, // Apply dynamic colors
-                pointBorderColor: ds.pointBorderColor,         // Apply dynamic colors
-                borderWidth: 2,
-                pointRadius: 5,       // Slightly larger points to make color visible
-                pointHoverRadius: 7,
-                fill: false,
-                tension: 0.3,
-                spanGaps: true // Connect lines even if days are skipped
-            }));
+                borderWidth: 3,
+                tension: 0.1,  // 减少平滑度，让波动更明显
+                pointRadius: 6,
+                pointHoverRadius: 9,
+                pointBackgroundColor: ds.data.map(point => getPointColor(key, point.y)),
+                pointBorderColor: '#fff',
+                pointBorderWidth: 2,
+                fill: false
+            });
+        }
+
+        // 计算实际数据的最小值和最大值
+        let minValue = Infinity;
+        let maxValue = -Infinity;
+        allRecords.forEach(r => {
+            if (r.value < minValue) minValue = r.value;
+            if (r.value > maxValue) maxValue = r.value;
+        });
+
+        // 缩小Y轴范围以增强视觉冲击
+        const yMin = Math.max(3, Math.floor(minValue - 0.5));
+        const yMax = Math.min(15, Math.ceil(maxValue + 0.5));
 
         new Chart(ctx, {
             type: 'line',
             data: { datasets: chartDatasets },
             options: {
                 responsive: true,
+                maintainAspectRatio: true,
                 interaction: {
-                    mode: 'index',
-                    intersect: false,
+                    mode: 'nearest',
+                    axis: 'x',
+                    intersect: false
+                },
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'top',
+                        labels: {
+                            usePointStyle: true,
+                            padding: 15,
+                            font: { size: 12, weight: 'bold' }
+                        }
+                    },
+                    tooltip: {
+                        backgroundColor: 'rgba(0,0,0,0.8)',
+                        padding: 12,
+                        titleFont: { size: 14, weight: 'bold' },
+                        bodyFont: { size: 13 },
+                        callbacks: {
+                            label: function(context) {
+                                const value = context.parsed.y.toFixed(1);
+                                let status = '';
+                                if (context.parsed.y < 3.9) status = ' ⚠️ 偏低';
+                                else if (context.parsed.y > 7.8) status = ' ⚠️ 偏高';
+                                else status = ' ✓ 正常';
+                                return context.dataset.label + ': ' + value + ' mmol/L' + status;
+                            }
+                        }
+                    },
+                    annotation: {
+                        annotations: {
+                            dangerHigh: {
+                                type: 'line',
+                                yMin: 10.0,
+                                yMax: 10.0,
+                                borderColor: 'rgba(220, 53, 69, 0.3)',
+                                borderWidth: 2,
+                                borderDash: [10, 5],
+                                label: {
+                                    content: '危险上限 10.0',
+                                    enabled: true,
+                                    position: 'end',
+                                    backgroundColor: 'rgba(220, 53, 69, 0.8)',
+                                    color: '#fff',
+                                    font: { size: 10 }
+                                }
+                            },
+                            warningHigh: {
+                                type: 'line',
+                                yMin: 7.8,
+                                yMax: 7.8,
+                                borderColor: 'rgba(255, 193, 7, 0.4)',
+                                borderWidth: 2,
+                                borderDash: [5, 5],
+                                label: {
+                                    content: '警戒线 7.8',
+                                    enabled: true,
+                                    position: 'end',
+                                    backgroundColor: 'rgba(255, 193, 7, 0.8)',
+                                    color: '#000',
+                                    font: { size: 10 }
+                                }
+                            },
+                            targetZone: {
+                                type: 'box',
+                                yMin: 3.9,
+                                yMax: 7.8,
+                                backgroundColor: 'rgba(25, 135, 84, 0.05)',
+                                borderWidth: 0
+                            },
+                            dangerLow: {
+                                type: 'line',
+                                yMin: 3.9,
+                                yMax: 3.9,
+                                borderColor: 'rgba(220, 53, 69, 0.4)',
+                                borderWidth: 2,
+                                borderDash: [5, 5],
+                                label: {
+                                    content: '低血糖警戒 3.9',
+                                    enabled: true,
+                                    position: 'start',
+                                    backgroundColor: 'rgba(220, 53, 69, 0.8)',
+                                    color: '#fff',
+                                    font: { size: 10 }
+                                }
+                            }
+                        }
+                    }
                 },
                 scales: {
                     x: {
                         type: 'time',
                         time: {
                             unit: 'day',
-                            tooltipFormat: 'yyyy-MM-dd HH:mm',
                             displayFormats: { day: 'MM-dd' }
                         },
-                        title: { display: false }
+                        title: {
+                            display: true,
+                            text: '时间',
+                            font: { size: 13, weight: 'bold' }
+                        },
+                        grid: {
+                            color: 'rgba(0,0,0,0.05)'
+                        }
                     },
                     y: {
                         beginAtZero: false,
-                        title: { display: true, text: '血糖 (mmol/L)' }
-                    }
-                },
-                plugins: {
-                    tooltip: {
-                        callbacks: {
-                            afterLabel: function(context) {
-                                const raw = context.raw;
-                                return raw.notes ? ' 备注: ' + raw.notes : '';
+                        min: yMin,
+                        max: yMax,
+                        title: {
+                            display: true,
+                            text: '血糖值 (mmol/L)',
+                            font: { size: 13, weight: 'bold' }
+                        },
+                        ticks: {
+                            stepSize: 0.5,
+                            callback: function(value) {
+                                return value.toFixed(1);
+                            },
+                            font: { size: 11, weight: 'bold' }
+                        },
+                        grid: {
+                            color: function(context) {
+                                if (context.tick.value === 7.8 || context.tick.value === 10.0 || context.tick.value === 3.9) {
+                                    return 'rgba(220, 53, 69, 0.2)';
+                                }
+                                return 'rgba(0,0,0,0.05)';
+                            },
+                            lineWidth: function(context) {
+                                if (context.tick.value === 7.8 || context.tick.value === 10.0 || context.tick.value === 3.9) {
+                                    return 2;
+                                }
+                                return 1;
                             }
                         }
-                    },
-                    legend: {
-                        position: 'top',
                     }
                 }
             }
         });
     }
 
+    // Get point color based on glucose value and type
+    function getPointColor(key, value) {
+        const green = '#198754';
+        const yellow = '#ffc107';
+        const red = '#dc3545';
+
+        if (value < 3.9) return red;
+
+        if (key === '空腹' || key === '餐前' || key === '睡前' || key === '运动后餐前') {
+            if (value < 6.1) return green;
+            if (value <= 7.0) return yellow;
+            return red;
+        } else {
+            if (value < 7.8) return green;
+            if (value <= 10.0) return yellow;
+            return red;
+        }
+    }
+
+    function generateCalendarEvents() {
+        const events = [];
+        
+        timelineData.forEach(day => {
+            const stats = day.data.stats;
+            
+            // 1. Avg Glucose Badge
+            if (stats.avg_glucose > 0) {
+                let color = '#198754'; // green
+                if (stats.avg_glucose > 7.0) color = '#ffc107'; // yellow
+                if (stats.avg_glucose > 7.8) color = '#dc3545'; // red
+
+                events.push({
+                    title: '血糖 ' + stats.avg_glucose,
+                    start: day.date,
+                    backgroundColor: color,
+                    borderColor: color,
+                    allDay: true
+                });
+            }
+
+            // 2. Net Calories Badge
+            if (stats.is_deficit) {
+                events.push({
+                    title: '缺口 ' + Math.abs(stats.net_calories),
+                    start: day.date,
+                    backgroundColor: '#e9f7ef', // light green
+                    textColor: '#198754',
+                    borderColor: '#e9f7ef',
+                    allDay: true
+                });
+            } else {
+                events.push({
+                    title: '盈余 ' + Math.abs(stats.net_calories),
+                    start: day.date,
+                    backgroundColor: '#fbeaea', // light red
+                    textColor: '#dc3545',
+                    borderColor: '#fbeaea',
+                    allDay: true
+                });
+            }
+        });
+        return events;
+    }
+
+    function renderDayDetails(dateStr) {
+        // Find data for this date
+        const dayData = timelineData.find(d => d.date === dateStr);
+        
+        const modalTitle = document.getElementById('dayModalTitle');
+        const modalBody = document.getElementById('dayModalBody');
+        
+        modalTitle.textContent = dateStr + ' 详情';
+        modalBody.innerHTML = '';
+
+        if (!dayData) {
+            modalBody.innerHTML = '<div class="text-center text-muted py-4">当天无记录</div>';
+            dayModal.show();
+            return;
+        }
+
+        const stats = dayData.data.stats;
+        const entries = dayData.data.entries;
+
+        // 1. Render Stats Header
+        let statsHtml = `
+            <div class="d-flex gap-2 mb-3 small text-muted justify-content-center bg-light p-2 rounded">
+                <span>🍽️ 摄入 ${stats.cal_in}</span>
+                <span class="border-start mx-1"></span>
+                <span>😴 基础代谢 ${stats.cal_out_bmr}</span>
+                <span class="border-start mx-1"></span>
+                <span>🏃 运动消耗 ${stats.cal_out_exercise}</span>
+                <span class="border-start mx-1"></span>
+                <span class="${stats.is_deficit ? 'text-success' : 'text-danger'} fw-bold">
+                    ⚖️ ${stats.is_deficit ? '缺口' : '盈余'} ${Math.abs(stats.net_calories)}
+                </span>
+            </div>
+        `;
+        modalBody.innerHTML += statsHtml;
+
+        // 2. Render Timeline Items
+        entries.forEach(r => {
+            let dotClass = 'dot-food';
+            if (r.value > 0) dotClass = 'dot-glucose';
+            else if (r.distance) dotClass = 'dot-run';
+            else if (r.type === '加餐') dotClass = 'dot-snack';
+
+            let itemHtml = `
+            <div class="timeline-item">
+                <div class="timeline-dot ${dotClass}"></div>
+                <div class="d-flex w-100 justify-content-between align-items-start">
+                    <div class="me-3 text-muted small" style="min-width: 45px;">
+                        ${r.timestamp.split(' ')[1].slice(0, 5)}
+                    </div>
+                    <div class="flex-grow-1">
+            `;
+
+            // Glucose
+            if (r.value > 0) {
+                let trendHtml = '';
+                if (r.trend_dir === 'up') trendHtml = `<small class="text-danger"><i class="bi bi-arrow-up"></i> ${r.trend}</small>`;
+                else if (r.trend_dir === 'down') trendHtml = `<small class="text-success"><i class="bi bi-arrow-down"></i> ${r.trend}</small>`;
+                
+                let predictedBadge = r.is_predicted ? '<span class="badge bg-secondary ms-1" style="font-size: 0.6em;">预测</span>' : '';
+                
+                // Show AI Prediction comparison if available and different
+                let aiPrediction = '';
+                if (r.predicted_value && !r.is_predicted) {
+                    aiPrediction = `<small class="text-muted ms-2" title="AI预测值" style="font-size: 0.8em;"><i class="bi bi-robot"></i> ${r.predicted_value}</small>`;
+                }
+
+                itemHtml += `
+                    <div class="d-flex align-items-center mb-1">
+                        <h5 class="mb-0 text-primary fw-bold me-2">${r.value} <small class="text-muted fw-normal fs-6">${r.unit}</small></h5>
+                        <span class="badge bg-info text-dark me-2">${r.type}</span>
+                        ${predictedBadge}
+                        ${aiPrediction}
+                        ${trendHtml}
+                    </div>
+                `;
+            }
+
+            // Exercise
+            if (r.distance || r.duration || r.heart_rate) {
+                itemHtml += `
+                    <div class="mb-2 p-2 bg-light rounded border small">
+                        <div class="d-flex align-items-center text-success fw-bold mb-1"><i class="bi bi-activity me-2"></i> 运动打卡</div>
+                        <div class="text-nowrap overflow-auto">
+                            ${r.distance ? `<span class="me-2">🏃 <strong>${r.distance}</strong><small>km</small></span>` : ''}
+                            ${r.duration ? `<span class="me-2">⏱️ <strong>${r.duration}</strong></span>` : ''}
+                            ${r.heart_rate ? `<span class="me-2">❤️ <strong>${r.heart_rate}</strong><small>bpm</small></span>` : ''}
+                        </div>
+                    </div>
+                `;
+            }
+
+            // Food/Notes
+            if (r.notes) {
+                let icon = (r.value === 0 && !r.distance) ? '<i class="bi bi-cup-hot me-1 text-warning"></i>' : '';
+                itemHtml += `<div class="text-dark mb-1">${icon}${r.notes}</div>`;
+            }
+
+            // Calories
+            if (r.calories > 0 || r.diet_analysis) {
+                itemHtml += `
+                    <div class="small text-muted">
+                        ${r.calories > 0 ? `<span class="me-2">🔥 ${r.calories} kcal</span>` : ''}
+                        ${r.diet_analysis ? `<span>🥗 ${r.diet_analysis}</span>` : ''}
+                    </div>
+                `;
+            }
+
+            itemHtml += `
+                    </div>
+                    <div class="ms-2">
+                        <button class="btn btn-sm btn-link text-secondary opacity-50 p-0 me-1" onclick="openEditModal(${r.id})" title="编辑"><i class="bi bi-pencil"></i></button>
+                        <button class="btn btn-sm btn-link text-secondary opacity-25 p-0" onclick="deleteRecord(${r.id})" title="删除"><i class="bi bi-x-circle-fill"></i></button>
+                    </div>
+                </div>
+            </div>`;
+            
+            modalBody.innerHTML += itemHtml;
+        });
+
+        // 显示当天应服用的药物方案
+        if (dayData.data.medication_plans && dayData.data.medication_plans.length > 0) {
+            let medHtml = `
+                <div class="mt-4 pt-3 border-top">
+                    <h6 class="text-muted mb-3"><i class="bi bi-capsule me-2"></i>今日用药方案</h6>
+            `;
+
+            dayData.data.medication_plans.forEach(plan => {
+                medHtml += `
+                    <div class="card bg-light border-0 mb-2">
+                        <div class="card-body py-2 px-3">
+                            <div class="d-flex align-items-center">
+                                <i class="bi bi-capsule-pill text-success me-2"></i>
+                                <div class="flex-grow-1">
+                                    <strong>${plan.medication_name}</strong>
+                                    ${plan.dosage ? `<small class="text-muted ms-1">${plan.dosage}</small>` : ''}
+                                    <div class="small text-muted">
+                                        ${plan.times_per_day}次/天
+                                        ${plan.timing_notes ? `· ${plan.timing_notes}` : ''}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+
+            medHtml += '</div>';
+            modalBody.innerHTML += medHtml;
+        }
+
+        dayModal.show();
+    }
+
+
+
     // Set default time for manual input
     const now = new Date();
     now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
-    document.getElementById('manualTime').value = now.toISOString().slice(0, 16);
+    document.getElementById('manual_timestamp').value = now.toISOString().slice(0, 16);
+
+    // 切换手动录入字段
+    function toggleRecordFields() {
+        const type = document.getElementById('recordType').value;
+
+        // Hide all fields
+        document.getElementById('glucoseFields').classList.add('d-none');
+        document.getElementById('mealFields').classList.add('d-none');
+        document.getElementById('exerciseFields').classList.add('d-none');
+        document.getElementById('medicationFields').classList.add('d-none');
+
+        // Show selected field
+        if (type === 'glucose') {
+            document.getElementById('glucoseFields').classList.remove('d-none');
+        } else if (type === 'meal') {
+            document.getElementById('mealFields').classList.remove('d-none');
+        } else if (type === 'exercise') {
+            document.getElementById('exerciseFields').classList.remove('d-none');
+        } else if (type === 'medication') {
+            document.getElementById('medicationFields').classList.remove('d-none');
+            // Set default date
+            const today = new Date().toISOString().split('T')[0];
+            document.getElementById('med_start_manual').value = today;
+        }
+    }
+
+    // 手动录入表单提交
+    document.getElementById('manualInputForm')?.addEventListener('submit', async function(e) {
+        e.preventDefault();
+
+        const type = document.getElementById('recordType').value;
+        const timestamp = document.getElementById('manual_timestamp').value.replace('T', ' ') + ':00';
+        const notes = document.getElementById('manual_notes').value;
+
+        if (type === 'glucose') {
+            // 提交血糖记录
+            const data = {
+                value: parseFloat(document.getElementById('glucose_value').value),
+                unit: document.getElementById('glucose_unit').value,
+                type: document.getElementById('glucose_type').value,
+                timestamp: timestamp,
+                notes: notes
+            };
+
+            try {
+                const res = await fetch('/add', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(data)
+                });
+                if (res.ok) {
+                    alert('血糖记录保存成功！');
+                    window.location.reload();
+                }
+            } catch (e) {
+                alert('保存失败: ' + e);
+            }
+
+        } else if (type === 'meal') {
+            // 提交餐食记录
+            const data = {
+                value: 0,
+                type: document.getElementById('meal_type').value,
+                timestamp: timestamp,
+                notes: document.getElementById('meal_notes').value || notes,
+                calories: parseInt(document.getElementById('meal_calories').value) || 0
+            };
+
+            try {
+                const res = await fetch('/add', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(data)
+                });
+                if (res.ok) {
+                    alert('餐食记录保存成功！');
+                    window.location.reload();
+                }
+            } catch (e) {
+                alert('保存失败: ' + e);
+            }
+
+        } else if (type === 'exercise') {
+            // 提交运动记录
+            const data = {
+                value: 0,
+                type: document.getElementById('exercise_type').value,
+                timestamp: timestamp,
+                notes: notes,
+                distance: parseFloat(document.getElementById('exercise_distance').value) || null,
+                duration: document.getElementById('exercise_duration').value || null,
+                heart_rate: parseInt(document.getElementById('exercise_heart_rate').value) || null,
+                calories: parseInt(document.getElementById('exercise_calories').value) || 0
+            };
+
+            try {
+                const res = await fetch('/add', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(data)
+                });
+                if (res.ok) {
+                    alert('运动记录保存成功！');
+                    window.location.reload();
+                }
+            } catch (e) {
+                alert('保存失败: ' + e);
+            }
+
+        } else if (type === 'medication') {
+            // 提交药物方案
+            const data = {
+                medication_name: document.getElementById('med_name_manual').value,
+                dosage: document.getElementById('med_dosage_manual').value,
+                times_per_day: parseInt(document.getElementById('med_times_manual').value),
+                timing_notes: document.getElementById('med_timing_manual').value,
+                start_date: document.getElementById('med_start_manual').value,
+                end_date: document.getElementById('med_end_manual').value || null,
+                notes: notes
+            };
+
+            try {
+                const res = await fetch('/add_medication_plan', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(data)
+                });
+                const result = await res.json();
+                if (result.status === 'success') {
+                    alert('药物方案保存成功！');
+                    window.location.reload();
+                } else {
+                    alert('保存失败: ' + result.message);
+                }
+            } catch (e) {
+                alert('保存失败: ' + e);
+            }
+        }
+    });
 
     let parsedData = [];
+    let selectedImageBase64 = null;
+
+    function previewImage(input) {
+        if (input.files && input.files[0]) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                selectedImageBase64 = e.target.result;
+                document.getElementById('selectedImage').src = selectedImageBase64;
+                document.getElementById('imagePreviewContainer').classList.remove('d-none');
+            }
+            reader.readAsDataURL(input.files[0]);
+        }
+    }
+
+    function clearImage() {
+        selectedImageBase64 = null;
+        document.getElementById('imageUpload').value = '';
+        document.getElementById('imagePreviewContainer').classList.add('d-none');
+    }
 
     async function analyzeText() {
         const text = document.getElementById('aiInput').value;
-        if (!text) return;
+        if (!text && !selectedImageBase64) return;
 
         toggleLoading(true);
         
@@ -315,14 +1346,17 @@
             const response = await fetch('/parse_ai', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({text: text})
+                body: JSON.stringify({
+                    text: text,
+                    image: selectedImageBase64
+                })
             });
             parsedData = await response.json();
             
             if (parsedData.length > 0) {
                 renderPreview();
             } else {
-                alert('未能识别出有效数据，请检查输入。');
+                alert('未能识别出有效数据，请检查输入或图片。');
             }
         } catch (e) {
             alert('识别出错: ' + e);
@@ -334,19 +1368,183 @@
     function renderPreview() {
         const container = document.getElementById('previewList');
         container.innerHTML = '';
-        parsedData.forEach((item, index) => {
-            container.innerHTML += `
-                <div class="list-group-item">
-                    <div class="d-flex justify-content-between">
-                        <strong>${item.value} ${item.unit}</strong>
-                        <span class="badge bg-warning text-dark">${item.type}</span>
-                    </div>
-                    <small class="text-muted">${item.datetime}</small>
-                    <p class="mb-0 small text-secondary">${item.notes || '无备注'}</p>
-                </div>
-            `;
+
+        const glucoseRecords = [];
+        const mealRecords = [];
+        const exerciseRecords = [];
+        const medicationRecords = [];
+
+        const mealTypes = ['早餐', '午餐', '晚餐', '加餐'];
+        const exerciseTypes = ['跑步', '运动'];
+
+        parsedData.forEach(item => {
+            if (item.medication_name) {
+                medicationRecords.push(item);
+            } else if (exerciseTypes.includes(item.type) || item.distance) {
+                exerciseRecords.push(item);
+            } else if (mealTypes.includes(item.type) || (item.value == 0 && item.calories > 0)) {
+                mealRecords.push(item);
+            } else {
+                glucoseRecords.push(item);
+            }
         });
+
+        // 渲染血糖记录
+        if (glucoseRecords.length > 0) {
+            container.innerHTML += `<div class="fw-bold text-warning mb-2"><i class="bi bi-droplet-fill"></i> 血糖记录</div>`;
+            glucoseRecords.forEach(item => {
+                const borderClass = item.is_predicted ? 'border-warning border-dashed' : 'border-warning';
+                
+                let displayHtml = '';
+                if (item.is_predicted) {
+                    // 场景：纯 AI 预测（用户没输数值）
+                    displayHtml = `
+                        <div class="d-flex flex-column">
+                            <span class="text-warning fw-bold">AI 预测值: ${item.value} ${item.unit}</span>
+                        </div>
+                    `;
+                } else {
+                    // 场景：用户输入了真实值，同时显示 AI 预测值进行对比
+                    let predPart = item.predicted_value ? `<span class="text-muted ms-3 small">AI 预测值: ${item.predicted_value} ${item.unit}</span>` : '';
+                    displayHtml = `
+                        <div class="d-flex align-items-center flex-wrap">
+                            <span class="text-warning fw-bold">测量值: ${item.value} ${item.unit}</span>
+                            ${predPart}
+                        </div>
+                    `;
+                }
+
+                container.innerHTML += `
+                    <div class="list-group-item ${borderClass} mb-1">
+                        <div class="d-flex justify-content-between align-items-start">
+                            ${displayHtml}
+                            <span class="badge bg-warning text-dark ms-2">${item.type}</span>
+                        </div>
+                        <div class="mt-1">
+                            <small class="text-muted">${item.datetime}</small>
+                            ${item.notes ? `<p class="mb-0 small text-secondary">${item.notes}</p>` : ''}
+                        </div>
+                    </div>
+                `;
+            });
+        }
+
+        if (mealRecords.length > 0) {
+            container.innerHTML += `<div class="fw-bold mb-2 mt-3" style="color: #e91e8c;"><i class="bi bi-cup-hot-fill"></i> 餐食记录</div>`;
+            mealRecords.forEach(item => {
+                const borderColor = item.type === '加餐' ? 'border-pink' : 'border-orange';
+                container.innerHTML += `
+                    <div class="list-group-item mb-1" style="border-left: 3px solid ${item.type === '加餐' ? '#e91e8c' : '#fd7e14'};">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <span class="badge" style="background: ${item.type === '加餐' ? '#e91e8c' : '#fd7e14'};">${item.type}</span>
+                            <small class="text-muted">${item.datetime}</small>
+                        </div>
+                        <p class="mb-1">${item.notes || '未识别食物'}</p>
+                        <div class="small text-muted">
+                            ${item.calories ? `<span>🔥 ${item.calories} kcal</span>` : ''}
+                            ${item.diet_analysis ? `<span class="ms-2">🥗 ${item.diet_analysis}</span>` : ''}
+                        </div>
+                    </div>
+                `;
+            });
+        }
+
+        if (exerciseRecords.length > 0) {
+            container.innerHTML += `<div class="fw-bold mb-2 mt-3" style="color: #7cb889;"><i class="bi bi-bicycle"></i> 运动记录</div>`;
+            exerciseRecords.forEach(item => {
+                container.innerHTML += `
+                    <div class="list-group-item mb-1" style="border-left: 3px solid #7cb889;">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <span class="badge" style="background: #7cb889;">${item.type}</span>
+                            <small class="text-muted">${item.datetime}</small>
+                        </div>
+                        <div class="mt-1">
+                            🏃 <strong>${item.distance || 0} km</strong>
+                            | ⏱️ ${item.duration || '--'}
+                            | ❤️ ${item.heart_rate || '--'} bpm
+                            ${item.pace ? `| 配速 ${item.pace}` : ''}
+                        </div>
+                        ${item.notes ? `<p class="mb-0 small text-secondary">${item.notes}</p>` : ''}
+                    </div>
+                `;
+            });
+        }
+
+        // 渲染药物记录
+        if (medicationRecords.length > 0) {
+            container.innerHTML += `<div class="fw-bold mb-2 mt-3" style="color: #6610f2;"><i class="bi bi-capsule-pill"></i> 药物记录</div>`;
+            medicationRecords.forEach((item, index) => {
+                const isNewPlan = item.medication_is_new_plan;
+                const actionHtml = isNewPlan
+                    ? `<div class="mt-2">
+                        <button class="btn btn-sm btn-success" onclick="createMedicationPlan(${index})">
+                            <i class="bi bi-plus-circle me-1"></i>创建长期方案
+                        </button>
+                        <small class="text-muted ms-2">AI检测到这是长期用药</small>
+                       </div>`
+                    : `<small class="text-muted">临时用药记录</small>`;
+
+                container.innerHTML += `
+                    <div class="list-group-item mb-1" style="border-left: 3px solid #6610f2;">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <strong>${item.medication_name}</strong>
+                            ${item.medication_dosage ? `<span class="badge bg-secondary">${item.medication_dosage}</span>` : ''}
+                        </div>
+                        <div class="small text-muted mt-1">
+                            ${item.medication_timing ? `服用时机: ${item.medication_timing}` : ''}
+                            · ${item.datetime}
+                        </div>
+                        ${item.notes ? `<p class="mb-0 small text-secondary mt-1">${item.notes}</p>` : ''}
+                        ${actionHtml}
+                    </div>
+                `;
+            });
+        }
+
         document.getElementById('aiPreview').classList.remove('d-none');
+    }
+
+    // 从AI识别结果创建药物方案
+    async function createMedicationPlan(index) {
+        const med = parsedData[index];
+        if (!med || !med.medication_name) return;
+
+        // 推断每天次数
+        let timesPerDay = 1;
+        if (med.medication_timing) {
+            const timing = med.medication_timing.toLowerCase();
+            if (timing.includes('三餐') || timing.includes('每日三次')) timesPerDay = 3;
+            else if (timing.includes('早晚') || timing.includes('每日两次') || timing.includes('每日2次')) timesPerDay = 2;
+        }
+
+        const data = {
+            medication_name: med.medication_name,
+            dosage: med.medication_dosage || '',
+            times_per_day: timesPerDay,
+            timing_notes: med.medication_timing || '',
+            start_date: new Date().toISOString().split('T')[0],
+            end_date: null,
+            notes: med.notes || 'AI自动识别创建'
+        };
+
+        try {
+            const res = await fetch('/add_medication_plan', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(data)
+            });
+            const result = await res.json();
+            if (result.status === 'success') {
+                alert(`已创建药物方案：${med.medication_name}`);
+                // 从parsedData中移除这个药物记录，避免重复保存
+                parsedData.splice(index, 1);
+                renderPreview();
+            } else {
+                alert('创建失败: ' + result.message);
+            }
+        } catch (e) {
+            alert('创建失败: ' + e);
+        }
     }
 
     async function confirmBatchAdd() {
@@ -386,55 +1584,336 @@
         }
     }
 
-    // Speech Recognition Logic
     let recognition;
+    let isRecognizing = false; 
     const speechBtn = document.getElementById('speechBtn');
     const aiInput = document.getElementById('aiInput');
 
-    function startSpeechRecognition() {
+    function toggleSpeechRecognition() {
         if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
             alert('抱歉，您的浏览器不支持语音识别功能。请尝试使用 Chrome 桌面版或 Safari 移动版。');
+            return;
+        }
+
+        if (isRecognizing) {
+            recognition.stop();
             return;
         }
 
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         recognition = new SpeechRecognition();
         
-        recognition.continuous = false; // 只识别一次
-        recognition.interimResults = false; // 只返回最终结果
-        recognition.lang = 'zh-CN'; // 设置语言为中文
+        recognition.continuous = true; 
+        recognition.interimResults = true; 
+        recognition.lang = 'zh-CN'; 
 
         recognition.onstart = function() {
-            speechBtn.classList.add('btn-danger'); // 录音开始变红色
-            speechBtn.innerHTML = '<i class="bi bi-mic-fill"></i> 录音中...';
-            console.log('语音识别已启动...');
+            isRecognizing = true;
+            speechBtn.classList.add('active', 'beat-animation');
+            speechBtn.innerHTML = '<i class="bi bi-stop-circle-fill"></i>';
         };
 
         recognition.onresult = function(event) {
-            const transcript = event.results[0][0].transcript;
-            aiInput.value = transcript; // 识别结果填入文本框
-            console.log('识别结果:', transcript);
+            let finalTranscript = '';
+            for (let i = event.resultIndex; i < event.results.length; ++i) {
+                if (event.results[i].isFinal) {
+                    finalTranscript += event.results[i][0].transcript;
+                }
+            }
+            
+            if (finalTranscript) {
+                if (aiInput.value && !aiInput.value.endsWith(' ')) {
+                    aiInput.value += ' ';
+                }
+                aiInput.value += finalTranscript;
+            }
         };
 
         recognition.onerror = function(event) {
             console.error('语音识别错误:', event.error);
             if (event.error === 'not-allowed') {
                 alert('请授权浏览器访问麦克风。');
-            } else if (event.error === 'no-speech') {
-                alert('未检测到语音，请重试。');
-            } else {
-                alert('语音识别出错: ' + event.error);
             }
         };
 
         recognition.onend = function() {
-            speechBtn.classList.remove('btn-danger');
+            isRecognizing = false;
+            speechBtn.classList.remove('active', 'beat-animation');
             speechBtn.innerHTML = '<i class="bi bi-mic-fill"></i>';
-            console.log('语音识别已结束。');
         };
 
         recognition.start();
     }
+    
+    document.getElementById('speechBtn').onclick = toggleSpeechRecognition;
+
+    // ========== 编辑功能 ========== 
+    let editModal;
+    document.addEventListener('DOMContentLoaded', function() {
+        editModal = new bootstrap.Modal(document.getElementById('editModal'));
+    });
+
+    async function openEditModal(id) {
+        try {
+            const res = await fetch(`/record/${id}`);
+            const data = await res.json();
+            if (data.error) {
+                alert('记录不存在');
+                return;
+            }
+
+            document.getElementById('editId').value = data.id;
+            document.getElementById('editValue').value = data.value || 0;
+            document.getElementById('editUnit').value = data.unit || 'mmol/L';
+            document.getElementById('editType').value = data.type || '';
+            document.getElementById('editNotes').value = data.notes || '';
+            document.getElementById('editCalories').value = data.calories || '';
+            document.getElementById('editDistance').value = data.distance || '';
+
+            if (data.timestamp) {
+                const ts = data.timestamp.replace(' ', 'T').slice(0, 16);
+                document.getElementById('editTimestamp').value = ts;
+            }
+
+            editModal.show();
+        } catch (e) {
+            alert('获取记录失败: ' + e);
+        }
+    }
+
+    async function saveEdit() {
+        const id = document.getElementById('editId').value;
+        let timestamp = document.getElementById('editTimestamp').value;
+        if (timestamp) {
+            timestamp = timestamp.replace('T', ' ') + ':00';
+        }
+
+        const data = {
+            value: parseFloat(document.getElementById('editValue').value) || 0,
+            unit: document.getElementById('editUnit').value,
+            type: document.getElementById('editType').value,
+            notes: document.getElementById('editNotes').value,
+            timestamp: timestamp,
+            calories: parseInt(document.getElementById('editCalories').value) || 0,
+            distance: parseFloat(document.getElementById('editDistance').value) || null
+        };
+
+        try {
+            const res = await fetch(`/update/${id}`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(data)
+            });
+            const result = await res.json();
+            if (result.status === 'success') {
+                editModal.hide();
+                window.location.reload();
+            } else {
+                alert('保存失败: ' + result.message);
+            }
+        } catch (e) {
+            alert('保存失败: ' + e);
+        }
+    }
+
+    async function deleteRecord(id) {
+        if (!confirm('确定删除这条记录？')) return;
+
+        try {
+            const res = await fetch(`/delete/${id}`, {
+                method: 'POST',
+                headers: {'X-Requested-With': 'XMLHttpRequest'}
+            });
+            const result = await res.json();
+            if (result.status === 'success') {
+                window.location.reload();
+            } else {
+                alert('删除失败: ' + result.message);
+            }
+        } catch (e) {
+            alert('删除失败: ' + e);
+        }
+    }
+
+    async function importCSV(input) {
+        if (!input.files || !input.files[0]) return;
+
+        const file = input.files[0];
+        const formData = new FormData();
+        formData.append('file', file);
+
+        try {
+            const res = await fetch('/import', {
+                method: 'POST',
+                body: formData
+            });
+            const result = await res.json();
+            if (result.status === 'success') {
+                alert(result.message);
+                window.location.reload();
+            } else {
+                alert('导入失败: ' + result.message);
+            }
+        } catch (e) {
+            alert('导入失败: ' + e);
+        }
+
+        input.value = '';
+    }
+
+    // ========== 药物方案功能 ==========
+
+    // 页面加载时设置开始日期默认值
+    document.addEventListener('DOMContentLoaded', function() {
+        const planStart = document.getElementById('plan_start');
+        if (planStart) {
+            const today = new Date().toISOString().split('T')[0];
+            planStart.value = today;
+        }
+
+        // 监听药物管理modal打开事件
+        const medModal = document.getElementById('medicationPlanModal');
+        if (medModal) {
+            medModal.addEventListener('show.bs.modal', function() {
+                loadMedicationPlans();
+            });
+        }
+    });
+
+    // 加载药物方案列表
+    async function loadMedicationPlans() {
+        try {
+            const res = await fetch('/medication_plans');
+            const plans = await res.json();
+
+            const container = document.getElementById('medicationPlansList');
+            if (!plans || plans.length === 0) {
+                container.innerHTML = '<div class="alert alert-info mb-0"><i class="bi bi-info-circle me-2"></i>暂无药物方案，请在下方添加</div>';
+                return;
+            }
+
+            let html = '<h6 class="text-muted mb-3">当前药物方案</h6>';
+            plans.forEach(plan => {
+                const isActive = plan.is_active;
+                const endDateText = plan.end_date ? plan.end_date : '长期服用';
+                const statusBadge = isActive
+                    ? '<span class="badge bg-success">启用中</span>'
+                    : '<span class="badge bg-secondary">已停用</span>';
+
+                html += `
+                    <div class="card mb-2 ${!isActive ? 'opacity-50' : ''}">
+                        <div class="card-body py-2 px-3">
+                            <div class="d-flex justify-content-between align-items-start">
+                                <div class="flex-grow-1">
+                                    <h6 class="mb-1">
+                                        <i class="bi bi-capsule text-success me-1"></i>
+                                        ${plan.medication_name}
+                                        ${plan.dosage ? `<small class="text-muted">${plan.dosage}</small>` : ''}
+                                        ${statusBadge}
+                                    </h6>
+                                    <small class="text-muted d-block">
+                                        ${plan.times_per_day}次/天
+                                        ${plan.timing_notes ? `· ${plan.timing_notes}` : ''}
+                                    </small>
+                                    <small class="text-muted d-block">
+                                        ${plan.start_date} 至 ${endDateText}
+                                        ${plan.notes ? `· ${plan.notes}` : ''}
+                                    </small>
+                                </div>
+                                <div class="btn-group btn-group-sm">
+                                    <button class="btn btn-outline-${isActive ? 'warning' : 'success'}"
+                                            onclick="toggleMedicationPlan(${plan.id})"
+                                            title="${isActive ? '停用' : '启用'}">
+                                        <i class="bi bi-${isActive ? 'pause' : 'play'}-circle"></i>
+                                    </button>
+                                    <button class="btn btn-outline-danger"
+                                            onclick="deleteMedicationPlan(${plan.id})"
+                                            title="删除">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+
+            container.innerHTML = html;
+        } catch (e) {
+            console.error('加载药物方案失败:', e);
+        }
+    }
+
+    // 药物方案表单提交
+    document.getElementById('medicationPlanForm')?.addEventListener('submit', async function(e) {
+        e.preventDefault();
+
+        const data = {
+            medication_name: document.getElementById('plan_name').value,
+            dosage: document.getElementById('plan_dosage').value,
+            times_per_day: parseInt(document.getElementById('plan_times').value),
+            timing_notes: document.getElementById('plan_timing').value,
+            start_date: document.getElementById('plan_start').value,
+            end_date: document.getElementById('plan_end').value || null,
+            notes: document.getElementById('plan_notes').value
+        };
+
+        try {
+            const res = await fetch('/add_medication_plan', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(data)
+            });
+            const result = await res.json();
+            if (result.status === 'success') {
+                alert('药物方案保存成功！');
+                // 清空表单
+                document.getElementById('medicationPlanForm').reset();
+                const today = new Date().toISOString().split('T')[0];
+                document.getElementById('plan_start').value = today;
+                // 重新加载列表（不关闭modal）
+                loadMedicationPlans();
+            } else {
+                alert('保存失败: ' + result.message);
+            }
+        } catch (e) {
+            alert('保存失败: ' + e);
+        }
+    });
+
+    // 启用/停用药物方案
+    async function toggleMedicationPlan(planId) {
+        try {
+            const res = await fetch(`/toggle_medication_plan/${planId}`, {
+                method: 'POST'
+            });
+            const result = await res.json();
+            if (result.status === 'success') {
+                loadMedicationPlans();
+            }
+        } catch (e) {
+            alert('操作失败: ' + e);
+        }
+    }
+
+    // 删除药物方案
+    async function deleteMedicationPlan(planId) {
+        if (!confirm('确定删除这个药物方案？')) return;
+
+        try {
+            const res = await fetch(`/delete_medication_plan/${planId}`, {
+                method: 'POST'
+            });
+            const result = await res.json();
+            if (result.status === 'success') {
+                loadMedicationPlans();
+                alert('删除成功');
+            }
+        } catch (e) {
+            alert('删除失败: ' + e);
+        }
+    }
+
 </script>
 </body>
 </html>

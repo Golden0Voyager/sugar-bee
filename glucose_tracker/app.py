@@ -1,105 +1,773 @@
-from flask import Flask, render_template, request, redirect, url_for, jsonify, send_file
+from flask import Flask, render_template, request, redirect, url_for, jsonify, send_file, g
 import sqlite3
 import pandas as pd
 import datetime
 import os
+import io
+import traceback
+from werkzeug.utils import secure_filename
 from parser import parse_glucose_input
+import settings
 
 app = Flask(__name__)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_NAME = os.path.join(BASE_DIR, "glucose.db")
+AVATAR_FOLDER = os.path.join(BASE_DIR, "static", "avatars")
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg'}
+
+app.config['UPLOAD_FOLDER'] = AVATAR_FOLDER
+# Ensure avatar folder exists
+os.makedirs(AVATAR_FOLDER, exist_ok=True)
+
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+def get_db():
+    db = getattr(g, '_database', None)
+    if db is None:
+        db = g._database = sqlite3.connect(DB_NAME)
+        db.row_factory = sqlite3.Row
+    return db
+
+@app.teardown_appcontext
+def close_connection(exception):
+    db = getattr(g, '_database', None)
+    if db is not None:
+        db.close()
 
 def init_db():
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    c.execute('''CREATE TABLE IF NOT EXISTS records
-                 (id INTEGER PRIMARY KEY AUTOINCREMENT, 
-                  value REAL, 
-                  unit TEXT, 
-                  type TEXT, 
-                  notes TEXT, 
-                  timestamp DATETIME,
-                  created_at DATETIME DEFAULT CURRENT_TIMESTAMP)''')
-    conn.commit()
-    conn.close()
+    try:
+        conn = sqlite3.connect(DB_NAME)
+        c = conn.cursor()
+        c.execute('''CREATE TABLE IF NOT EXISTS records
+                     (id INTEGER PRIMARY KEY AUTOINCREMENT, 
+                      value REAL, 
+                      unit TEXT, 
+                      type TEXT, 
+                      notes TEXT, 
+                      timestamp DATETIME,
+                      created_at DATETIME DEFAULT CURRENT_TIMESTAMP)''')
+        
+        # Migration: Check and add new columns if they don't exist
+        try:
+            c.execute("ALTER TABLE records ADD COLUMN calories INTEGER DEFAULT 0")
+        except sqlite3.OperationalError:
+            pass # Column already exists
+
+        try:
+            c.execute("ALTER TABLE records ADD COLUMN diet_analysis TEXT DEFAULT ''")
+        except sqlite3.OperationalError:
+            pass # Column already exists
+
+        try:
+            c.execute("ALTER TABLE records ADD COLUMN is_predicted BOOLEAN DEFAULT 0")
+        except sqlite3.OperationalError:
+            pass # Column already exists
+
+        # Migration: Add exercise columns
+        for col in ['distance REAL', 'duration TEXT', 'heart_rate INTEGER', 'pace TEXT', 'cadence INTEGER']:
+            try:
+                c.execute(f"ALTER TABLE records ADD COLUMN {col}")
+            except sqlite3.OperationalError:
+                pass
+
+        # Create medication_plans table (药物方案)
+        c.execute('''CREATE TABLE IF NOT EXISTS medication_plans
+                     (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                      medication_name TEXT NOT NULL,
+                      dosage TEXT,
+                      times_per_day INTEGER DEFAULT 1,
+                      timing_notes TEXT,
+                      start_date DATE NOT NULL,
+                      end_date DATE,
+                      is_active BOOLEAN DEFAULT 1,
+                      notes TEXT,
+                      created_at DATETIME DEFAULT CURRENT_TIMESTAMP)''')
+
+        # Create medication_logs table (服药记录/打卡)
+        c.execute('''CREATE TABLE IF NOT EXISTS medication_logs
+                     (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                      plan_id INTEGER NOT NULL,
+                      log_date DATE NOT NULL,
+                      timestamp DATETIME NOT NULL,
+                      taken BOOLEAN DEFAULT 1,
+                      notes TEXT,
+                      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                      FOREIGN KEY (plan_id) REFERENCES medication_plans(id))''')
+
+        conn.commit()
+    except Exception as e:
+        print(f"DB Init Error: {e}")
+    finally:
+        if conn:
+            conn.close()
 
 init_db()
 
 @app.route('/')
 def index():
-    conn = sqlite3.connect(DB_NAME)
-    conn.row_factory = sqlite3.Row
-    c = conn.cursor()
-    c.execute("SELECT * FROM records ORDER BY timestamp DESC")
-    records = c.fetchall()
-    conn.close()
-    return render_template('index.html', records=records)
+    try:
+        db = get_db()
+        c = db.cursor()
+
+        # 获取分页参数，默认显示最近 14 天
+        days = request.args.get('days', 14, type=int)
+        page = request.args.get('page', 1, type=int)
+        show_all = request.args.get('all', False, type=bool)
+
+        # 1. Fetch records with pagination
+        if show_all:
+            c.execute("SELECT * FROM records ORDER BY timestamp ASC")
+        else:
+            c.execute("""SELECT * FROM records
+                        WHERE timestamp > datetime('now', ?)
+                        ORDER BY timestamp ASC""", (f'-{days} days',))
+        rows = c.fetchall()
+
+        # Convert to list of dicts to allow modification
+        records = [dict(row) for row in rows]
+
+        # 2. Calculate Trends
+        last_values = {} # stores last value for each type key
+
+        for r in records:
+            # Simplify type for comparison
+            if '空腹' in r['type']:
+                key = 'fasting'
+            elif '餐后' in r['type']:
+                key = 'post'
+            else:
+                key = 'other'
+
+            r['trend'] = 0
+            r['trend_dir'] = 'flat'
+
+            if key in last_values and r['value'] > 0: # Only compare glucose values
+                diff = r['value'] - last_values[key]
+                r['trend'] = round(abs(diff), 1)
+                if diff > 0: r['trend_dir'] = 'up'
+                elif diff < 0: r['trend_dir'] = 'down'
+
+            if r['value'] > 0:
+                last_values[key] = r['value']
+
+        # 3. Group by Date for Timeline View
+        from collections import defaultdict
+
+        # 计算基础代谢 (使用 settings 中的配置)
+        USER_BMR = settings.calculate_bmr()
+
+        grouped_records = defaultdict(lambda: {
+            'entries': [],
+            'medication_plans': [],  # 当天应服用的药物方案
+            'stats': {
+                'cal_in': 0,
+                'cal_out_exercise': 0,  # 运动消耗
+                'cal_out_bmr': USER_BMR,  # 基础代谢
+                'avg_glucose': 0,
+                'glucose_count': 0
+            }
+        })
+
+        # Sort by timestamp DESC initially
+        records.sort(key=lambda x: x['timestamp'], reverse=True)
+
+        for r in records:
+            date_str = r['timestamp'].split(' ')[0] # YYYY-MM-DD
+            day_group = grouped_records[date_str]
+            day_group['entries'].append(r)
+
+            # Stats calculation
+            if r.get('calories') and r['calories'] > 0:
+                # 判断是摄入还是消耗：运动类型是消耗，其他是摄入
+                if r['type'] in ['跑步', '运动'] or r.get('distance'):
+                    day_group['stats']['cal_out_exercise'] += r['calories']
+                else:
+                    day_group['stats']['cal_in'] += r['calories']
+
+            if r['value'] > 0:
+                day_group['stats']['avg_glucose'] += r['value']
+                day_group['stats']['glucose_count'] += 1
+
+        # 4. Fetch active medication plans
+        c.execute("""SELECT * FROM medication_plans
+                    WHERE is_active = 1
+                    ORDER BY medication_name ASC""")
+        med_plan_rows = c.fetchall()
+        medication_plans = [dict(row) for row in med_plan_rows]
+
+        # 为每个日期添加当天应服用的药物方案
+        for date_str in grouped_records.keys():
+            for plan in medication_plans:
+                # 检查日期是否在方案有效期内
+                plan_start = plan['start_date']
+                plan_end = plan['end_date'] if plan['end_date'] else '9999-12-31'
+
+                if plan_start <= date_str <= plan_end:
+                    grouped_records[date_str]['medication_plans'].append(plan)
+
+        # Post-process stats: BMR correction for today & Net Calories
+        now = datetime.datetime.now()
+        today_str = now.strftime('%Y-%m-%d')
+
+        sorted_dates = []
+        for date_str, data in grouped_records.items():
+            stats = data['stats']
+            
+            # 1. BMR Correction for Today
+            # 如果是今天，BMR 应该按当前时间比例计算
+            if date_str == today_str:
+                current_minutes = now.hour * 60 + now.minute
+                total_minutes = 24 * 60
+                stats['cal_out_bmr'] = int(USER_BMR * (current_minutes / total_minutes))
+            
+            # 2. Glucose Average
+            if stats['glucose_count'] > 0:
+                stats['avg_glucose'] = round(stats['avg_glucose'] / stats['glucose_count'], 1)
+
+            # 3. Net Calories Calculation
+            # 摄入 - (基础代谢 + 运动消耗)
+            total_out = stats['cal_out_bmr'] + stats['cal_out_exercise']
+            net = stats['cal_in'] - total_out
+            stats['net_calories'] = int(net)
+            # is_deficit: True if Intake < Output (Green), False if Intake > Output (Red)
+            stats['is_deficit'] = net < 0
+
+            # Sort entries within the day ASCENDING (Morning -> Night) for a natural timeline flow
+            data['entries'].sort(key=lambda x: x['timestamp'])
+
+            sorted_dates.append({'date': date_str, 'data': data})
+
+        # 4. Calculate 7-Day Stats for Dashboard
+        c.execute("""
+            SELECT AVG(value) FROM records
+            WHERE type LIKE '%空腹%'
+            AND timestamp > datetime('now', '-7 days')
+        """)
+        avg_fasting = c.fetchone()[0]
+
+        c.execute("""
+            SELECT AVG(value) FROM records
+            WHERE type LIKE '%餐后%'
+            AND timestamp > datetime('now', '-7 days')
+        """)
+        avg_post = c.fetchone()[0]
+
+        # Calculate Compliance Rate (7 days)
+        # Using strict criteria from settings
+        targets = settings.USER_PROFILE['target']
+        
+        c.execute("SELECT * FROM records WHERE timestamp > datetime('now', '-7 days')")
+        recent_rows = c.fetchall()
+        total_recent = len(recent_rows)
+        ok_count = 0
+        for row in recent_rows:
+            val = row['value']
+            t = row['type']
+            is_ok = False
+            if '空腹' in t:
+                if targets['fasting_min'] <= val <= targets['fasting_max']: is_ok = True
+            elif '餐后' in t:
+                if targets['fasting_min'] <= val <= targets['postmeal_max']: is_ok = True
+            elif '餐前' in t or '运动' in t:
+                if targets['fasting_min'] <= val <= targets['premeal_max']: is_ok = True
+            else:
+                # Default fallback
+                if targets['fasting_min'] <= val <= targets['postmeal_max']: is_ok = True
+
+            if is_ok: ok_count += 1
+
+        compliance = int((ok_count / total_recent * 100)) if total_recent > 0 else 0
+
+        # 获取总记录数用于分页显示
+        c.execute("SELECT COUNT(*) FROM records")
+        total_records = c.fetchone()[0]
+
+        # 计算全局血糖统计（用于数据看板）
+        c.execute("SELECT AVG(value), MIN(value), MAX(value), COUNT(*) FROM records WHERE value > 0")
+        glucose_stats = c.fetchone()
+
+        stats = {
+            'avg_fasting': round(avg_fasting, 1) if avg_fasting else '-',
+            'avg_post': round(avg_post, 1) if avg_post else '-',
+            'compliance': compliance,
+            'total_records': total_records,
+            'current_days': days,
+            'show_all': show_all,
+            'today_str': today_str,
+            'user': settings.load_config(),
+            # 全局血糖统计
+            'avg_glucose': round(glucose_stats[0], 1) if glucose_stats[0] else 0,
+            'min_glucose': round(glucose_stats[1], 1) if glucose_stats[1] else 0,
+            'max_glucose': round(glucose_stats[2], 1) if glucose_stats[2] else 0,
+            'total_count': glucose_stats[3] if glucose_stats[3] else 0
+        }
+
+        return render_template('index.html', records=records, stats=stats, timeline=sorted_dates)
+    except Exception as e:
+        traceback.print_exc()
+        return f"Error loading records: {e}", 500
+
+@app.route('/settings', methods=['GET'])
+def get_settings():
+    return jsonify(settings.load_config())
+
+@app.route('/settings', methods=['POST'])
+def update_settings():
+    try:
+        new_config = request.json
+        # 简单验证逻辑
+        if not new_config.get('weight') or not new_config.get('height'):
+            return jsonify({"status": "error", "message": "Invalid data"}), 400
+        
+        settings.save_config(new_config)
+        return jsonify({"status": "success"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/upload_avatar', methods=['POST'])
+def upload_avatar():
+    if 'avatar' not in request.files:
+        return jsonify({"status": "error", "message": "No file part"}), 400
+    file = request.files['avatar']
+    if file.filename == '':
+        return jsonify({"status": "error", "message": "No selected file"}), 400
+    if file and allowed_file(file.filename):
+        filename = f"avatar_{int(datetime.datetime.now().timestamp())}.png"
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        file.save(filepath)
+        
+        # Update user config
+        config = settings.load_config()
+        config['avatar'] = filename
+        settings.save_config(config)
+        
+        return jsonify({"status": "success", "avatar_url": url_for('static', filename=f'avatars/{filename}')})
+    return jsonify({"status": "error", "message": "Invalid file type"}), 400
 
 @app.route('/add', methods=['POST'])
 def add_record():
-    value = request.form.get('value')
-    unit = request.form.get('unit')
-    r_type = request.form.get('type')
-    notes = request.form.get('notes')
-    timestamp = request.form.get('timestamp')
-    
-    # Handle empty timestamp (default to now)
-    if not timestamp:
-        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    # If HTML5 datetime-local input is used, it comes as 'YYYY-MM-DDTHH:MM', needs simple cleanup if we want consistent format, but let's store as is or standardized.
-    # Let's standardize to YYYY-MM-DD HH:MM:SS for SQLite sortability
-    if 'T' in timestamp:
-        timestamp = timestamp.replace('T', ' ')
-        if len(timestamp) == 16: # Missing seconds
-            timestamp += ':00'
+    try:
+        value = request.form.get('value')
+        unit = request.form.get('unit')
+        r_type = request.form.get('type')
+        notes = request.form.get('notes')
+        timestamp = request.form.get('timestamp')
+        
+        # Validation
+        if not value:
+            return "Value is required", 400
+        
+        # Optional fields
+        calories = request.form.get('calories', 0)
+        diet_analysis = request.form.get('diet_analysis', '')
+        is_predicted = request.form.get('is_predicted', 0)
+        
+        # Handle empty timestamp (default to now)
+        if not timestamp:
+            timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        if 'T' in timestamp:
+            timestamp = timestamp.replace('T', ' ')
+            if len(timestamp) == 16: # Missing seconds
+                timestamp += ':00'
 
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    c.execute("INSERT INTO records (value, unit, type, notes, timestamp) VALUES (?, ?, ?, ?, ?)",
-              (value, unit, r_type, notes, timestamp))
-    conn.commit()
-    conn.close()
-    return redirect(url_for('index'))
+        db = get_db()
+        c = db.cursor()
+        c.execute("INSERT INTO records (value, unit, type, notes, timestamp, calories, diet_analysis, is_predicted) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                  (value, unit, r_type, notes, timestamp, calories, diet_analysis, is_predicted))
+        db.commit()
+        return redirect(url_for('index'))
+    except Exception as e:
+        return f"Error adding record: {e}", 500
+
+def get_user_stats(db):
+    stats = {}
+    try:
+        c = db.cursor()
+        # 1. Avg Fasting (Last 30 days)
+        c.execute("""
+            SELECT AVG(value) FROM records 
+            WHERE type LIKE '%空腹%' 
+            AND is_predicted = 0
+            AND timestamp > datetime('now', '-30 days')
+        """)
+        row = c.fetchone()
+        stats['avg_fasting'] = round(row[0], 1) if row and row[0] else '未知'
+
+        # 2. Avg Post-meal (Last 30 days)
+        c.execute("""
+            SELECT AVG(value) FROM records 
+            WHERE type LIKE '%餐后%' 
+            AND is_predicted = 0
+            AND timestamp > datetime('now', '-30 days')
+        """)
+        row = c.fetchone()
+        stats['avg_postmeal'] = round(row[0], 1) if row and row[0] else '未知'
+
+        # 3. Last record
+        c.execute("SELECT value, type FROM records WHERE is_predicted = 0 ORDER BY timestamp DESC LIMIT 1")
+        row = c.fetchone()
+        if row:
+            stats['last_value'] = row[0]
+            stats['last_type'] = row[1]
+        else:
+            stats['last_value'] = '未知'
+            stats['last_type'] = ''
+            
+    except Exception as e:
+        print(f"Stats error: {e}")
+        
+    return stats
 
 @app.route('/parse_ai', methods=['POST'])
 def parse_ai():
-    text = request.json.get('text')
-    if not text:
-        return jsonify([])
-    
-    results = parse_glucose_input(text)
-    return jsonify(results)
+    try:
+        data = request.json
+        text = data.get('text', '')
+        image_b64 = data.get('image') # Base64 string
+        mime_type = data.get('mime_type', 'image/jpeg')
+        
+        image_data = None
+        if image_b64:
+            import base64
+            image_data = base64.b64decode(image_b64.split(',')[-1])
+        
+        # Get history context for better prediction
+        db = get_db()
+        history_context = get_user_stats(db)
+        
+        results = parse_glucose_input(text, history_context, image_data, mime_type)
+        return jsonify(results)
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/batch_add', methods=['POST'])
 def batch_add():
-    data = request.json.get('records')
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    for r in data:
-        c.execute("INSERT INTO records (value, unit, type, notes, timestamp) VALUES (?, ?, ?, ?, ?)",
-                  (r['value'], r['unit'], r['type'], r['notes'], r['datetime']))
-    conn.commit()
-    conn.close()
-    return jsonify({"status": "success"})
+    try:
+        data = request.json.get('records')
+        if not data:
+            return jsonify({"status": "error", "message": "No data provided"}), 400
 
-@app.route('/delete/<int:id>')
+        db = get_db()
+        c = db.cursor()
+        for r in data:
+            if 'value' not in r or 'type' not in r:
+                continue
+            
+            cal = r.get('calories', 0)
+            da = r.get('diet_analysis', '')
+            is_pred = 1 if r.get('is_predicted', False) else 0
+            
+            c.execute("""INSERT INTO records 
+                      (value, unit, type, notes, timestamp, calories, diet_analysis, is_predicted, 
+                       distance, duration, heart_rate, pace, cadence) 
+                      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                      (r['value'], r.get('unit', 'mmol/L'), r['type'], r.get('notes', ''), 
+                       r.get('datetime'), cal, da, is_pred,
+                       r.get('distance'), r.get('duration'), r.get('heart_rate'), 
+                       r.get('pace'), r.get('cadence')))
+        db.commit()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/delete/<int:id>', methods=['POST'])
 def delete(id):
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    c.execute("DELETE FROM records WHERE id = ?", (id,))
-    conn.commit()
-    conn.close()
-    return redirect(url_for('index'))
+    try:
+        db = get_db()
+        c = db.cursor()
+        c.execute("DELETE FROM records WHERE id = ?", (id,))
+        db.commit()
+        # 支持 AJAX 和表单提交两种方式
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return jsonify({"status": "success"})
+        return redirect(url_for('index'))
+    except Exception as e:
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return jsonify({"status": "error", "message": str(e)}), 500
+        return f"Error deleting record: {e}", 500
+
+@app.route('/record/<int:id>')
+def get_record(id):
+    """获取单条记录用于编辑"""
+    try:
+        db = get_db()
+        c = db.cursor()
+        c.execute("SELECT * FROM records WHERE id = ?", (id,))
+        row = c.fetchone()
+        if row:
+            return jsonify(dict(row))
+        return jsonify({"error": "Record not found"}), 404
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/update/<int:id>', methods=['POST'])
+def update_record(id):
+    """更新记录"""
+    try:
+        data = request.json
+        db = get_db()
+        c = db.cursor()
+
+        # 构建更新语句
+        c.execute("""UPDATE records SET
+                     value = ?, unit = ?, type = ?, notes = ?, timestamp = ?,
+                     calories = ?, diet_analysis = ?, is_predicted = ?,
+                     distance = ?, duration = ?, heart_rate = ?, pace = ?, cadence = ?
+                     WHERE id = ?""",
+                  (data.get('value', 0), data.get('unit', 'mmol/L'), data.get('type', ''),
+                   data.get('notes', ''), data.get('timestamp', ''),
+                   data.get('calories', 0), data.get('diet_analysis', ''),
+                   1 if data.get('is_predicted') else 0,
+                   data.get('distance'), data.get('duration'), data.get('heart_rate'),
+                   data.get('pace'), data.get('cadence'), id))
+        db.commit()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/export')
 def export():
-    conn = sqlite3.connect(DB_NAME)
-    df = pd.read_sql_query("SELECT * FROM records ORDER BY timestamp DESC", conn)
-    conn.close()
-    
-    export_path = "glucose_records.csv"
-    df.to_csv(export_path, index=False, encoding='utf-8-sig')
-    return send_file(export_path, as_attachment=True)
+    try:
+        db = get_db()
+        # Use pandas to read sql, but use the connection object
+        # Warning: pandas read_sql_query might not work well with the 'g' object if it closes too early,
+        # but here we are in the request context.
+        df = pd.read_sql_query("SELECT * FROM records ORDER BY timestamp DESC", db)
+
+        # Use in-memory buffer
+        buffer = io.BytesIO()
+        df.to_csv(buffer, index=False, encoding='utf-8-sig')
+        buffer.seek(0)
+
+        return send_file(
+            buffer,
+            as_attachment=True,
+            download_name=f"glucose_records_{datetime.datetime.now().strftime('%Y%m%d')}.csv",
+            mimetype='text/csv'
+        )
+    except Exception as e:
+        return f"Error exporting data: {e}", 500
+
+@app.route('/import', methods=['POST'])
+def import_csv():
+    """从 CSV 文件导入数据"""
+    try:
+        if 'file' not in request.files:
+            return jsonify({"status": "error", "message": "没有上传文件"}), 400
+
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({"status": "error", "message": "没有选择文件"}), 400
+
+        if not file.filename.endswith('.csv'):
+            return jsonify({"status": "error", "message": "请上传 CSV 文件"}), 400
+
+        # 读取 CSV
+        df = pd.read_csv(file, encoding='utf-8-sig')
+
+        # 列名映射（支持不同的列名格式）
+        column_mapping = {
+            'value': ['value', '血糖值', '数值'],
+            'unit': ['unit', '单位'],
+            'type': ['type', '类型', '测量类型'],
+            'notes': ['notes', '备注', '说明'],
+            'timestamp': ['timestamp', '时间', '测量时间', 'datetime'],
+            'calories': ['calories', '热量', '卡路里'],
+            'diet_analysis': ['diet_analysis', '饮食分析'],
+            'is_predicted': ['is_predicted', '预测值'],
+            'distance': ['distance', '距离'],
+            'duration': ['duration', '时长'],
+            'heart_rate': ['heart_rate', '心率'],
+            'pace': ['pace', '配速'],
+            'cadence': ['cadence', '步频']
+        }
+
+        # 标准化列名
+        for standard_name, aliases in column_mapping.items():
+            for alias in aliases:
+                if alias in df.columns and standard_name not in df.columns:
+                    df.rename(columns={alias: standard_name}, inplace=True)
+                    break
+
+        # 必须有 timestamp 列
+        if 'timestamp' not in df.columns:
+            return jsonify({"status": "error", "message": "CSV 缺少时间列 (timestamp)"}), 400
+
+        db = get_db()
+        c = db.cursor()
+        imported_count = 0
+        skipped_count = 0
+
+        for _, row in df.iterrows():
+            try:
+                # 跳过 id 列（如果存在），让数据库自动生成
+                value = row.get('value', 0)
+                if pd.isna(value):
+                    value = 0
+
+                timestamp = row.get('timestamp', '')
+                if pd.isna(timestamp) or timestamp == '':
+                    skipped_count += 1
+                    continue
+
+                # 检查是否已存在相同记录（基于时间戳和数值）
+                c.execute("SELECT id FROM records WHERE timestamp = ? AND value = ?",
+                         (str(timestamp), float(value)))
+                if c.fetchone():
+                    skipped_count += 1
+                    continue
+
+                c.execute("""INSERT INTO records
+                          (value, unit, type, notes, timestamp, calories, diet_analysis, is_predicted,
+                           distance, duration, heart_rate, pace, cadence)
+                          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                          (float(value) if not pd.isna(value) else 0,
+                           row.get('unit', 'mmol/L') if not pd.isna(row.get('unit')) else 'mmol/L',
+                           row.get('type', '') if not pd.isna(row.get('type')) else '',
+                           row.get('notes', '') if not pd.isna(row.get('notes')) else '',
+                           str(timestamp),
+                           int(row.get('calories', 0)) if not pd.isna(row.get('calories')) else 0,
+                           row.get('diet_analysis', '') if not pd.isna(row.get('diet_analysis')) else '',
+                           1 if row.get('is_predicted') else 0,
+                           float(row.get('distance')) if not pd.isna(row.get('distance')) else None,
+                           row.get('duration', '') if not pd.isna(row.get('duration')) else None,
+                           int(row.get('heart_rate')) if not pd.isna(row.get('heart_rate')) else None,
+                           row.get('pace', '') if not pd.isna(row.get('pace')) else None,
+                           int(row.get('cadence')) if not pd.isna(row.get('cadence')) else None))
+                imported_count += 1
+            except Exception as row_error:
+                print(f"Import row error: {row_error}")
+                skipped_count += 1
+                continue
+
+        db.commit()
+        return jsonify({
+            "status": "success",
+            "message": f"成功导入 {imported_count} 条记录，跳过 {skipped_count} 条"
+        })
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+# ========== Medication Plan Management APIs ==========
+
+@app.route('/add_medication_plan', methods=['POST'])
+def add_medication_plan():
+    """添加药物方案"""
+    try:
+        data = request.json
+        db = get_db()
+        c = db.cursor()
+
+        c.execute("""INSERT INTO medication_plans
+                    (medication_name, dosage, times_per_day, timing_notes, start_date, end_date, is_active, notes)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                 (data.get('medication_name'),
+                  data.get('dosage'),
+                  data.get('times_per_day', 1),
+                  data.get('timing_notes'),
+                  data.get('start_date'),
+                  data.get('end_date'),
+                  data.get('is_active', 1),
+                  data.get('notes', '')))
+
+        db.commit()
+        return jsonify({"status": "success", "id": c.lastrowid})
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/medication_plans', methods=['GET'])
+def get_medication_plans():
+    """获取所有药物方案"""
+    try:
+        db = get_db()
+        c = db.cursor()
+        c.execute("SELECT * FROM medication_plans ORDER BY is_active DESC, medication_name ASC")
+        rows = c.fetchall()
+        plans = [dict(row) for row in rows]
+        return jsonify(plans)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/medication_plan/<int:plan_id>', methods=['GET'])
+def get_medication_plan(plan_id):
+    """获取单个药物方案"""
+    try:
+        db = get_db()
+        c = db.cursor()
+        c.execute("SELECT * FROM medication_plans WHERE id = ?", (plan_id,))
+        row = c.fetchone()
+
+        if row:
+            return jsonify(dict(row))
+        else:
+            return jsonify({"error": "Plan not found"}), 404
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/update_medication_plan/<int:plan_id>', methods=['POST'])
+def update_medication_plan(plan_id):
+    """更新药物方案"""
+    try:
+        data = request.json
+        db = get_db()
+        c = db.cursor()
+
+        c.execute("""UPDATE medication_plans SET
+                    medication_name = ?,
+                    dosage = ?,
+                    times_per_day = ?,
+                    timing_notes = ?,
+                    start_date = ?,
+                    end_date = ?,
+                    is_active = ?,
+                    notes = ?
+                    WHERE id = ?""",
+                 (data.get('medication_name'),
+                  data.get('dosage'),
+                  data.get('times_per_day', 1),
+                  data.get('timing_notes'),
+                  data.get('start_date'),
+                  data.get('end_date'),
+                  data.get('is_active', 1),
+                  data.get('notes', ''),
+                  plan_id))
+
+        db.commit()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/delete_medication_plan/<int:plan_id>', methods=['POST'])
+def delete_medication_plan(plan_id):
+    """删除药物方案"""
+    try:
+        db = get_db()
+        c = db.cursor()
+        c.execute("DELETE FROM medication_plans WHERE id = ?", (plan_id,))
+        db.commit()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/toggle_medication_plan/<int:plan_id>', methods=['POST'])
+def toggle_medication_plan(plan_id):
+    """启用/停用药物方案"""
+    try:
+        db = get_db()
+        c = db.cursor()
+        c.execute("UPDATE medication_plans SET is_active = NOT is_active WHERE id = ?", (plan_id,))
+        db.commit()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 if __name__ == '__main__':
     app.run(debug=True, port=5001)
