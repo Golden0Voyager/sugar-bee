@@ -1022,7 +1022,45 @@
                     </div>
                 </div>
             </div>
+
+            <!-- AI预测控制面板 -->
+            <div id="aiPredictionControls" class="mb-3 p-3 bg-light rounded d-none">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <div class="d-flex align-items-center gap-2">
+                        <i class="bi bi-robot text-primary"></i>
+                        <strong class="text-primary">AI 预测对比</strong>
+                    </div>
+                    <small class="text-muted">点击下方按钮查看对应的预测曲线</small>
+                </div>
+                <div id="predictionToggles" class="d-flex flex-wrap gap-2"></div>
+            </div>
+
             <canvas id="glucoseChart" height="80"></canvas>
+        </div>
+    </div>
+
+    <!-- Blood Pressure Chart Section - Material Design -->
+    <div class="card mb-4" id="bloodPressureChartCard">
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-start mb-3">
+                <h3 class="mb-0"><i class="bi bi-heart-pulse-fill me-2" style="color: #9C27B0;"></i>血压趋势</h3>
+                <!-- 血压状态图例 -->
+                <div class="d-flex gap-3 align-items-center small">
+                    <div class="d-flex align-items-center gap-1">
+                        <span style="display: inline-block; width: 16px; height: 3px; background: #9C27B0;"></span>
+                        <span class="text-muted">收缩压（高压）</span>
+                    </div>
+                    <div class="d-flex align-items-center gap-1">
+                        <span style="display: inline-block; width: 16px; height: 3px; background: #1976D2;"></span>
+                        <span class="text-muted">舒张压（低压）</span>
+                    </div>
+                    <div class="d-flex align-items-center gap-1">
+                        <span style="display: inline-block; width: 16px; height: 2px; background: #FF6F00; border-top: 2px dashed #FF6F00;"></span>
+                        <span class="text-muted">脉搏</span>
+                    </div>
+                </div>
+            </div>
+            <canvas id="bloodPressureChart" height="60"></canvas>
         </div>
     </div>
 
@@ -1530,6 +1568,8 @@
     // Injected from server
     const timelineData = {{ timeline | tojson }};
     let dayModal = null;
+    let glucoseChart = null;  // 全局图表实例
+    let predictionDatasetMap = {};  // 记录每个类型对应的预测数据集索引
 
     document.addEventListener('DOMContentLoaded', function() {
         // Initialize dayModal after DOM is ready
@@ -1548,6 +1588,9 @@
 
         // Initialize Chart.js for glucose trend
         initGlucoseChart();
+
+        // Initialize Blood Pressure Chart
+        initBloodPressureChart();
 
         // Initialize Bootstrap Tooltips
         var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
@@ -1579,7 +1622,9 @@
             events: generateCalendarEvents(),
             dateClick: function(info) {
                 console.log('Date clicked:', info.dateStr);
-                renderDayDetails(info.dateStr);
+                // Ensure consistent date format (YYYY-MM-DD only, no time component)
+                const dateStr = info.dateStr.split('T')[0];
+                renderDayDetails(dateStr);
             },
             eventClick: function(info) {
                 // If clicked on an event (badge), open the modal for that day
@@ -1611,18 +1656,30 @@
 
     // Initialize glucose trend chart
     function initGlucoseChart() {
-        // Extract all glucose records from timeline data (exclude AI predictions)
+        // Extract all glucose records from timeline data
         const allRecords = [];
+        const predictedRecords = [];
+
         timelineData.forEach(day => {
             day.data.entries.forEach(entry => {
-                // 只显示真实记录的血糖值，不显示AI预测值
-                if (entry.value > 0 && !entry.is_predicted) {
-                    allRecords.push({
-                        timestamp: entry.timestamp,
-                        value: entry.value,
-                        type: entry.type,
-                        unit: entry.unit
-                    });
+                if (entry.value > 0) {
+                    if (entry.is_predicted) {
+                        // AI预测值，单独收集
+                        predictedRecords.push({
+                            timestamp: entry.timestamp,
+                            value: entry.value,
+                            type: entry.type,
+                            unit: entry.unit
+                        });
+                    } else {
+                        // 真实记录的血糖值
+                        allRecords.push({
+                            timestamp: entry.timestamp,
+                            value: entry.value,
+                            type: entry.type,
+                            unit: entry.unit
+                        });
+                    }
                 }
             });
         });
@@ -1631,22 +1688,23 @@
 
         // Sort by timestamp
         allRecords.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+        predictedRecords.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
 
         const ctx = document.getElementById('glucoseChart').getContext('2d');
 
         // Categorize data by type with professional labels (避开绿/黄/红，防止与血糖状态混淆)
         const datasets = {
-            '空腹': { label: 'FPG (空腹)', data: [], borderColor: '#0d6efd', backgroundColor: '#0d6efd' },  // 蓝色
-            '餐前': { label: '餐前', data: [], borderColor: '#22b8cf', backgroundColor: '#22b8cf' },  // 青色
-            '运动后餐前': { label: '运动后餐前', data: [], borderColor: '#1971c2', backgroundColor: '#1971c2' },  // 深蓝
-            '餐后1小时': { label: 'PPG-1h', data: [], borderColor: '#ff922b', backgroundColor: '#ff922b' },  // 橙色
-            '餐后2小时': { label: 'PPG-2h', data: [], borderColor: '#f76707', backgroundColor: '#f76707' },  // 深橙
-            '睡前': { label: '睡前', data: [], borderColor: '#9775fa', backgroundColor: '#9775fa' },  // 淡紫
-            '运动后': { label: '运动后', data: [], borderColor: '#1e40af', backgroundColor: '#1e40af' },  // 深蓝
-            '其他': { label: '其他', data: [], borderColor: '#6c757d', backgroundColor: '#6c757d' }  // 灰色
+            '空腹': { label: 'FPG (空腹)', data: [], predictedData: [], borderColor: '#0d6efd', backgroundColor: '#0d6efd' },  // 蓝色
+            '餐前': { label: '餐前', data: [], predictedData: [], borderColor: '#22b8cf', backgroundColor: '#22b8cf' },  // 青色
+            '运动后餐前': { label: '运动后餐前', data: [], predictedData: [], borderColor: '#1971c2', backgroundColor: '#1971c2' },  // 深蓝
+            '餐后1小时': { label: 'PPG-1h', data: [], predictedData: [], borderColor: '#ff922b', backgroundColor: '#ff922b' },  // 橙色
+            '餐后2小时': { label: 'PPG-2h', data: [], predictedData: [], borderColor: '#f76707', backgroundColor: '#f76707' },  // 深橙
+            '睡前': { label: '睡前', data: [], predictedData: [], borderColor: '#9775fa', backgroundColor: '#9775fa' },  // 淡紫
+            '运动后': { label: '运动后', data: [], predictedData: [], borderColor: '#1e40af', backgroundColor: '#1e40af' },  // 深蓝
+            '其他': { label: '其他', data: [], predictedData: [], borderColor: '#6c757d', backgroundColor: '#6c757d' }  // 灰色
         };
 
-        // Populate datasets
+        // Populate datasets - 真实记录
         allRecords.forEach(record => {
             const key = datasets[record.type] ? record.type : '其他';
             const pointColor = getPointColor(key, record.value);
@@ -1657,40 +1715,107 @@
             });
         });
 
+        // 调试：输出预测记录的原始类型
+        console.log('=== AI预测记录原始数据 ===');
+        console.log('预测记录总数:', predictedRecords.length);
+        const typeCount = {};
+        predictedRecords.forEach(record => {
+            const type = record.type;
+            typeCount[type] = (typeCount[type] || 0) + 1;
+        });
+        console.log('按类型统计:', typeCount);
+        console.log('===========================');
+
+        // Populate datasets - AI预测记录
+        predictedRecords.forEach(record => {
+            const key = datasets[record.type] ? record.type : '其他';
+            datasets[key].predictedData.push({
+                x: record.timestamp,
+                y: record.value
+            });
+        });
+
         // Build Chart.js datasets array with enhanced visibility
         const chartDatasets = [];
-        for (const [key, ds] of Object.entries(datasets)) {
-            if (ds.data.length === 0) continue;
+        const datasetIndexMap = {};  // 记录每个类型的真实数据和预测数据的索引
 
-            chartDatasets.push({
-                label: ds.label,
-                data: ds.data,
-                borderColor: ds.borderColor,
-                backgroundColor: ds.backgroundColor,
-                borderWidth: 3,
-                tension: 0,  // 无平滑，使用直线连接，让波动更清晰
-                // 只显示超标的点（红色），正常和警戒状态的点隐藏
-                pointRadius: ds.data.map(point => {
-                    const color = getPointBorderColor(key, point.y);
-                    return color === '#dc3545' ? 8 : 0;  // 只有红色（超标）显示，其他隐藏
-                }),
-                pointHoverRadius: ds.data.map(point => {
-                    const color = getPointBorderColor(key, point.y);
-                    return color === '#dc3545' ? 12 : 6;  // 悬停时：超标放大，其他显示小点
-                }),
-                // 圆点颜色直接表示血糖状态（只有超标时显示红色）
-                pointBackgroundColor: ds.data.map(point => getPointBorderColor(key, point.y)),
-                pointBorderColor: '#fff',
-                pointBorderWidth: 2,
-                pointHoverBorderWidth: 3,
-                fill: false
-            });
+        for (const [key, ds] of Object.entries(datasets)) {
+            datasetIndexMap[key] = { real: -1, predicted: -1 };
+
+            // 添加真实记录曲线（实线）
+            if (ds.data.length > 0) {
+                datasetIndexMap[key].real = chartDatasets.length;
+                chartDatasets.push({
+                    label: ds.label,
+                    data: ds.data,
+                    borderColor: ds.borderColor,
+                    backgroundColor: ds.backgroundColor,
+                    borderWidth: 3,
+                    tension: 0,  // 无平滑，使用直线连接，让波动更清晰
+                    // 只显示超标的点（红色），正常和警戒状态的点隐藏
+                    pointRadius: ds.data.map(point => {
+                        const color = getPointBorderColor(key, point.y);
+                        return color === '#dc3545' ? 8 : 0;  // 只有红色（超标）显示，其他隐藏
+                    }),
+                    pointHoverRadius: ds.data.map(point => {
+                        const color = getPointBorderColor(key, point.y);
+                        return color === '#dc3545' ? 12 : 6;  // 悬停时：超标放大，其他显示小点
+                    }),
+                    // 圆点颜色直接表示血糖状态（只有超标时显示红色）
+                    pointBackgroundColor: ds.data.map(point => getPointBorderColor(key, point.y)),
+                    pointBorderColor: '#fff',
+                    pointBorderWidth: 2,
+                    pointHoverBorderWidth: 3,
+                    fill: false
+                });
+            }
+
+            // 添加AI预测曲线（虚线，使用相同颜色，默认隐藏）
+            if (ds.predictedData.length > 0) {
+                datasetIndexMap[key].predicted = chartDatasets.length;
+                chartDatasets.push({
+                    label: ds.label + ' (AI预测)',
+                    data: ds.predictedData,
+                    borderColor: ds.borderColor,
+                    backgroundColor: ds.backgroundColor,
+                    borderWidth: 2,
+                    borderDash: [6, 3],  // 虚线样式
+                    tension: 0.2,  // 稍微平滑
+                    pointRadius: 3,  // 小圆点
+                    pointHoverRadius: 7,
+                    pointBackgroundColor: '#fff',  // 空心圆点
+                    pointBorderColor: ds.borderColor,
+                    pointBorderWidth: 2,
+                    pointHoverBorderWidth: 3,
+                    fill: false,
+                    hidden: true  // 默认隐藏
+                });
+            }
         }
 
-        // 计算实际数据的最小值和最大值
+        // 保存映射关系到全局变量
+        predictionDatasetMap = datasetIndexMap;
+
+        // 调试：输出数据分类情况
+        console.log('=== 血糖数据分类调试信息 ===');
+        for (const [key, ds] of Object.entries(datasets)) {
+            if (ds.data.length > 0 || ds.predictedData.length > 0) {
+                console.log(`类型: ${key} (${ds.label})`);
+                console.log(`  - 真实数据: ${ds.data.length} 条`);
+                console.log(`  - 预测数据: ${ds.predictedData.length} 条`);
+                console.log(`  - 数据集索引:`, datasetIndexMap[key]);
+            }
+        }
+        console.log('===========================');
+
+        // 计算实际数据的最小值和最大值（包含预测值）
         let minValue = Infinity;
         let maxValue = -Infinity;
         allRecords.forEach(r => {
+            if (r.value < minValue) minValue = r.value;
+            if (r.value > maxValue) maxValue = r.value;
+        });
+        predictedRecords.forEach(r => {
             if (r.value < minValue) minValue = r.value;
             if (r.value > maxValue) maxValue = r.value;
         });
@@ -1700,7 +1825,7 @@
         const yMin = Math.max(3.5, Math.floor((minValue - padding) * 10) / 10);
         const yMax = Math.min(10, Math.ceil((maxValue + padding) * 10) / 10);
 
-        new Chart(ctx, {
+        glucoseChart = new Chart(ctx, {
             type: 'line',
             data: { datasets: chartDatasets },
             options: {
@@ -1718,7 +1843,11 @@
                         labels: {
                             usePointStyle: true,
                             padding: 15,
-                            font: { size: 12, weight: 'bold' }
+                            font: { size: 12, weight: 'bold' },
+                            // 过滤掉AI预测的图例项
+                            filter: function(item, chart) {
+                                return !item.text.includes('AI预测');
+                            }
                         }
                     },
                     tooltip: {
@@ -1729,6 +1858,13 @@
                         callbacks: {
                             label: function(context) {
                                 const value = context.parsed.y.toFixed(1);
+
+                                // 如果是 AI 预测曲线，标注为预测值
+                                if (context.dataset.label.includes('AI预测')) {
+                                    return context.dataset.label + ': ' + value + ' mmol/L';
+                                }
+
+                                // 真实记录才显示状态
                                 let status = '';
                                 if (context.parsed.y < 3.9) status = ' ⚠️ 偏低';
                                 else if (context.parsed.y > 7.8) status = ' ⚠️ 偏高';
@@ -1847,6 +1983,393 @@
                 }
             }
         });
+
+        // 生成AI预测控制按钮
+        generatePredictionToggles(datasetIndexMap, datasets);
+    }
+
+    // Initialize blood pressure trend chart
+    function initBloodPressureChart() {
+        // Extract all blood pressure records from timeline data
+        const bpRecords = [];
+
+        timelineData.forEach(day => {
+            day.data.entries.forEach(entry => {
+                if (entry.systolic_pressure && entry.diastolic_pressure) {
+                    bpRecords.push({
+                        timestamp: entry.timestamp,
+                        systolic: entry.systolic_pressure,
+                        diastolic: entry.diastolic_pressure,
+                        pulse: entry.pulse_rate || null,
+                        type: entry.type
+                    });
+                }
+            });
+        });
+
+        if (bpRecords.length === 0) {
+            // 如果没有血压数据，隐藏图表
+            document.getElementById('bloodPressureChartCard').style.display = 'none';
+            return;
+        }
+
+        // Sort by timestamp
+        bpRecords.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+
+        const ctx = document.getElementById('bloodPressureChart').getContext('2d');
+
+        // Prepare datasets
+        const systolicData = [];
+        const diastolicData = [];
+        const pulseData = [];
+
+        bpRecords.forEach(record => {
+            const dataPoint = { x: record.timestamp, y: record.systolic };
+            systolicData.push(dataPoint);
+
+            diastolicData.push({ x: record.timestamp, y: record.diastolic });
+
+            if (record.pulse) {
+                pulseData.push({ x: record.timestamp, y: record.pulse });
+            }
+        });
+
+        // 根据血压状态设置点的颜色
+        function getBPPointColor(systolic, diastolic) {
+            // 偏高：收缩压>140 或 舒张压>90
+            if (systolic > 140 || diastolic > 90) return '#dc3545'; // 红色
+            // 警戒：收缩压>130 或 舒张压>85
+            if (systolic > 130 || diastolic > 85) return '#ffc107'; // 黄色
+            // 正常
+            return '#198754'; // 绿色
+        }
+
+        const datasets = [
+            {
+                label: '收缩压（高压）',
+                data: systolicData,
+                borderColor: '#9C27B0',
+                backgroundColor: '#9C27B0',
+                borderWidth: 3,
+                tension: 0.1,
+                pointRadius: systolicData.map((point, idx) => {
+                    const bp = bpRecords[idx];
+                    const color = getBPPointColor(bp.systolic, bp.diastolic);
+                    return color === '#dc3545' ? 7 : 4; // 偏高显示大点
+                }),
+                pointHoverRadius: 9,
+                pointBackgroundColor: systolicData.map((point, idx) => {
+                    const bp = bpRecords[idx];
+                    return getBPPointColor(bp.systolic, bp.diastolic);
+                }),
+                pointBorderColor: '#fff',
+                pointBorderWidth: 2,
+                fill: false
+            },
+            {
+                label: '舒张压（低压）',
+                data: diastolicData,
+                borderColor: '#1976D2',
+                backgroundColor: '#1976D2',
+                borderWidth: 3,
+                tension: 0.1,
+                pointRadius: 4,
+                pointHoverRadius: 8,
+                pointBackgroundColor: diastolicData.map((point, idx) => {
+                    const bp = bpRecords[idx];
+                    return getBPPointColor(bp.systolic, bp.diastolic);
+                }),
+                pointBorderColor: '#fff',
+                pointBorderWidth: 2,
+                fill: false
+            }
+        ];
+
+        // 如果有脉搏数据，添加脉搏曲线
+        if (pulseData.length > 0) {
+            datasets.push({
+                label: '脉搏',
+                data: pulseData,
+                borderColor: '#FF6F00',
+                backgroundColor: '#FF6F00',
+                borderWidth: 2,
+                borderDash: [6, 3],
+                tension: 0.2,
+                pointRadius: 3,
+                pointHoverRadius: 6,
+                pointBackgroundColor: '#fff',
+                pointBorderColor: '#FF6F00',
+                pointBorderWidth: 2,
+                fill: false,
+                yAxisID: 'y1' // 使用右侧Y轴
+            });
+        }
+
+        // 计算Y轴范围
+        const allSystolic = bpRecords.map(r => r.systolic);
+        const allDiastolic = bpRecords.map(r => r.diastolic);
+        const minBP = Math.min(...allSystolic, ...allDiastolic);
+        const maxBP = Math.max(...allSystolic, ...allDiastolic);
+
+        const yMin = Math.max(40, Math.floor((minBP - 10) / 10) * 10);
+        const yMax = Math.min(200, Math.ceil((maxBP + 10) / 10) * 10);
+
+        // 脉搏Y轴范围
+        let pulseMin = 40;
+        let pulseMax = 120;
+        if (pulseData.length > 0) {
+            const allPulse = bpRecords.filter(r => r.pulse).map(r => r.pulse);
+            pulseMin = Math.max(40, Math.floor((Math.min(...allPulse) - 10) / 10) * 10);
+            pulseMax = Math.min(150, Math.ceil((Math.max(...allPulse) + 10) / 10) * 10);
+        }
+
+        new Chart(ctx, {
+            type: 'line',
+            data: { datasets: datasets },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                interaction: {
+                    mode: 'nearest',
+                    axis: 'x',
+                    intersect: false
+                },
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'top',
+                        labels: {
+                            usePointStyle: true,
+                            padding: 15,
+                            font: { size: 12, weight: 'bold' }
+                        }
+                    },
+                    tooltip: {
+                        backgroundColor: 'rgba(0,0,0,0.8)',
+                        padding: 12,
+                        titleFont: { size: 14, weight: 'bold' },
+                        bodyFont: { size: 13 },
+                        callbacks: {
+                            label: function(context) {
+                                const idx = context.dataIndex;
+                                const bp = bpRecords[idx];
+
+                                if (context.dataset.label === '脉搏') {
+                                    return '脉搏: ' + context.parsed.y + ' bpm';
+                                }
+
+                                let status = '';
+                                if (bp.systolic > 140 || bp.diastolic > 90) {
+                                    status = ' ⚠️ 偏高';
+                                } else if (bp.systolic > 130 || bp.diastolic > 85) {
+                                    status = ' ⚠ 警戒';
+                                } else {
+                                    status = ' ✓ 正常';
+                                }
+
+                                if (context.dataset.label === '收缩压（高压）') {
+                                    return bp.systolic + '/' + bp.diastolic + ' mmHg' + status;
+                                }
+                                return ''; // 舒张压不单独显示，避免重复
+                            }
+                        }
+                    },
+                    annotation: {
+                        annotations: {
+                            dangerHighSys: {
+                                type: 'line',
+                                yMin: 160,
+                                yMax: 160,
+                                borderColor: 'rgba(220, 53, 69, 0.3)',
+                                borderWidth: 2,
+                                borderDash: [10, 5],
+                                label: {
+                                    content: '危险上限 160',
+                                    enabled: true,
+                                    position: 'end',
+                                    backgroundColor: 'rgba(220, 53, 69, 0.8)',
+                                    color: '#fff',
+                                    font: { size: 10 }
+                                }
+                            },
+                            warningHighSys: {
+                                type: 'line',
+                                yMin: 140,
+                                yMax: 140,
+                                borderColor: 'rgba(255, 193, 7, 0.4)',
+                                borderWidth: 2,
+                                borderDash: [5, 5],
+                                label: {
+                                    content: '收缩压警戒 140',
+                                    enabled: true,
+                                    position: 'end',
+                                    backgroundColor: 'rgba(255, 193, 7, 0.8)',
+                                    color: '#000',
+                                    font: { size: 10 }
+                                }
+                            },
+                            warningHighDia: {
+                                type: 'line',
+                                yMin: 90,
+                                yMax: 90,
+                                borderColor: 'rgba(255, 193, 7, 0.3)',
+                                borderWidth: 1,
+                                borderDash: [3, 3],
+                                label: {
+                                    content: '舒张压警戒 90',
+                                    enabled: true,
+                                    position: 'start',
+                                    backgroundColor: 'rgba(255, 193, 7, 0.7)',
+                                    color: '#000',
+                                    font: { size: 9 }
+                                }
+                            },
+                            normalZone: {
+                                type: 'box',
+                                yMin: 90,
+                                yMax: 140,
+                                backgroundColor: 'rgba(25, 135, 84, 0.05)',
+                                borderWidth: 0
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        type: 'time',
+                        time: {
+                            unit: 'day',
+                            displayFormats: { day: 'MM-dd' }
+                        },
+                        title: {
+                            display: true,
+                            text: '时间',
+                            font: { size: 13, weight: 'bold' }
+                        },
+                        grid: {
+                            color: 'rgba(0,0,0,0.05)'
+                        }
+                    },
+                    y: {
+                        beginAtZero: false,
+                        min: yMin,
+                        max: yMax,
+                        title: {
+                            display: true,
+                            text: '血压 (mmHg)',
+                            font: { size: 13, weight: 'bold' }
+                        },
+                        ticks: {
+                            stepSize: 10,
+                            font: { size: 11, weight: 'bold' }
+                        },
+                        grid: {
+                            color: function(context) {
+                                if (context.tick.value === 140 || context.tick.value === 90 || context.tick.value === 160) {
+                                    return 'rgba(220, 53, 69, 0.15)';
+                                }
+                                return 'rgba(0,0,0,0.05)';
+                            }
+                        }
+                    },
+                    y1: pulseData.length > 0 ? {
+                        position: 'right',
+                        beginAtZero: false,
+                        min: pulseMin,
+                        max: pulseMax,
+                        title: {
+                            display: true,
+                            text: '脉搏 (bpm)',
+                            font: { size: 11, weight: 'bold' },
+                            color: '#FF6F00'
+                        },
+                        ticks: {
+                            stepSize: 10,
+                            font: { size: 10 },
+                            color: '#FF6F00'
+                        },
+                        grid: {
+                            drawOnChartArea: false
+                        }
+                    } : undefined
+                }
+            }
+        });
+    }
+
+    // 生成AI预测控制按钮
+    function generatePredictionToggles(datasetIndexMap, datasets) {
+        const togglesContainer = document.getElementById('predictionToggles');
+        const controlPanel = document.getElementById('aiPredictionControls');
+
+        let hasAnyPrediction = false;
+
+        console.log('=== AI预测控制按钮生成 ===');
+
+        // 遍历所有数据类型，只为同时有真实数据和预测数据的类型生成按钮
+        for (const [key, indices] of Object.entries(datasetIndexMap)) {
+            console.log(`检查类型: ${key}`, indices);
+
+            // 只有当既有真实数据又有预测数据时，才显示控制按钮
+            if (indices.real >= 0 && indices.predicted >= 0) {
+                console.log(`  ✓ 生成按钮: ${key}`);
+                hasAnyPrediction = true;
+                const ds = datasets[key];
+
+                const button = document.createElement('button');
+                button.className = 'btn btn-sm btn-outline-secondary';
+                button.style.borderColor = ds.borderColor;
+                button.style.color = ds.borderColor;
+                button.innerHTML = `
+                    <i class="bi bi-eye-slash me-1"></i>
+                    <span>${ds.label}</span>
+                `;
+                button.onclick = () => togglePrediction(key, button, ds.borderColor);
+
+                togglesContainer.appendChild(button);
+            } else {
+                console.log(`  ✗ 跳过: 真实=${indices.real}, 预测=${indices.predicted}`);
+            }
+        }
+
+        console.log('===========================');
+
+        // 如果有预测数据，显示控制面板
+        if (hasAnyPrediction) {
+            controlPanel.classList.remove('d-none');
+        }
+    }
+
+    // 切换预测曲线的显示/隐藏
+    function togglePrediction(type, button, color) {
+        if (!glucoseChart || !predictionDatasetMap[type]) return;
+
+        const predIndex = predictionDatasetMap[type].predicted;
+        if (predIndex < 0) return;
+
+        const meta = glucoseChart.getDatasetMeta(predIndex);
+        const isHidden = meta.hidden;
+
+        // 切换显示/隐藏
+        meta.hidden = !isHidden;
+        glucoseChart.update();
+
+        // 更新按钮样式
+        if (meta.hidden) {
+            // 隐藏状态 - 轮廓样式
+            button.className = 'btn btn-sm btn-outline-secondary';
+            button.style.borderColor = color;
+            button.style.color = color;
+            button.style.backgroundColor = '';
+            button.innerHTML = `<i class="bi bi-eye-slash me-1"></i><span>${button.querySelector('span').textContent}</span>`;
+        } else {
+            // 显示状态 - 填充样式
+            button.className = 'btn btn-sm';
+            button.style.borderColor = color;
+            button.style.backgroundColor = color;
+            button.style.color = '#fff';
+            button.innerHTML = `<i class="bi bi-eye me-1"></i><span>${button.querySelector('span').textContent}</span>`;
+        }
     }
 
     // Get point border color based on glucose value and type (表示血糖状态)
@@ -2136,8 +2659,8 @@
 
         html += '</div>'; // Close alert
 
-        // Timeline entries
-        entries.forEach(r => {
+        // Timeline entries - 只显示真实记录，不显示AI预测
+        entries.filter(r => !r.is_predicted).forEach(r => {
             let dotClass = 'dot-food';
             if (r.value > 0) dotClass = 'dot-glucose';
             else if (r.systolic_pressure && r.diastolic_pressure) dotClass = 'dot-bloodpressure';
@@ -2162,17 +2685,11 @@
 
                 let predictedBadge = r.is_predicted ? '<span class="badge bg-secondary ms-1" style="font-size: 0.6em;">预测</span>' : '';
 
-                let aiPrediction = '';
-                if (r.predicted_value && !r.is_predicted) {
-                    aiPrediction = `<small class="text-muted ms-2" title="AI预测值" style="font-size: 0.8em;"><i class="bi bi-robot"></i> ${r.predicted_value}</small>`;
-                }
-
                 html += `
                     <div class="d-flex align-items-center mb-1">
                         <h5 class="mb-0 text-primary fw-bold me-2">${r.value} <small class="text-muted fw-normal fs-6">${r.unit}</small></h5>
                         <span class="badge bg-info text-dark me-2">${r.type}</span>
                         ${predictedBadge}
-                        ${aiPrediction}
                         ${trendHtml}
                     </div>
                 `;
@@ -2202,8 +2719,8 @@
                 `;
             }
 
-            // Exercise
-            if (r.distance || r.duration || r.heart_rate) {
+            // Exercise - 排除血压记录（血压记录有 systolic_pressure）
+            if (!r.systolic_pressure && (r.distance || r.duration || r.heart_rate)) {
                 html += `
                     <div class="mb-2 p-2 bg-light rounded border small">
                         <div class="d-flex align-items-center text-success fw-bold mb-1"><i class="bi bi-activity me-2"></i> 运动打卡</div>
@@ -2302,8 +2819,8 @@
         `;
         modalBody.innerHTML += statsHtml;
 
-        // 2. Render Timeline Items
-        entries.forEach(r => {
+        // 2. Render Timeline Items - 只显示真实记录，不显示AI预测
+        entries.filter(r => !r.is_predicted).forEach(r => {
             let dotClass = 'dot-food';
             if (r.value > 0) dotClass = 'dot-glucose';
             else if (r.systolic_pressure && r.diastolic_pressure) dotClass = 'dot-bloodpressure';
@@ -2325,21 +2842,14 @@
                 let trendHtml = '';
                 if (r.trend_dir === 'up') trendHtml = `<small class="text-danger"><i class="bi bi-arrow-up"></i> ${r.trend}</small>`;
                 else if (r.trend_dir === 'down') trendHtml = `<small class="text-success"><i class="bi bi-arrow-down"></i> ${r.trend}</small>`;
-                
+
                 let predictedBadge = r.is_predicted ? '<span class="badge bg-secondary ms-1" style="font-size: 0.6em;">预测</span>' : '';
-                
-                // Show AI Prediction comparison if available and different
-                let aiPrediction = '';
-                if (r.predicted_value && !r.is_predicted) {
-                    aiPrediction = `<small class="text-muted ms-2" title="AI预测值" style="font-size: 0.8em;"><i class="bi bi-robot"></i> ${r.predicted_value}</small>`;
-                }
 
                 itemHtml += `
                     <div class="d-flex align-items-center mb-1">
                         <h5 class="mb-0 text-primary fw-bold me-2">${r.value} <small class="text-muted fw-normal fs-6">${r.unit}</small></h5>
                         <span class="badge bg-info text-dark me-2">${r.type}</span>
                         ${predictedBadge}
-                        ${aiPrediction}
                         ${trendHtml}
                     </div>
                 `;
@@ -2359,7 +2869,7 @@
                     bpStatus = ' 正常';
                 }
 
-                html += `
+                itemHtml += `
                     <div class="d-flex align-items-center mb-1">
                         <h5 class="mb-0 fw-bold me-2" style="color: #9C27B0;">${r.systolic_pressure}/${r.diastolic_pressure} <small class="text-muted fw-normal fs-6">mmHg</small></h5>
                         <span class="badge bg-${bpColor} me-2">${r.type}</span>
@@ -2369,8 +2879,8 @@
                 `;
             }
 
-            // Exercise
-            if (r.distance || r.duration || r.heart_rate) {
+            // Exercise - 排除血压记录（血压记录有 systolic_pressure）
+            if (!r.systolic_pressure && (r.distance || r.duration || r.heart_rate)) {
                 itemHtml += `
                     <div class="mb-2 p-2 bg-light rounded border small">
                         <div class="d-flex align-items-center text-success fw-bold mb-1"><i class="bi bi-activity me-2"></i> 运动打卡</div>

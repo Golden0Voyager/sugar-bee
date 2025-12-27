@@ -8,6 +8,9 @@ import traceback
 from werkzeug.utils import secure_filename
 from parser import parse_glucose_input
 import settings
+import google.generativeai as genai
+import json
+import re
 
 app = Flask(__name__)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -18,6 +21,13 @@ ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg'}
 app.config['UPLOAD_FOLDER'] = AVATAR_FOLDER
 # Ensure avatar folder exists
 os.makedirs(AVATAR_FOLDER, exist_ok=True)
+
+# Configure Gemini API for FPG prediction
+from dotenv import load_dotenv
+load_dotenv()
+api_key = os.getenv("GEMINI_API_KEY")
+if api_key:
+    genai.configure(api_key=api_key)
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
@@ -111,11 +121,220 @@ def init_db():
 
 init_db()
 
+def predict_morning_fpg(db):
+    """
+    自动预测当天早晨空腹血糖 (FPG)
+    基于前一天综合数据：血糖波动、饮食热量、能量平衡、近期趋势、用药情况
+
+    触发条件：
+    - 当天第一次打开应用（今天还没有生成 FPG 预测记录）
+    """
+    if not api_key:
+        return  # No API key, skip prediction
+
+    try:
+        now = datetime.datetime.now()
+        today_str = now.strftime('%Y-%m-%d')
+
+        # 1. 检查今天是否已经有 FPG 预测记录（防止重复预测）
+        c = db.cursor()
+        c.execute("""
+            SELECT id FROM records
+            WHERE DATE(timestamp) = ?
+            AND type LIKE '%空腹%'
+            AND is_predicted = 1
+        """, (today_str,))
+        existing = c.fetchone()
+        if existing:
+            return  # 预测已存在，跳过
+
+        # 3. 获取前一天的日期
+        yesterday = now - datetime.timedelta(days=1)
+        yesterday_str = yesterday.strftime('%Y-%m-%d')
+
+        # 4. 查询前一天的综合数据
+        # 4.1 前一天血糖记录（真实数据，不含预测值）
+        c.execute("""
+            SELECT value, type, timestamp FROM records
+            WHERE DATE(timestamp) = ?
+            AND value > 0
+            AND is_predicted = 0
+            ORDER BY timestamp ASC
+        """, (yesterday_str,))
+        yesterday_glucose = c.fetchall()
+
+        # 4.2 前一天的饮食与运动卡路里
+        c.execute("""
+            SELECT type, calories FROM records
+            WHERE DATE(timestamp) = ?
+            AND calories > 0
+        """, (yesterday_str,))
+        yesterday_calories = c.fetchall()
+
+        cal_in = sum(row[1] for row in yesterday_calories if row[0] not in ['跑步', '运动'])
+        cal_out_exercise = sum(row[1] for row in yesterday_calories if row[0] in ['跑步', '运动'])
+        user_bmr = settings.calculate_bmr()
+        net_calories = cal_in - (user_bmr + cal_out_exercise)
+
+        # 4.3 近 7 天空腹血糖趋势（真实数据）
+        c.execute("""
+            SELECT value, timestamp FROM records
+            WHERE type LIKE '%空腹%'
+            AND value > 0
+            AND is_predicted = 0
+            AND timestamp > datetime('now', '-7 days')
+            ORDER BY timestamp DESC
+        """)
+        recent_fpg = c.fetchall()
+
+        # 4.4 当前用药情况
+        c.execute("""
+            SELECT medication_name, dosage, times_per_day, timing_notes
+            FROM medication_plans
+            WHERE is_active = 1
+        """)
+        medications = c.fetchall()
+
+        # 5. 构建 AI 预测提示词
+        # 前一天血糖波动情况
+        if yesterday_glucose:
+            glucose_values = [row[0] for row in yesterday_glucose]
+            max_glucose = max(glucose_values)
+            min_glucose = min(glucose_values)
+            glucose_range = max_glucose - min_glucose
+            evening_glucose = glucose_values[-1] if glucose_values else None
+
+            glucose_summary = f"""
+前一天血糖数据（{yesterday_str}）：
+- 测量次数: {len(yesterday_glucose)}
+- 最高值: {max_glucose} mmol/L
+- 最低值: {min_glucose} mmol/L
+- 波动幅度: {glucose_range:.1f} mmol/L
+- 晚间最后一次: {evening_glucose} mmol/L ({yesterday_glucose[-1][1]})
+- 详细记录: {', '.join([f"{r[0]} mmol/L ({r[1]})" for r in yesterday_glucose])}
+            """
+        else:
+            glucose_summary = "前一天无血糖记录"
+
+        # 近期 FPG 趋势
+        if recent_fpg:
+            fpg_values = [row[0] for row in recent_fpg]
+            avg_fpg = sum(fpg_values) / len(fpg_values)
+            recent_trend = "上升" if fpg_values[0] > fpg_values[-1] else "下降" if fpg_values[0] < fpg_values[-1] else "稳定"
+
+            fpg_trend_summary = f"""
+近 7 天空腹血糖趋势：
+- 平均值: {avg_fpg:.1f} mmol/L
+- 最近一次: {fpg_values[0]:.1f} mmol/L
+- 趋势: {recent_trend}
+- 历史记录: {', '.join([f"{v:.1f}" for v in fpg_values])}
+            """
+        else:
+            fpg_trend_summary = "近期无空腹血糖记录"
+
+        # 能量平衡
+        energy_summary = f"""
+前一天能量平衡（{yesterday_str}）：
+- 饮食摄入: {cal_in} kcal
+- 运动消耗: {cal_out_exercise} kcal
+- 基础代谢: {user_bmr} kcal
+- 净能量: {net_calories:+d} kcal ({'能量盈余，脂糖累积' if net_calories > 0 else '能量缺口，减糖减脂'})
+        """
+
+        # 用药情况
+        if medications:
+            med_summary = "当前用药方案：\n"
+            for med in medications:
+                med_summary += f"- {med[0]}"
+                if med[1]:  # dosage
+                    med_summary += f" {med[1]}"
+                med_summary += f"，{med[2]}次/天"
+                if med[3]:  # timing_notes
+                    med_summary += f"，{med[3]}"
+                med_summary += "\n"
+        else:
+            med_summary = "当前无用药"
+
+        # 用户健康档案
+        user_profile = settings.get_ai_system_prompt()
+
+        # AI Prompt
+        prompt = f"""
+你是一个专业的糖尿病健康管理顾问。你的任务是基于用户前一天的综合数据，预测今天早晨的空腹血糖值。
+
+{user_profile}
+
+{glucose_summary}
+
+{fpg_trend_summary}
+
+{energy_summary}
+
+{med_summary}
+
+**预测任务**：
+- 根据上述信息，预测今天（{today_str}）早晨 07:15 的空腹血糖值
+- 预测值应基于：
+  1. 前一天血糖波动情况（特别是晚间血糖）
+  2. 前一天能量平衡（能量盈余通常导致晨起血糖偏高）
+  3. 近期空腹血糖趋势
+  4. 当前用药控制效果
+- 预测值应在合理范围内（3.5-10.0 mmol/L）
+- 给出简短的预测依据说明（1-2句话）
+
+请返回以下JSON格式（不要包含 markdown 格式）：
+{{
+    "predicted_value": float,
+    "reasoning": "string (预测依据，1-2句话)"
+}}
+        """
+
+        # 6. 调用 Gemini API
+        model = genai.GenerativeModel('gemini-3-flash-preview')
+        response = model.generate_content(prompt)
+        raw_text = response.text
+
+        print(f"DEBUG FPG Prediction: Raw AI response: {raw_text}")
+
+        # 7. 解析 AI 响应
+        match = re.search(r'\{[\s\S]*\}', raw_text)
+        if not match:
+            print("ERROR: AI response is not valid JSON")
+            return
+
+        result = json.loads(match.group(0))
+        predicted_value = result.get('predicted_value')
+        reasoning = result.get('reasoning', 'AI预测')
+
+        if not predicted_value or not (3.5 <= predicted_value <= 10.0):
+            print(f"ERROR: Invalid predicted value: {predicted_value}")
+            return
+
+        # 8. 存储预测记录
+        prediction_timestamp = f"{today_str} 07:15:00"
+        c.execute("""
+            INSERT INTO records
+            (value, unit, type, notes, timestamp, calories, diet_analysis, is_predicted)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (predicted_value, 'mmol/L', '空腹', f'AI预测: {reasoning}',
+              prediction_timestamp, 0, '', 1))
+        db.commit()
+
+        print(f"✓ FPG Prediction generated: {predicted_value} mmol/L for {today_str} 07:15")
+
+    except Exception as e:
+        print(f"ERROR in predict_morning_fpg: {e}")
+        traceback.print_exc()
+
+
 @app.route('/')
 def index():
     try:
         db = get_db()
         c = db.cursor()
+
+        # 自动生成早晨空腹血糖预测（如果符合条件）
+        predict_morning_fpg(db)
 
         # 获取分页参数，默认显示最近 14 天
         days = request.args.get('days', 14, type=int)
@@ -612,6 +831,20 @@ def batch_add():
             cal = r.get('calories', 0)
             da = r.get('diet_analysis', '')
             is_pred = 1 if r.get('is_predicted', False) else 0
+
+            # 如果是预测记录，先删除同一天同一类型同一时间的其他预测记录，避免重复
+            if is_pred and r.get('datetime'):
+                timestamp = r.get('datetime')
+                record_type = r['type']
+                # 提取日期和时间（精确到分钟）
+                datetime_str = timestamp.rsplit(':', 1)[0] if ':' in timestamp else timestamp  # 去掉秒
+
+                c.execute("""DELETE FROM records
+                           WHERE DATE(timestamp) = DATE(?)
+                           AND type = ?
+                           AND strftime('%Y-%m-%d %H:%M', timestamp) = strftime('%Y-%m-%d %H:%M', ?)
+                           AND is_predicted = 1""",
+                         (timestamp, record_type, timestamp))
 
             c.execute("""INSERT INTO records
                       (value, unit, type, notes, timestamp, calories, diet_analysis, is_predicted,
