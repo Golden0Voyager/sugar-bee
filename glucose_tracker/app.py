@@ -71,6 +71,13 @@ def init_db():
             except sqlite3.OperationalError:
                 pass
 
+        # Migration: Add blood pressure columns
+        for col in ['systolic_pressure INTEGER', 'diastolic_pressure INTEGER', 'pulse_rate INTEGER']:
+            try:
+                c.execute(f"ALTER TABLE records ADD COLUMN {col}")
+            except sqlite3.OperationalError:
+                pass
+
         # Create medication_plans table (药物方案)
         c.execute('''CREATE TABLE IF NOT EXISTS medication_plans
                      (id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -239,24 +246,125 @@ def index():
             sorted_dates.append({'date': date_str, 'data': data})
 
         # 4. Calculate 7-Day Stats for Dashboard
-        c.execute("""
-            SELECT AVG(value) FROM records
-            WHERE type LIKE '%空腹%'
-            AND timestamp > datetime('now', '-7 days')
-        """)
-        avg_fasting = c.fetchone()[0]
 
+        # === 血糖统计 ===
+        # 近7天平均早空腹血糖
         c.execute("""
             SELECT AVG(value) FROM records
-            WHERE type LIKE '%餐后%'
+            WHERE (type LIKE '%空腹%' OR type LIKE '%早空腹%')
+            AND value > 0
             AND timestamp > datetime('now', '-7 days')
         """)
-        avg_post = c.fetchone()[0]
+        avg_fasting_7d = c.fetchone()[0]
+
+        # 近7天平均餐后2小时血糖
+        c.execute("""
+            SELECT AVG(value) FROM records
+            WHERE type LIKE '%餐后2小时%'
+            AND value > 0
+            AND timestamp > datetime('now', '-7 days')
+        """)
+        avg_post2h_7d = c.fetchone()[0]
+
+        # 近7日最高血糖
+        c.execute("""
+            SELECT MAX(value) FROM records
+            WHERE value > 0
+            AND timestamp > datetime('now', '-7 days')
+        """)
+        max_glucose_7d = c.fetchone()[0]
+
+        # 近7日最低血糖
+        c.execute("""
+            SELECT MIN(value) FROM records
+            WHERE value > 0
+            AND timestamp > datetime('now', '-7 days')
+        """)
+        min_glucose_7d = c.fetchone()[0]
+
+        # === 运动统计 ===
+        # 最近7天跑步总里程数
+        c.execute("""
+            SELECT SUM(distance) FROM records
+            WHERE distance IS NOT NULL
+            AND timestamp > datetime('now', '-7 days')
+        """)
+        total_distance_7d = c.fetchone()[0]
+
+        # 运动总消耗卡路里数（7天）
+        c.execute("""
+            SELECT SUM(calories) FROM records
+            WHERE (type = '跑步' OR type = '运动' OR distance IS NOT NULL)
+            AND calories > 0
+            AND timestamp > datetime('now', '-7 days')
+        """)
+        total_exercise_cal_7d = c.fetchone()[0]
+
+        # 最近7天跑步平均心率
+        c.execute("""
+            SELECT AVG(heart_rate) FROM records
+            WHERE heart_rate IS NOT NULL
+            AND (type = '跑步' OR type = '运动')
+            AND timestamp > datetime('now', '-7 days')
+        """)
+        avg_heart_rate_7d = c.fetchone()[0]
+
+        # === 血压统计 ===
+        # 最近7天平均血压
+        c.execute("""
+            SELECT AVG(systolic_pressure), AVG(diastolic_pressure), COUNT(*)
+            FROM records
+            WHERE systolic_pressure IS NOT NULL
+            AND diastolic_pressure IS NOT NULL
+            AND timestamp > datetime('now', '-7 days')
+        """)
+        bp_7d_stats = c.fetchone()
+
+        # 血压最高的一天（7天内）
+        c.execute("""
+            SELECT MAX(systolic_pressure), MAX(diastolic_pressure),
+                   DATE(timestamp) as day
+            FROM records
+            WHERE systolic_pressure IS NOT NULL
+            AND timestamp > datetime('now', '-7 days')
+            GROUP BY day
+            ORDER BY systolic_pressure DESC
+            LIMIT 1
+        """)
+        bp_max_day = c.fetchone()
+
+        # 血压最低的一天（7天内）
+        c.execute("""
+            SELECT MIN(systolic_pressure), MIN(diastolic_pressure),
+                   DATE(timestamp) as day
+            FROM records
+            WHERE systolic_pressure IS NOT NULL
+            AND timestamp > datetime('now', '-7 days')
+            GROUP BY day
+            ORDER BY systolic_pressure ASC
+            LIMIT 1
+        """)
+        bp_min_day = c.fetchone()
+
+        # === 用药情况 ===
+        # 当前服用的药物清单（is_active=1）
+        c.execute("""
+            SELECT medication_name, dosage, times_per_day, timing_notes
+            FROM medication_plans
+            WHERE is_active = 1
+            ORDER BY medication_name ASC
+        """)
+        active_medications = [dict(zip(['name', 'dosage', 'times', 'timing'], row))
+                             for row in c.fetchall()]
 
         # Calculate Compliance Rate (7 days)
         # Using strict criteria from settings
-        targets = settings.USER_PROFILE['target']
-        
+        user_config = settings.load_config()
+        targets = user_config.get('target', {
+            'fasting_min': 3.9, 'fasting_max': 7.0,
+            'postmeal_max': 7.8, 'premeal_max': 6.5
+        })
+
         c.execute("SELECT * FROM records WHERE timestamp > datetime('now', '-7 days')")
         recent_rows = c.fetchall()
         total_recent = len(recent_rows)
@@ -283,24 +391,38 @@ def index():
         c.execute("SELECT COUNT(*) FROM records")
         total_records = c.fetchone()[0]
 
-        # 计算全局血糖统计（用于数据看板）
-        c.execute("SELECT AVG(value), MIN(value), MAX(value), COUNT(*) FROM records WHERE value > 0")
-        glucose_stats = c.fetchone()
-
         stats = {
-            'avg_fasting': round(avg_fasting, 1) if avg_fasting else '-',
-            'avg_post': round(avg_post, 1) if avg_post else '-',
-            'compliance': compliance,
             'total_records': total_records,
             'current_days': days,
             'show_all': show_all,
             'today_str': today_str,
             'user': settings.load_config(),
-            # 全局血糖统计
-            'avg_glucose': round(glucose_stats[0], 1) if glucose_stats[0] else 0,
-            'min_glucose': round(glucose_stats[1], 1) if glucose_stats[1] else 0,
-            'max_glucose': round(glucose_stats[2], 1) if glucose_stats[2] else 0,
-            'total_count': glucose_stats[3] if glucose_stats[3] else 0
+            'compliance': compliance,
+
+            # === 血糖统计（7天） ===
+            'avg_fasting_7d': round(avg_fasting_7d, 1) if avg_fasting_7d else 0,
+            'avg_post2h_7d': round(avg_post2h_7d, 1) if avg_post2h_7d else 0,
+            'max_glucose_7d': round(max_glucose_7d, 1) if max_glucose_7d else 0,
+            'min_glucose_7d': round(min_glucose_7d, 1) if min_glucose_7d else 0,
+
+            # === 运动统计（7天） ===
+            'total_distance_7d': round(total_distance_7d, 1) if total_distance_7d else 0,
+            'total_exercise_cal_7d': int(total_exercise_cal_7d) if total_exercise_cal_7d else 0,
+            'avg_heart_rate_7d': round(avg_heart_rate_7d) if avg_heart_rate_7d else 0,
+
+            # === 血压统计（7天） ===
+            'avg_systolic_7d': round(bp_7d_stats[0]) if bp_7d_stats[0] else 0,
+            'avg_diastolic_7d': round(bp_7d_stats[1]) if bp_7d_stats[1] else 0,
+            'bp_count_7d': bp_7d_stats[2] if bp_7d_stats[2] else 0,
+            'bp_max_sys': bp_max_day[0] if bp_max_day else 0,
+            'bp_max_dia': bp_max_day[1] if bp_max_day else 0,
+            'bp_max_date': bp_max_day[2] if bp_max_day else '-',
+            'bp_min_sys': bp_min_day[0] if bp_min_day else 0,
+            'bp_min_dia': bp_min_day[1] if bp_min_day else 0,
+            'bp_min_date': bp_min_day[2] if bp_min_day else '-',
+
+            # === 用药情况 ===
+            'active_medications': active_medications
         }
 
         return render_template('index.html', records=records, stats=stats, timeline=sorted_dates)
@@ -348,25 +470,49 @@ def upload_avatar():
 @app.route('/add', methods=['POST'])
 def add_record():
     try:
-        value = request.form.get('value')
-        unit = request.form.get('unit')
-        r_type = request.form.get('type')
-        notes = request.form.get('notes')
-        timestamp = request.form.get('timestamp')
-        
-        # Validation
-        if not value:
-            return "Value is required", 400
-        
-        # Optional fields
-        calories = request.form.get('calories', 0)
-        diet_analysis = request.form.get('diet_analysis', '')
-        is_predicted = request.form.get('is_predicted', 0)
-        
+        # Support both form data and JSON
+        if request.is_json:
+            data = request.json
+            value = data.get('value', 0)
+            unit = data.get('unit', 'mmol/L')
+            r_type = data.get('type')
+            notes = data.get('notes', '')
+            timestamp = data.get('timestamp')
+            calories = data.get('calories', 0)
+            diet_analysis = data.get('diet_analysis', '')
+            is_predicted = data.get('is_predicted', 0)
+            distance = data.get('distance')
+            duration = data.get('duration')
+            heart_rate = data.get('heart_rate')
+            systolic_pressure = data.get('systolic_pressure')
+            diastolic_pressure = data.get('diastolic_pressure')
+            pulse_rate = data.get('pulse_rate')
+        else:
+            value = request.form.get('value')
+            unit = request.form.get('unit')
+            r_type = request.form.get('type')
+            notes = request.form.get('notes')
+            timestamp = request.form.get('timestamp')
+
+            # Validation
+            if not value:
+                return "Value is required", 400
+
+            # Optional fields
+            calories = request.form.get('calories', 0)
+            diet_analysis = request.form.get('diet_analysis', '')
+            is_predicted = request.form.get('is_predicted', 0)
+            distance = request.form.get('distance')
+            duration = request.form.get('duration')
+            heart_rate = request.form.get('heart_rate')
+            systolic_pressure = request.form.get('systolic_pressure')
+            diastolic_pressure = request.form.get('diastolic_pressure')
+            pulse_rate = request.form.get('pulse_rate')
+
         # Handle empty timestamp (default to now)
         if not timestamp:
             timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        
+
         if 'T' in timestamp:
             timestamp = timestamp.replace('T', ' ')
             if len(timestamp) == 16: # Missing seconds
@@ -374,9 +520,16 @@ def add_record():
 
         db = get_db()
         c = db.cursor()
-        c.execute("INSERT INTO records (value, unit, type, notes, timestamp, calories, diet_analysis, is_predicted) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                  (value, unit, r_type, notes, timestamp, calories, diet_analysis, is_predicted))
+        c.execute("""INSERT INTO records
+                     (value, unit, type, notes, timestamp, calories, diet_analysis, is_predicted,
+                      distance, duration, heart_rate, systolic_pressure, diastolic_pressure, pulse_rate)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                  (value, unit, r_type, notes, timestamp, calories, diet_analysis, is_predicted,
+                   distance, duration, heart_rate, systolic_pressure, diastolic_pressure, pulse_rate))
         db.commit()
+
+        if request.is_json:
+            return jsonify({"status": "success"})
         return redirect(url_for('index'))
     except Exception as e:
         return f"Error adding record: {e}", 500
@@ -455,19 +608,21 @@ def batch_add():
         for r in data:
             if 'value' not in r or 'type' not in r:
                 continue
-            
+
             cal = r.get('calories', 0)
             da = r.get('diet_analysis', '')
             is_pred = 1 if r.get('is_predicted', False) else 0
-            
-            c.execute("""INSERT INTO records 
-                      (value, unit, type, notes, timestamp, calories, diet_analysis, is_predicted, 
-                       distance, duration, heart_rate, pace, cadence) 
-                      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                      (r['value'], r.get('unit', 'mmol/L'), r['type'], r.get('notes', ''), 
+
+            c.execute("""INSERT INTO records
+                      (value, unit, type, notes, timestamp, calories, diet_analysis, is_predicted,
+                       distance, duration, heart_rate, pace, cadence,
+                       systolic_pressure, diastolic_pressure, pulse_rate)
+                      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                      (r['value'], r.get('unit', 'mmol/L'), r['type'], r.get('notes', ''),
                        r.get('datetime'), cal, da, is_pred,
-                       r.get('distance'), r.get('duration'), r.get('heart_rate'), 
-                       r.get('pace'), r.get('cadence')))
+                       r.get('distance'), r.get('duration'), r.get('heart_rate'),
+                       r.get('pace'), r.get('cadence'),
+                       r.get('systolic_pressure'), r.get('diastolic_pressure'), r.get('pulse_rate')))
         db.commit()
         return jsonify({"status": "success"})
     except Exception as e:
@@ -516,14 +671,17 @@ def update_record(id):
         c.execute("""UPDATE records SET
                      value = ?, unit = ?, type = ?, notes = ?, timestamp = ?,
                      calories = ?, diet_analysis = ?, is_predicted = ?,
-                     distance = ?, duration = ?, heart_rate = ?, pace = ?, cadence = ?
+                     distance = ?, duration = ?, heart_rate = ?, pace = ?, cadence = ?,
+                     systolic_pressure = ?, diastolic_pressure = ?, pulse_rate = ?
                      WHERE id = ?""",
                   (data.get('value', 0), data.get('unit', 'mmol/L'), data.get('type', ''),
                    data.get('notes', ''), data.get('timestamp', ''),
                    data.get('calories', 0), data.get('diet_analysis', ''),
                    1 if data.get('is_predicted') else 0,
                    data.get('distance'), data.get('duration'), data.get('heart_rate'),
-                   data.get('pace'), data.get('cadence'), id))
+                   data.get('pace'), data.get('cadence'),
+                   data.get('systolic_pressure'), data.get('diastolic_pressure'), data.get('pulse_rate'),
+                   id))
         db.commit()
         return jsonify({"status": "success"})
     except Exception as e:

@@ -3,69 +3,453 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>智能血糖记录本</title>
+    <title>蜜蜂控糖 - 勤劳控糖，甜蜜生活</title>
+    <!-- Favicon using emoji as data URI -->
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🐝</text></svg>">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css" rel="stylesheet">
     <script src='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.js'></script>
     <style>
         :root {
-            --bs-primary-rgb: 13, 110, 253;
-            --bs-body-bg: #f8f9fa;
-        }
-        
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+            /* Material Design Color System */
+            --md-primary: #1976D2;
+            --md-primary-dark: #1565C0;
+            --md-primary-light: #42A5F5;
+            --md-secondary: #FFA726;
+            --md-secondary-dark: #F57C00;
+            --md-surface: #FFFFFF;
+            --md-background: #F5F5F5;
+            --md-error: #D32F2F;
+            --md-success: #388E3C;
+            --md-warning: #F57C00;
+            --md-info: #0288D1;
 
-        /* Card Styling */
-        .card { 
-            border: none; 
-            border-radius: 1rem; 
-            box-shadow: 0 2px 12px rgba(0,0,0,0.04); 
-            transition: transform 0.2s, box-shadow 0.2s;
+            /* Text colors */
+            --md-text-primary: rgba(0, 0, 0, 0.87);
+            --md-text-secondary: rgba(0, 0, 0, 0.60);
+            --md-text-disabled: rgba(0, 0, 0, 0.38);
+
+            /* Elevation shadows */
+            --md-shadow-1: 0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.24);
+            --md-shadow-2: 0 3px 6px rgba(0,0,0,0.16), 0 3px 6px rgba(0,0,0,0.23);
+            --md-shadow-3: 0 10px 20px rgba(0,0,0,0.19), 0 6px 6px rgba(0,0,0,0.23);
+            --md-shadow-4: 0 14px 28px rgba(0,0,0,0.25), 0 10px 10px rgba(0,0,0,0.22);
         }
-        .measurement-card:hover { transform: translateY(-2px); box-shadow: 0 8px 16px rgba(0,0,0,0.08); }
-        
-        .unit-badge { font-size: 0.8em; opacity: 0.8; }
-        
-        @keyframes beat {
-            0% { transform: scale(1); }
-            50% { transform: scale(1.1); }
-            100% { transform: scale(1); }
+
+        /* Base Typography - Larger for elderly users */
+        body {
+            font-family: 'Roboto', -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+            font-size: 16px;
+            line-height: 1.6;
+            color: var(--md-text-primary);
+            background-color: var(--md-background);
         }
-        .beat-animation { animation: beat 1s infinite; }
-        .border-dashed { border-style: dashed !important; }
-        
-        /* Timeline Styles */
-        .timeline-item { position: relative; padding-left: 25px; border-left: 2px solid #e9ecef; margin-left: 10px; padding-bottom: 24px; }
+
+        h1 { font-size: 2.5rem; font-weight: 400; margin: 0; }
+        h2 { font-size: 2rem; font-weight: 400; margin: 0; }
+        h3 { font-size: 1.75rem; font-weight: 500; margin: 0; }
+        h4 { font-size: 1.5rem; font-weight: 500; margin: 0; }
+        h5 { font-size: 1.25rem; font-weight: 500; margin: 0; }
+        h6 { font-size: 1rem; font-weight: 500; margin: 0; }
+
+        /* Material Card */
+        .card {
+            background: var(--md-surface);
+            border: none;
+            border-radius: 12px;
+            box-shadow: var(--md-shadow-2);
+            transition: box-shadow 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            overflow: hidden;
+        }
+        .card:hover {
+            box-shadow: var(--md-shadow-3);
+        }
+        .card-body {
+            padding: 24px;
+        }
+
+        /* Logo Design - Material Style */
+        .app-logo {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+        .logo-icon {
+            width: 64px;
+            height: 64px;
+            background: linear-gradient(135deg, var(--md-secondary), var(--md-secondary-dark));
+            border-radius: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2rem;
+            box-shadow: var(--md-shadow-2);
+            position: relative;
+            overflow: hidden;
+        }
+        .logo-icon::before {
+            content: '';
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, transparent 30%, rgba(255,255,255,0.3) 50%, transparent 70%);
+            animation: shimmer 3s infinite;
+        }
+        @keyframes shimmer {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(100%); }
+        }
+        .logo-text h4 {
+            font-size: 1.75rem;
+            font-weight: 500;
+            color: var(--md-primary);
+            margin-bottom: 4px;
+        }
+        .logo-text .slogan-zh {
+            font-size: 1rem;
+            color: var(--md-text-secondary);
+            font-weight: 400;
+            margin: 0;
+        }
+        .logo-text .slogan-en {
+            font-size: 0.875rem;
+            color: var(--md-text-disabled);
+            font-weight: 400;
+            margin: 0;
+            font-style: italic;
+        }
+
+        /* Stats Dashboard - Material Cards */
+        .stats-card {
+            text-align: center;
+            padding: 24px 16px;
+            border-radius: 12px;
+            background: var(--md-surface);
+            box-shadow: var(--md-shadow-2);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .stats-card:hover {
+            box-shadow: var(--md-shadow-3);
+            transform: translateY(-4px);
+        }
+        .stats-card .label {
+            font-size: 0.875rem;
+            color: var(--md-text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            font-weight: 500;
+            margin-bottom: 12px;
+        }
+        .stats-card .value {
+            font-size: 3rem;
+            font-weight: 300;
+            line-height: 1;
+            margin-bottom: 8px;
+        }
+        .stats-card .unit {
+            font-size: 1rem;
+            color: var(--md-text-secondary);
+            font-weight: 400;
+        }
+        .stats-card .badge {
+            font-size: 0.875rem;
+            padding: 6px 16px;
+            border-radius: 16px;
+            font-weight: 500;
+            display: inline-block;
+            margin-top: 12px;
+        }
+
+        /* Material Buttons */
+        .btn {
+            font-size: 1rem;
+            font-weight: 500;
+            padding: 12px 24px;
+            border-radius: 8px;
+            text-transform: none;
+            letter-spacing: 0.5px;
+            box-shadow: var(--md-shadow-1);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            min-height: 48px;
+        }
+        .btn:hover {
+            box-shadow: var(--md-shadow-2);
+            transform: translateY(-2px);
+        }
+        .btn:active {
+            box-shadow: var(--md-shadow-1);
+            transform: translateY(0);
+        }
+        .btn-primary {
+            background: var(--md-primary);
+            border-color: var(--md-primary);
+        }
+        .btn-primary:hover {
+            background: var(--md-primary-dark);
+            border-color: var(--md-primary-dark);
+        }
+
+        /* Timeline Styles - Material Design */
+        .timeline-item {
+            position: relative;
+            padding-left: 32px;
+            border-left: 3px solid #E0E0E0;
+            margin-left: 12px;
+            padding-bottom: 32px;
+            font-size: 1rem;
+        }
         .timeline-item:last-child { border-left-color: transparent; }
-        .timeline-dot { 
-            position: absolute; left: -6px; top: 5px; width: 10px; height: 10px; 
-            border-radius: 50%; background: #adb5bd; border: 2px solid #fff; box-shadow: 0 0 0 2px #fff, 0 0 0 3px #adb5bd;
+        .timeline-dot {
+            position: absolute;
+            left: -10px;
+            top: 8px;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #9E9E9E;
+            border: 3px solid var(--md-surface);
+            box-shadow: 0 0 0 3px #E0E0E0;
         }
-        .timeline-dot.dot-glucose { background: #ffc107; box-shadow: 0 0 0 2px #fff, 0 0 0 3px #ffc107; }
-        .timeline-dot.dot-food { background: #fd7e14; box-shadow: 0 0 0 2px #fff, 0 0 0 3px #fd7e14; }
-        .timeline-dot.dot-snack { background: #e91e8c; box-shadow: 0 0 0 2px #fff, 0 0 0 3px #e91e8c; }
-        .timeline-dot.dot-run { background: #7cb889; box-shadow: 0 0 0 2px #fff, 0 0 0 3px #7cb889; }
+        .timeline-dot.dot-glucose {
+            background: var(--md-warning);
+            box-shadow: 0 0 0 3px rgba(245, 124, 0, 0.2);
+        }
+        .timeline-dot.dot-food {
+            background: #FF6F00;
+            box-shadow: 0 0 0 3px rgba(255, 111, 0, 0.2);
+        }
+        .timeline-dot.dot-snack {
+            background: #E91E63;
+            box-shadow: 0 0 0 3px rgba(233, 30, 99, 0.2);
+        }
+        .timeline-dot.dot-run {
+            background: var(--md-success);
+            box-shadow: 0 0 0 3px rgba(56, 142, 60, 0.2);
+        }
+        .timeline-dot.dot-bloodpressure {
+            background: #9C27B0;
+            box-shadow: 0 0 0 3px rgba(156, 39, 176, 0.2);
+        }
+        .timeline-item h5 {
+            font-size: 2rem;
+            font-weight: 400;
+        }
+        .timeline-item .badge {
+            font-size: 0.875rem;
+            padding: 6px 12px;
+        }
+        .timeline-item small {
+            font-size: 0.875rem;
+        }
         
-        /* Calendar Customization */
-        .fc-theme-standard td, .fc-theme-standard th { border-color: #f0f0f0; }
-        .fc-event { cursor: pointer; border: none !important; border-radius: 4px; margin-bottom: 2px; }
-        .fc-daygrid-day { cursor: pointer; transition: background-color 0.2s; }
-        .fc-daygrid-day:active { background-color: rgba(var(--bs-primary-rgb), 0.1); }
-        .fc-event-title { font-size: 0.8em; font-weight: 500; padding: 1px 2px; }
-        .fc-toolbar-title { font-size: 1.1rem !important; font-weight: bold; color: #333; }
-        .fc-button-primary { background-color: white !important; border-color: #dee2e6 !important; color: #333 !important; box-shadow: none !important; }
-        .fc-button-active { background-color: #e9ecef !important; border-color: #dee2e6 !important; color: #000 !important; }
-        .fc .fc-daygrid-day-top { flex-direction: row; } 
+        /* Calendar Customization - Minimalist & Elegant */
+        .fc {
+            border: none !important;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        }
+        .fc-theme-standard td, .fc-theme-standard th {
+            border-color: #f0f3f5;
+        }
+        .fc-col-header-cell {
+            background-color: #fafbfc;
+            border: none !important;
+            padding: 12px 0;
+        }
+        .fc-col-header-cell-cushion {
+            color: #6c757d;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .fc-daygrid-day {
+            cursor: pointer;
+            transition: all 0.2s ease;
+            background-color: #fff;
+        }
+        .fc-daygrid-day:hover {
+            background-color: #f8f9fa;
+        }
+        .fc-daygrid-day.fc-day-today {
+            background-color: rgba(13, 110, 253, 0.08) !important;
+        }
+        .fc-daygrid-day-number {
+            color: #495057;
+            font-size: 0.9rem;
+            font-weight: 500;
+            padding: 6px;
+        }
+        /* Today's date styling - subtle highlight only */
+        .fc-day-today .fc-daygrid-day-number {
+            font-weight: 700 !important;
+            color: #0d6efd !important;
+        }
+        .fc-event {
+            cursor: pointer;
+            border: none !important;
+            border-radius: 8px;
+            margin-bottom: 4px;
+            padding: 4px 8px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.12);
+            transition: all 0.2s;
+            line-height: 1.4;
+        }
+        .fc-event:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 2px 6px rgba(0,0,0,0.16);
+        }
+        .fc-event-title {
+            font-weight: 600;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        /* Summary event chips - 更大更清晰 */
+        .summary-event {
+            font-size: 0.85rem !important;
+            padding: 5px 10px !important;
+            border-radius: 12px !important;
+            font-weight: 600 !important;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
+        }
+        .fc-toolbar-title {
+            font-size: 1.25rem !important;
+            font-weight: 700;
+            color: #212529;
+            letter-spacing: -0.5px;
+        }
+        .fc-button-primary {
+            background-color: white !important;
+            border: 1px solid #e9ecef !important;
+            color: #495057 !important;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.05) !important;
+            border-radius: 8px !important;
+            padding: 6px 12px !important;
+            font-weight: 500 !important;
+            transition: all 0.2s !important;
+        }
+        .fc-button-primary:hover {
+            background-color: #f8f9fa !important;
+            border-color: #dee2e6 !important;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.08) !important;
+        }
+        .fc-button-active {
+            background-color: #0d6efd !important;
+            border-color: #0d6efd !important;
+            color: white !important;
+            box-shadow: 0 2px 4px rgba(13, 110, 253, 0.3) !important;
+        }
+        .fc-button-active:hover {
+            background-color: #0b5ed7 !important;
+        }
+        .fc .fc-daygrid-day-top {
+            flex-direction: row;
+        }
+        .fc-timegrid-slot {
+            height: 3rem;
+        }
+        .fc-timegrid-slot-label {
+            font-size: 0.75rem;
+            color: #6c757d;
+        }
+
+        /* Hide summary events in Day view, hide detail events in Month/Week view */
+        .fc-timeGridDay-view .summary-event {
+            display: none !important;
+        }
+        .fc-dayGridMonth-view .detail-event,
+        .fc-dayGridWeek-view .detail-event {
+            display: none !important;
+        }
+
+        /* Day view event styling */
+        .fc-timegrid-event {
+            border-radius: 4px;
+            padding: 2px 4px;
+            font-size: 0.75rem;
+            line-height: 1.3;
+        }
+
+        /* Hide calendar content in Day view when using timeline, but keep toolbar visible */
+        .timeline-day-view #calendar .fc-view-harness {
+            display: none;
+        }
+
+        /* Ensure toolbar is always visible */
+        .timeline-day-view #calendar .fc-header-toolbar {
+            display: flex !important;
+            margin-bottom: 1rem;
+        } 
 
         /* FAB & Offcanvas */
-        .btn-fab { 
-            transition: transform 0.2s; 
+        .btn-fab {
+            transition: transform 0.2s;
             background: linear-gradient(135deg, #0d6efd, #0a58ca);
             border: none;
         }
         .btn-fab:active { transform: scale(0.95); }
         .offcanvas-bottom { border-top-left-radius: 1.5rem; border-top-right-radius: 1.5rem; box-shadow: 0 -4px 20px rgba(0,0,0,0.1); }
+
+        /* Logo Design */
+        .app-logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .logo-icon {
+            width: 48px;
+            height: 48px;
+            background: linear-gradient(135deg, #ffc107, #ff9800);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            box-shadow: 0 4px 12px rgba(255, 193, 7, 0.3);
+            position: relative;
+            overflow: hidden;
+        }
+        .logo-icon::before {
+            content: '';
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, transparent 30%, rgba(255,255,255,0.3) 50%, transparent 70%);
+            animation: shimmer 3s infinite;
+        }
+        @keyframes shimmer {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(100%); }
+        }
+        .logo-text h4 {
+            margin: 0;
+            line-height: 1.2;
+            font-weight: 700;
+            background: linear-gradient(135deg, #0d6efd, #0a58ca);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .logo-text .slogan-zh {
+            font-size: 0.7rem;
+            color: #6c757d;
+            font-weight: 500;
+            margin: 0;
+            line-height: 1;
+        }
+        .logo-text .slogan-en {
+            font-size: 0.6rem;
+            color: #adb5bd;
+            font-weight: 400;
+            margin: 0;
+            line-height: 1;
+            font-style: italic;
+            letter-spacing: 0.5px;
+        }
         
         /* Nav Pills Segmented Control */
         .nav-pills .nav-link { color: #6c757d; font-weight: 500; transition: all 0.2s; }
@@ -114,161 +498,587 @@
 <body class="bg-light">
 
 <div class="container py-4">
-    <!-- User Info Bar -->
-    <div class="d-flex justify-content-between align-items-center mb-3 bg-white p-2 rounded shadow-sm border">
-        <div class="d-flex align-items-center">
-            <div class="position-relative me-3" style="cursor: pointer;" onclick="openAvatarModal()" title="点击更换头像">
+    <!-- Top Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div class="app-logo">
+            <div class="logo-icon">
+                🐝
+            </div>
+            <div class="logo-text">
+                <h4>蜜蜂控糖</h4>
+                <p class="slogan-zh">勤劳控糖，甜蜜生活</p>
+                <p class="slogan-en">Manage Diligently, Live Sweetly</p>
+            </div>
+        </div>
+        <!-- User Profile Dropdown -->
+        <div class="dropdown">
+            <button class="btn btn-sm btn-light border d-flex align-items-center gap-2" type="button" data-bs-toggle="dropdown">
                 {% if stats.user.avatar %}
-                <img src="/static/avatars/{{ stats.user.avatar }}" class="rounded-circle" style="width: 50px; height: 50px; object-fit: cover;">
+                <img src="/static/avatars/{{ stats.user.avatar }}" class="rounded-circle" style="width: 32px; height: 32px; object-fit: cover;">
                 {% else %}
-                <div class="bg-primary bg-opacity-10 p-2 rounded-circle d-flex align-items-center justify-content-center" style="width: 50px; height: 50px;">
-                    <i class="bi bi-person-circle text-primary fs-4"></i>
+                <div class="bg-primary bg-opacity-10 rounded-circle d-flex align-items-center justify-content-center" style="width: 32px; height: 32px;">
+                    <i class="bi bi-person-circle text-primary"></i>
                 </div>
                 {% endif %}
-                <span class="position-absolute bottom-0 end-0 bg-white rounded-circle p-1 border shadow-sm" style="width: 18px; height: 18px; display: flex; align-items: center; justify-content: center;">
-                   <i class="bi bi-camera-fill text-muted" style="font-size: 10px;"></i>
-                </span>
-            </div>
-            <div>
-                <h6 class="mb-0 fw-bold">{{ stats.user.name }} <small class="text-muted fw-normal">({{ stats.user.gender == 'male' and '男' or '女' }}, {{ 2025 - stats.user.birth_year }}岁)</small></h6>
-                <small class="text-muted">身高: {{ stats.user.height }}cm | 体重: {{ stats.user.weight }}kg</small>
-            </div>
-        </div>
-        <div class="d-flex gap-2">
-            <button class="btn btn-sm btn-outline-success" data-bs-toggle="modal" data-bs-target="#medicationPlanModal">
-                <i class="bi bi-capsule"></i> 药物管理
+                <span>{{ stats.user.name }}</span>
+                <i class="bi bi-chevron-down small"></i>
             </button>
-            <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#userSettingsModal">
-                <i class="bi bi-gear"></i> 设置
-            </button>
+            <ul class="dropdown-menu dropdown-menu-end shadow">
+                <li class="px-3 py-2 border-bottom">
+                    <div class="small text-muted mb-1">个人信息</div>
+                    <div class="fw-bold">{{ stats.user.name }}</div>
+                    <div class="small text-muted">{{ stats.user.gender == 'male' and '男' or '女' }} · {{ 2025 - stats.user.birth_year }}岁</div>
+                    <div class="small mt-1">身高 {{ stats.user.height }}cm · 体重 {{ stats.user.weight }}kg</div>
+                </li>
+                <li><hr class="dropdown-divider"></li>
+                <li>
+                    <a class="dropdown-item" href="#" onclick="openAvatarModal()" data-bs-dismiss="dropdown">
+                        <i class="bi bi-camera me-2"></i>更换头像
+                    </a>
+                </li>
+                <li>
+                    <a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#userSettingsModal">
+                        <i class="bi bi-gear me-2"></i>个人设置
+                    </a>
+                </li>
+                <li>
+                    <a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#medicationPlanModal">
+                        <i class="bi bi-capsule me-2"></i>药物管理
+                    </a>
+                </li>
+            </ul>
         </div>
     </div>
 
-    <!-- Stats Dashboard -->
-    <div class="row g-3 mb-4">
-        <div class="col-md-3 col-6">
-            <div class="card border-0 shadow-sm">
-                <div class="card-body text-center">
-                    <div class="text-muted small mb-1">平均血糖</div>
-                    <h3 class="mb-0 fw-bold {% if stats.avg_glucose > 7.0 %}text-danger{% elif stats.avg_glucose > 6.1 %}text-warning{% else %}text-primary{% endif %}">
-                        {{ "%.1f"|format(stats.avg_glucose) }}
-                    </h3>
-                    <small class="text-muted">mmol/L</small>
-                    {% if stats.avg_glucose > 7.0 %}
-                    <div class="mt-2"><span class="badge bg-danger">偏高</span></div>
-                    {% elif stats.avg_glucose > 6.1 %}
-                    <div class="mt-2"><span class="badge bg-warning text-dark">警戒</span></div>
+    <!-- ChatGPT-Style Input Area -->
+    <div class="card mb-4 shadow-sm">
+        <div class="card-body p-4">
+            <!-- Input Container -->
+            <div class="chat-input-container">
+                <!-- Image Preview Area -->
+                <div id="imagePreviewContainer" class="mb-3 d-none">
+                    <div class="position-relative d-inline-block">
+                        <img id="selectedImage" src="#" class="img-thumbnail rounded-3" style="max-height: 120px;">
+                        <button type="button" class="btn-close position-absolute top-0 end-0 bg-white m-1 shadow-sm" onclick="clearImage()"></button>
+                    </div>
+                </div>
+
+                <!-- Main Input Bar -->
+                <div class="d-flex align-items-end gap-2 position-relative">
+                    <!-- Text Input -->
+                    <div class="flex-grow-1 position-relative">
+                        <textarea class="form-control" id="aiInput" rows="1"
+                                  placeholder="输入健康数据或上传图片，如：今天空腹6.5、跑步5公里..."
+                                  style="resize: none; border-radius: 24px; padding: 12px 20px; font-size: 1rem; min-height: 48px; max-height: 150px; overflow-y: auto;"
+                                  oninput="autoResizeTextarea(this)"></textarea>
+                    </div>
+
+                    <!-- Action Buttons -->
+                    <div class="d-flex gap-2">
+                        <!-- Image Upload Button -->
+                        <label class="btn btn-light rounded-circle d-flex align-items-center justify-content-center"
+                               for="imageUpload"
+                               title="上传图片"
+                               style="width: 48px; height: 48px; cursor: pointer;">
+                            <i class="bi bi-image text-primary" style="font-size: 1.2rem;"></i>
+                            <input type="file" id="imageUpload" accept="image/*" class="d-none" onchange="previewImage(this)">
+                        </label>
+
+                        <!-- Voice Input Button -->
+                        <button class="btn btn-light rounded-circle d-flex align-items-center justify-content-center"
+                                type="button"
+                                id="speechBtn"
+                                title="语音输入"
+                                style="width: 48px; height: 48px;">
+                            <i class="bi bi-mic-fill text-success" style="font-size: 1.2rem;"></i>
+                        </button>
+
+                        <!-- Manual Input Toggle Button -->
+                        <button class="btn btn-light rounded-circle d-flex align-items-center justify-content-center"
+                                type="button"
+                                onclick="toggleManualInput()"
+                                title="手动录入"
+                                style="width: 48px; height: 48px;">
+                            <i class="bi bi-pencil-square text-warning" style="font-size: 1.2rem;"></i>
+                        </button>
+
+                        <!-- Submit/Analyze Button -->
+                        <button class="btn btn-primary rounded-circle d-flex align-items-center justify-content-center"
+                                onclick="analyzeText()"
+                                id="analyzeBtn"
+                                title="识别并添加"
+                                style="width: 48px; height: 48px;">
+                            <i class="bi bi-send-fill" id="btnIcon" style="font-size: 1.2rem;"></i>
+                            <div class="spinner-border spinner-border-sm d-none" id="btnSpinner" role="status" style="width: 1.2rem; height: 1.2rem;"></div>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- AI Preview Area -->
+                <div id="aiPreview" class="mt-4 d-none">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="text-muted mb-0"><i class="bi bi-robot me-2"></i>识别结果</h5>
+                        <small class="text-muted">请确认后保存</small>
+                    </div>
+                    <div id="previewList" class="list-group mb-3"></div>
+                    <div class="d-flex gap-3">
+                        <button class="btn btn-success flex-grow-1 rounded-pill" onclick="confirmBatchAdd()">
+                            <i class="bi bi-check-circle me-2"></i>确认保存
+                        </button>
+                        <button class="btn btn-outline-secondary rounded-pill px-4" onclick="cancelPreview()">
+                            <i class="bi bi-x-circle me-2"></i>取消
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Manual Input Panel (Collapsible) -->
+                <div id="manualInputPanel" class="mt-4 d-none">
+                    <div class="card border-0 bg-light">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-center mb-3">
+                                <h5 class="mb-0"><i class="bi bi-pencil-square me-2"></i>手动录入</h5>
+                                <button type="button" class="btn-close" onclick="toggleManualInput()"></button>
+                            </div>
+
+                            <ul class="nav nav-pills nav-fill mb-3 bg-white rounded-pill p-2" id="inputTab" role="tablist" style="gap: 4px;">
+                                <li class="nav-item" role="presentation">
+                                    <button class="nav-link active rounded-pill small" id="ai-tab" data-bs-toggle="pill" data-bs-target="#ai-content" type="button" role="tab">
+                                        智能识别
+                                    </button>
+                                </li>
+                                <li class="nav-item" role="presentation">
+                                    <button class="nav-link rounded-pill small" id="manual-tab" data-bs-toggle="pill" data-bs-target="#manual" type="button" role="tab">
+                                        手动录入
+                                    </button>
+                                </li>
+                            </ul>
+
+                            <div class="tab-content" id="inputTabContent">
+                                <div class="tab-pane fade show active" id="ai-content" role="tabpanel">
+                                    <p class="text-muted small mb-0">请使用上方输入框进行智能识别</p>
+                                </div>
+
+                                <div class="tab-pane fade" id="manual" role="tabpanel">
+                                    <form id="manualInputForm" class="row g-3">
+                                        <!-- 记录类型选择 -->
+                                        <div class="col-12">
+                                            <label class="form-label fw-bold">记录类型</label>
+                                            <select id="recordType" class="form-select rounded-3" onchange="toggleRecordFields()">
+                                                <option value="glucose">血糖测量</option>
+                                                <option value="bloodpressure">血压测量</option>
+                                                <option value="meal">餐食记录</option>
+                                                <option value="exercise">运动记录</option>
+                                                <option value="medication">药物方案</option>
+                                            </select>
+                                        </div>
+
+                                        <!-- 血糖字段 -->
+                                        <div id="glucoseFields" class="col-12">
+                                            <div class="row g-3">
+                                                <div class="col-md-4">
+                                                    <label class="form-label">血糖值 <span class="text-danger">*</span></label>
+                                                    <input type="number" step="0.1" id="glucose_value" class="form-control rounded-3">
+                                                </div>
+                                                <div class="col-md-4">
+                                                    <label class="form-label">单位</label>
+                                                    <select id="glucose_unit" class="form-select rounded-3">
+                                                        <option value="mmol/L">mmol/L</option>
+                                                        <option value="mg/dL">mg/dL</option>
+                                                    </select>
+                                                </div>
+                                                <div class="col-md-4">
+                                                    <label class="form-label">测量类型</label>
+                                                    <input type="text" id="glucose_type" class="form-control rounded-3" list="glucoseTypeOptions" placeholder="如：空腹">
+                                                    <datalist id="glucoseTypeOptions">
+                                                        <option value="空腹">
+                                                        <option value="餐前">
+                                                        <option value="运动后餐前">
+                                                        <option value="餐后1小时">
+                                                        <option value="餐后2小时">
+                                                        <option value="睡前">
+                                                        <option value="运动后">
+                                                    </datalist>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <!-- 血压字段 -->
+                                        <div id="bloodPressureFields" class="col-12 d-none">
+                                            <div class="row g-3">
+                                                <div class="col-md-4">
+                                                    <label class="form-label">收缩压/高压 <span class="text-danger">*</span></label>
+                                                    <input type="number" id="bp_systolic" class="form-control rounded-3" placeholder="如：137">
+                                                </div>
+                                                <div class="col-md-4">
+                                                    <label class="form-label">舒张压/低压 <span class="text-danger">*</span></label>
+                                                    <input type="number" id="bp_diastolic" class="form-control rounded-3" placeholder="如：73">
+                                                </div>
+                                                <div class="col-md-4">
+                                                    <label class="form-label">脉搏 (bpm)</label>
+                                                    <input type="number" id="bp_pulse" class="form-control rounded-3" placeholder="可选">
+                                                </div>
+                                                <div class="col-12">
+                                                    <label class="form-label">测量类型</label>
+                                                    <input type="text" id="bp_type" class="form-control rounded-3" list="bpTypeOptions" placeholder="如：空腹血压">
+                                                    <datalist id="bpTypeOptions">
+                                                        <option value="空腹血压">
+                                                        <option value="血压测量">
+                                                        <option value="餐后血压">
+                                                    </datalist>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <!-- 餐食字段 -->
+                                        <div id="mealFields" class="col-12 d-none">
+                                            <div class="row g-3">
+                                                <div class="col-md-6">
+                                                    <label class="form-label">餐食类型 <span class="text-danger">*</span></label>
+                                                    <select id="meal_type" class="form-select rounded-3">
+                                                        <option value="早餐">早餐</option>
+                                                        <option value="午餐">午餐</option>
+                                                        <option value="晚餐">晚餐</option>
+                                                        <option value="加餐">加餐/零食</option>
+                                                    </select>
+                                                </div>
+                                                <div class="col-md-6">
+                                                    <label class="form-label">热量 (kcal)</label>
+                                                    <input type="number" id="meal_calories" class="form-control rounded-3" placeholder="估算值">
+                                                </div>
+                                                <div class="col-12">
+                                                    <label class="form-label">食物内容 <span class="text-danger">*</span></label>
+                                                    <textarea id="meal_notes" class="form-control rounded-3" rows="2" placeholder="例如：一碗米饭、西兰花、鸡胸肉"></textarea>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <!-- 运动字段 -->
+                                        <div id="exerciseFields" class="col-12 d-none">
+                                            <div class="row g-3">
+                                                <div class="col-md-6">
+                                                    <label class="form-label">运动类型</label>
+                                                    <input type="text" id="exercise_type" class="form-control rounded-3" value="跑步" list="exerciseTypeOptions">
+                                                    <datalist id="exerciseTypeOptions">
+                                                        <option value="跑步">
+                                                        <option value="快走">
+                                                        <option value="游泳">
+                                                        <option value="骑车">
+                                                        <option value="运动">
+                                                    </datalist>
+                                                </div>
+                                                <div class="col-md-6">
+                                                    <label class="form-label">距离 (km)</label>
+                                                    <input type="number" step="0.1" id="exercise_distance" class="form-control rounded-3">
+                                                </div>
+                                                <div class="col-md-4">
+                                                    <label class="form-label">时长</label>
+                                                    <input type="text" id="exercise_duration" class="form-control rounded-3" placeholder="如：30分钟">
+                                                </div>
+                                                <div class="col-md-4">
+                                                    <label class="form-label">心率 (bpm)</label>
+                                                    <input type="number" id="exercise_heart_rate" class="form-control rounded-3">
+                                                </div>
+                                                <div class="col-md-4">
+                                                    <label class="form-label">消耗 (kcal)</label>
+                                                    <input type="number" id="exercise_calories" class="form-control rounded-3">
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <!-- 药物方案字段 -->
+                                        <div id="medicationFields" class="col-12 d-none">
+                                            <div class="row g-3">
+                                                <div class="col-md-6">
+                                                    <label class="form-label">药物名称 <span class="text-danger">*</span></label>
+                                                    <input type="text" id="med_name_manual" class="form-control rounded-3" list="medOptions2" placeholder="如：二甲双胍">
+                                                    <datalist id="medOptions2">
+                                                        <option value="二甲双胍">
+                                                        <option value="阿卡波糖">
+                                                        <option value="格列齐特">
+                                                        <option value="门冬胰岛素">
+                                                        <option value="甘精胰岛素">
+                                                        <option value="西格列汀">
+                                                    </datalist>
+                                                </div>
+                                                <div class="col-md-6">
+                                                    <label class="form-label">剂量</label>
+                                                    <input type="text" id="med_dosage_manual" class="form-control rounded-3" placeholder="如：500mg">
+                                                </div>
+                                                <div class="col-md-6">
+                                                    <label class="form-label">每天次数 <span class="text-danger">*</span></label>
+                                                    <input type="number" id="med_times_manual" class="form-control rounded-3" value="1" min="1" max="10">
+                                                </div>
+                                                <div class="col-md-6">
+                                                    <label class="form-label">服用时机</label>
+                                                    <input type="text" id="med_timing_manual" class="form-control rounded-3" placeholder="如：早晚餐前30分钟">
+                                                </div>
+                                                <div class="col-md-6">
+                                                    <label class="form-label">开始日期 <span class="text-danger">*</span></label>
+                                                    <input type="date" id="med_start_manual" class="form-control rounded-3">
+                                                </div>
+                                                <div class="col-md-6">
+                                                    <label class="form-label">结束日期 <small>(可选)</small></label>
+                                                    <input type="date" id="med_end_manual" class="form-control rounded-3">
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <!-- 通用字段 -->
+                                        <div class="col-md-6">
+                                            <label class="form-label">时间 <span class="text-danger">*</span></label>
+                                            <input type="datetime-local" id="manual_timestamp" class="form-control rounded-3" required>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label class="form-label">备注</label>
+                                            <input type="text" id="manual_notes" class="form-control rounded-3" placeholder="其他说明...">
+                                        </div>
+
+                                        <div class="col-12 mt-4">
+                                            <button type="submit" class="btn btn-primary w-100 rounded-pill">
+                                                <i class="bi bi-check-circle me-2"></i>保存记录
+                                            </button>
+                                        </div>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Stats Dashboard - 4 Sections in One Row -->
+    <div class="row g-4 mb-4">
+        <!-- 1. 血糖板块 -->
+        <div class="col-xl-3 col-lg-6 col-12">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h6 class="mb-3 text-primary fw-bold"><i class="bi bi-droplet-fill me-2"></i>血糖监测（近7天）</h6>
+                    <div class="row g-2">
+                        <div class="col-6">
+                            <div class="text-center p-2 bg-light rounded">
+                                <small class="text-muted d-block">平均早空腹</small>
+                                <div class="fs-5 fw-bold text-warning">
+                                    {{ "%.1f"|format(stats.avg_fasting_7d) if stats.avg_fasting_7d > 0 else '-' }}
+                                </div>
+                                <small class="text-muted">mmol/L</small>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="text-center p-2 bg-light rounded">
+                                <small class="text-muted d-block">平均餐后2h</small>
+                                <div class="fs-5 fw-bold text-primary">
+                                    {{ "%.1f"|format(stats.avg_post2h_7d) if stats.avg_post2h_7d > 0 else '-' }}
+                                </div>
+                                <small class="text-muted">mmol/L</small>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="text-center p-2 bg-light rounded">
+                                <small class="text-muted d-block">最高血糖</small>
+                                <div class="fs-6 fw-bold text-danger">
+                                    {{ "%.1f"|format(stats.max_glucose_7d) if stats.max_glucose_7d > 0 else '-' }}
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="text-center p-2 bg-light rounded">
+                                <small class="text-muted d-block">最低血糖</small>
+                                <div class="fs-6 fw-bold text-success">
+                                    {{ "%.1f"|format(stats.min_glucose_7d) if stats.min_glucose_7d > 0 else '-' }}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 2. 运动板块 -->
+        <div class="col-xl-3 col-lg-6 col-12">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h6 class="mb-3 text-success fw-bold"><i class="bi bi-activity me-2"></i>运动记录（近7天）</h6>
+                    <div class="row g-2">
+                        <div class="col-12">
+                            <div class="text-center p-2 bg-light rounded">
+                                <small class="text-muted d-block">跑步总里程</small>
+                                <div class="fs-4 fw-bold text-success">
+                                    {{ "%.1f"|format(stats.total_distance_7d) if stats.total_distance_7d > 0 else '0' }}
+                                </div>
+                                <small class="text-muted">公里</small>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="text-center p-2 bg-light rounded">
+                                <small class="text-muted d-block">消耗</small>
+                                <div class="fs-6 fw-bold" style="color: #FF7043;">
+                                    {{ stats.total_exercise_cal_7d if stats.total_exercise_cal_7d > 0 else '0' }}
+                                </div>
+                                <small class="text-muted">kcal</small>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="text-center p-2 bg-light rounded">
+                                <small class="text-muted d-block">心率</small>
+                                <div class="fs-6 fw-bold" style="color: #EC407A;">
+                                    {{ stats.avg_heart_rate_7d if stats.avg_heart_rate_7d > 0 else '-' }}
+                                </div>
+                                <small class="text-muted">bpm</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 3. 血压板块 -->
+        <div class="col-xl-3 col-lg-6 col-12">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h6 class="mb-3 fw-bold" style="color: #9C27B0;"><i class="bi bi-heart-pulse-fill me-2"></i>血压监测（近7天）</h6>
+                    <div class="row g-2">
+                        <div class="col-12">
+                            <div class="text-center p-2 bg-light rounded">
+                                <small class="text-muted d-block">平均血压</small>
+                                <div class="fs-4 fw-bold" style="color: #9C27B0;">
+                                    {% if stats.avg_systolic_7d > 0 %}
+                                    {{ stats.avg_systolic_7d }}/{{ stats.avg_diastolic_7d }}
+                                    {% else %}
+                                    -/-
+                                    {% endif %}
+                                </div>
+                                <small class="text-muted">mmHg</small>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="text-center p-2 bg-light rounded">
+                                <small class="text-muted d-block">最高</small>
+                                <div class="fs-6 fw-bold" style="color: #E91E63;">
+                                    {% if stats.bp_max_sys > 0 %}{{ stats.bp_max_sys }}/{{ stats.bp_max_dia }}{% else %}-/-{% endif %}
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="text-center p-2 bg-light rounded">
+                                <small class="text-muted d-block">最低</small>
+                                <div class="fs-6 fw-bold" style="color: #7CB342;">
+                                    {% if stats.bp_min_sys > 0 %}{{ stats.bp_min_sys }}/{{ stats.bp_min_dia }}{% else %}-/-{% endif %}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 4. 用药板块 -->
+        <div class="col-xl-3 col-lg-6 col-12">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h6 class="mb-3 fw-bold" style="color: #5E35B1;"><i class="bi bi-capsule me-2"></i>当前用药</h6>
+                    {% if stats.active_medications and stats.active_medications|length > 0 %}
+                    <div class="d-flex flex-column gap-2">
+                        {% for med in stats.active_medications %}
+                        <div class="p-2 bg-light rounded">
+                            <div class="d-flex align-items-center gap-2">
+                                <i class="bi bi-capsule-pill text-success"></i>
+                                <div class="flex-grow-1">
+                                    <div class="fw-bold small">{{ med.name }}</div>
+                                    <small class="text-muted">
+                                        {% if med.dosage %}{{ med.dosage }}·{% endif %}{{ med.times }}次/天
+                                    </small>
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
                     {% else %}
-                    <div class="mt-2"><span class="badge bg-success">正常</span></div>
+                    <div class="text-center text-muted py-4">
+                        <i class="bi bi-info-circle d-block fs-2 mb-2"></i>
+                        <small>暂无用药</small>
+                    </div>
                     {% endif %}
-                </div>
-            </div>
-        </div>
-        <div class="col-md-3 col-6">
-            <div class="card border-0 shadow-sm">
-                <div class="card-body text-center">
-                    <div class="text-muted small mb-1">最低血糖</div>
-                    <h3 class="mb-0 fw-bold {% if stats.min_glucose < 3.9 %}text-danger{% else %}text-success{% endif %}">
-                        {{ "%.1f"|format(stats.min_glucose) }}
-                    </h3>
-                    <small class="text-muted">mmol/L</small>
-                    {% if stats.min_glucose < 3.9 %}
-                    <div class="mt-2"><span class="badge bg-danger">过低⚠️</span></div>
-                    {% endif %}
-                </div>
-            </div>
-        </div>
-        <div class="col-md-3 col-6">
-            <div class="card border-0 shadow-sm">
-                <div class="card-body text-center">
-                    <div class="text-muted small mb-1">最高血糖</div>
-                    <h3 class="mb-0 fw-bold {% if stats.max_glucose > 10.0 %}text-danger{% elif stats.max_glucose > 7.8 %}text-warning{% else %}text-success{% endif %}">
-                        {{ "%.1f"|format(stats.max_glucose) }}
-                    </h3>
-                    <small class="text-muted">mmol/L</small>
-                    {% if stats.max_glucose > 10.0 %}
-                    <div class="mt-2"><span class="badge bg-danger">危险⚠️</span></div>
-                    {% elif stats.max_glucose > 7.8 %}
-                    <div class="mt-2"><span class="badge bg-warning text-dark">警戒</span></div>
-                    {% endif %}
-                </div>
-            </div>
-        </div>
-        <div class="col-md-3 col-6">
-            <div class="card border-0 shadow-sm">
-                <div class="card-body text-center">
-                    <div class="text-muted small mb-1">记录总数</div>
-                    <h3 class="mb-0 fw-bold text-info">{{ stats.total_count }}</h3>
-                    <small class="text-muted">条</small>
-                    <div class="mt-2"><span class="badge bg-info text-dark">已记录</span></div>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Chart Section -->
-    <div class="card shadow-sm border-0 rounded-4 mb-4">
-        <div class="card-header bg-white border-0 rounded-top-4">
-            <h5 class="mb-0 fw-bold"><i class="bi bi-graph-up text-primary me-2"></i>血糖趋势</h5>
-        </div>
+    <!-- Chart Section - Material Design -->
+    <div class="card mb-4">
         <div class="card-body">
+            <div class="d-flex justify-content-between align-items-start mb-3">
+                <h3 class="mb-0"><i class="bi bi-graph-up me-2" style="color: var(--md-primary);"></i>血糖趋势</h3>
+                <!-- 血糖状态图例 -->
+                <div class="d-flex gap-3 align-items-center small">
+                    <div class="d-flex align-items-center gap-1">
+                        <span style="display: inline-block; width: 12px; height: 12px; border-radius: 50%; background: #dc3545; border: 2px solid #fff; box-shadow: 0 0 0 1px #dc3545;"></span>
+                        <span class="text-muted">超标（红点标记）</span>
+                    </div>
+                    <div class="d-flex align-items-center gap-1 text-muted small">
+                        <i class="bi bi-info-circle me-1"></i>
+                        <span>正常和警戒数据不显示圆点</span>
+                    </div>
+                </div>
+            </div>
             <canvas id="glucoseChart" height="80"></canvas>
         </div>
     </div>
 
-    <!-- Calendar View -->
-    <div class="card shadow-sm border-0 rounded-4">
-        <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center rounded-top-4">
-            <h5 class="mb-0 fw-bold"><i class="bi bi-calendar3 text-primary me-2"></i>每日复盘</h5>
-            <div class="d-flex gap-2 align-items-center">
-                <div class="btn-group btn-group-sm">
-                    <label class="btn btn-outline-success mb-0 rounded-pill" for="csvImport" title="导入 CSV">
-                        <i class="bi bi-upload"></i>
+    <!-- Calendar View - Material Design -->
+    <div class="card">
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h3 class="mb-0"><i class="bi bi-calendar3 me-2" style="color: var(--md-primary);"></i>每日复盘</h3>
+                <div class="d-flex gap-2 align-items-center">
+                    <label class="btn btn-primary" for="csvImport" title="导入 CSV" style="min-height: 40px; padding: 8px 20px;">
+                        <i class="bi bi-upload me-1"></i>导入
                         <input type="file" id="csvImport" accept=".csv" class="d-none" onchange="importCSV(this)">
                     </label>
-                    <a href="/export" class="btn btn-outline-primary rounded-pill ms-1" title="导出 CSV"><i class="bi bi-download"></i></a>
+                    <a href="/export" class="btn btn-primary" title="导出 CSV" style="min-height: 40px; padding: 8px 20px;">
+                        <i class="bi bi-download me-1"></i>导出
+                    </a>
                 </div>
             </div>
-        </div>
-        <div class="card-body p-2">
             <div id="calendar"></div>
         </div>
     </div>
 </div>
 
-<!-- Floating Action Button (FAB) -->
-<button class="btn btn-primary rounded-circle shadow-lg position-fixed d-flex align-items-center justify-content-center" 
-        style="bottom: 30px; right: 30px; width: 60px; height: 60px; z-index: 1050;" 
+<!-- Floating Action Button (FAB) - Hidden (使用新的ChatGPT风格输入框) -->
+<button class="btn btn-primary rounded-circle shadow-lg position-fixed d-none align-items-center justify-content-center"
+        style="bottom: 30px; right: 30px; width: 64px; height: 64px; z-index: 1050; font-size: 1.5rem;"
         type="button" data-bs-toggle="offcanvas" data-bs-target="#inputOffcanvas">
-    <i class="bi bi-plus-lg fs-2"></i>
+    <i class="bi bi-plus-lg"></i>
 </button>
 
-<!-- Input Offcanvas (Bottom Sheet) -->
+<!-- Input Offcanvas (Bottom Sheet) - Material Design -->
 <div class="offcanvas offcanvas-bottom rounded-top-4 h-auto" tabindex="-1" id="inputOffcanvas" style="max-height: 90vh;">
     <div class="offcanvas-header pb-0">
-        <h5 class="offcanvas-title fw-bold">记录健康</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="offcanvas"></button>
+        <h3 class="offcanvas-title">记录健康</h3>
+        <button type="button" class="btn-close" data-bs-dismiss="offcanvas" style="font-size: 1.25rem;"></button>
     </div>
     <div class="offcanvas-body">
-        <ul class="nav nav-pills nav-fill mb-3 bg-light rounded-pill p-1" id="inputTab" role="tablist">
+        <ul class="nav nav-pills nav-fill mb-4 bg-light rounded-pill p-2" id="inputTab" role="tablist" style="gap: 8px;">
             <li class="nav-item" role="presentation">
-                <button class="nav-link active rounded-pill" id="ai-tab" data-bs-toggle="pill" data-bs-target="#ai" type="button" role="tab">
-                    <i class="bi bi-stars me-1"></i> 智能识别
+                <button class="nav-link active rounded-pill" id="ai-tab" data-bs-toggle="pill" data-bs-target="#ai" type="button" role="tab" style="font-size: 1.1rem; padding: 12px 20px;">
+                    <i class="bi bi-stars me-2"></i>智能识别
                 </button>
             </li>
             <li class="nav-item" role="presentation">
-                <button class="nav-link rounded-pill" id="manual-tab" data-bs-toggle="pill" data-bs-target="#manual" type="button" role="tab">
-                    <i class="bi bi-pencil-square me-1"></i> 手动录入
+                <button class="nav-link rounded-pill" id="manual-tab" data-bs-toggle="pill" data-bs-target="#manual" type="button" role="tab" style="font-size: 1.1rem; padding: 12px 20px;">
+                    <i class="bi bi-pencil-square me-2"></i>手动录入
                 </button>
             </li>
         </ul>
         
         <div class="tab-content" id="inputTabContent">
-            <!-- AI Input -->
+            <!-- AI Input - Material Design -->
             <div class="tab-pane fade show active" id="ai" role="tabpanel">
                 <div class="mb-3">
-                    <textarea class="form-control rounded-4" id="aiInput" rows="3" placeholder="例如：今天空腹6.5... 或上传跑步截图"></textarea>
-                    <div class="d-flex gap-2 mt-2">
+                    <textarea class="form-control rounded-4" id="aiInput" rows="4" placeholder="例如：今天空腹6.5... 或上传跑步截图" style="font-size: 1.1rem; padding: 16px;"></textarea>
+                    <div class="d-flex gap-3 mt-3">
                         <button class="btn-circle-icon" type="button" id="speechBtn" title="语音输入">
                             <i class="bi bi-mic-fill"></i>
                         </button>
@@ -287,30 +1097,31 @@
                     </div>
                 </div>
 
-                <button class="btn btn-primary w-100 py-2 rounded-pill fw-bold" onclick="analyzeText()" id="analyzeBtn">
+                <button class="btn btn-primary w-100 rounded-pill" onclick="analyzeText()" id="analyzeBtn" style="font-size: 1.1rem; padding: 14px 24px;">
                     <span id="btnText">识别并添加</span>
-                    <div class="spinner-border spinner-border-sm d-none" id="btnSpinner" role="status"></div>
+                    <div class="spinner-border spinner-border-sm d-none ms-2" id="btnSpinner" role="status"></div>
                 </button>
                 
                 <!-- Preview Area -->
-                <div id="aiPreview" class="mt-3 d-none">
-                    <h6 class="text-muted small fw-bold">识别结果 (请确认):</h6>
+                <div id="aiPreview" class="mt-4 d-none">
+                    <h4 class="text-muted mb-3">识别结果 (请确认)</h4>
                     <div id="previewList" class="list-group mb-3"></div>
-                    <div class="d-flex gap-2">
-                        <button class="btn btn-success flex-grow-1 rounded-pill" onclick="confirmBatchAdd()">确认保存</button>
-                        <button class="btn btn-outline-secondary rounded-pill px-4" onclick="cancelPreview()">取消</button>
+                    <div class="d-flex gap-3">
+                        <button class="btn btn-success flex-grow-1 rounded-pill" onclick="confirmBatchAdd()" style="font-size: 1.1rem; padding: 14px 24px;">确认保存</button>
+                        <button class="btn btn-outline-secondary rounded-pill px-4" onclick="cancelPreview()" style="font-size: 1.1rem; padding: 14px 24px;">取消</button>
                     </div>
                 </div>
             </div>
 
-            <!-- Manual Input -->
+            <!-- Manual Input - Material Design -->
             <div class="tab-pane fade" id="manual" role="tabpanel">
                 <form id="manualInputForm" class="row g-3">
                     <!-- 记录类型选择 -->
                     <div class="col-12">
-                        <label class="form-label small text-muted fw-bold">记录类型</label>
-                        <select id="recordType" class="form-select rounded-3" onchange="toggleRecordFields()">
+                        <label class="form-label fw-bold" style="font-size: 1.1rem;">记录类型</label>
+                        <select id="recordType" class="form-select rounded-3" onchange="toggleRecordFields()" style="font-size: 1.1rem; padding: 12px;">
                             <option value="glucose">血糖测量</option>
+                            <option value="bloodpressure">血压测量</option>
                             <option value="meal">餐食记录</option>
                             <option value="exercise">运动记录</option>
                             <option value="medication">药物方案</option>
@@ -321,19 +1132,19 @@
                     <div id="glucoseFields" class="col-12">
                         <div class="row g-3">
                             <div class="col-md-4">
-                                <label class="form-label small text-muted">血糖值 <span class="text-danger">*</span></label>
-                                <input type="number" step="0.1" id="glucose_value" class="form-control rounded-3">
+                                <label class="form-label" style="font-size: 1rem;">血糖值 <span class="text-danger">*</span></label>
+                                <input type="number" step="0.1" id="glucose_value" class="form-control rounded-3" style="font-size: 1.1rem; padding: 12px;">
                             </div>
                             <div class="col-md-4">
-                                <label class="form-label small text-muted">单位</label>
-                                <select id="glucose_unit" class="form-select rounded-3">
+                                <label class="form-label" style="font-size: 1rem;">单位</label>
+                                <select id="glucose_unit" class="form-select rounded-3" style="font-size: 1.1rem; padding: 12px;">
                                     <option value="mmol/L">mmol/L</option>
                                     <option value="mg/dL">mg/dL</option>
                                 </select>
                             </div>
                             <div class="col-md-4">
-                                <label class="form-label small text-muted">测量类型</label>
-                                <input type="text" id="glucose_type" class="form-control rounded-3" list="glucoseTypeOptions" placeholder="如：空腹">
+                                <label class="form-label" style="font-size: 1rem;">测量类型</label>
+                                <input type="text" id="glucose_type" class="form-control rounded-3" list="glucoseTypeOptions" placeholder="如：空腹" style="font-size: 1.1rem; padding: 12px;">
                                 <datalist id="glucoseTypeOptions">
                                     <option value="空腹">
                                     <option value="餐前">
@@ -347,12 +1158,39 @@
                         </div>
                     </div>
 
+                    <!-- 血压字段 -->
+                    <div id="bloodPressureFields" class="col-12 d-none">
+                        <div class="row g-3">
+                            <div class="col-md-4">
+                                <label class="form-label" style="font-size: 1rem;">收缩压/高压 <span class="text-danger">*</span></label>
+                                <input type="number" id="bp_systolic" class="form-control rounded-3" placeholder="如：137" style="font-size: 1.1rem; padding: 12px;">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label" style="font-size: 1rem;">舒张压/低压 <span class="text-danger">*</span></label>
+                                <input type="number" id="bp_diastolic" class="form-control rounded-3" placeholder="如：73" style="font-size: 1.1rem; padding: 12px;">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label" style="font-size: 1rem;">脉搏 (bpm)</label>
+                                <input type="number" id="bp_pulse" class="form-control rounded-3" placeholder="可选" style="font-size: 1.1rem; padding: 12px;">
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label" style="font-size: 1rem;">测量类型</label>
+                                <input type="text" id="bp_type" class="form-control rounded-3" list="bpTypeOptions" placeholder="如：空腹血压" style="font-size: 1.1rem; padding: 12px;">
+                                <datalist id="bpTypeOptions">
+                                    <option value="空腹血压">
+                                    <option value="血压测量">
+                                    <option value="餐后血压">
+                                </datalist>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- 餐食字段 -->
                     <div id="mealFields" class="col-12 d-none">
                         <div class="row g-3">
                             <div class="col-md-6">
-                                <label class="form-label small text-muted">餐食类型 <span class="text-danger">*</span></label>
-                                <select id="meal_type" class="form-select rounded-3">
+                                <label class="form-label" style="font-size: 1rem;">餐食类型 <span class="text-danger">*</span></label>
+                                <select id="meal_type" class="form-select rounded-3" style="font-size: 1.1rem; padding: 12px;">
                                     <option value="早餐">早餐</option>
                                     <option value="午餐">午餐</option>
                                     <option value="晚餐">晚餐</option>
@@ -360,12 +1198,12 @@
                                 </select>
                             </div>
                             <div class="col-md-6">
-                                <label class="form-label small text-muted">热量 (kcal)</label>
-                                <input type="number" id="meal_calories" class="form-control rounded-3" placeholder="估算值">
+                                <label class="form-label" style="font-size: 1rem;">热量 (kcal)</label>
+                                <input type="number" id="meal_calories" class="form-control rounded-3" placeholder="估算值" style="font-size: 1.1rem; padding: 12px;">
                             </div>
                             <div class="col-12">
-                                <label class="form-label small text-muted">食物内容 <span class="text-danger">*</span></label>
-                                <textarea id="meal_notes" class="form-control rounded-3" rows="2" placeholder="例如：一碗米饭、西兰花、鸡胸肉"></textarea>
+                                <label class="form-label" style="font-size: 1rem;">食物内容 <span class="text-danger">*</span></label>
+                                <textarea id="meal_notes" class="form-control rounded-3" rows="2" placeholder="例如：一碗米饭、西兰花、鸡胸肉" style="font-size: 1.1rem; padding: 12px;"></textarea>
                             </div>
                         </div>
                     </div>
@@ -374,8 +1212,8 @@
                     <div id="exerciseFields" class="col-12 d-none">
                         <div class="row g-3">
                             <div class="col-md-6">
-                                <label class="form-label small text-muted">运动类型</label>
-                                <input type="text" id="exercise_type" class="form-control rounded-3" value="跑步" list="exerciseTypeOptions">
+                                <label class="form-label" style="font-size: 1rem;">运动类型</label>
+                                <input type="text" id="exercise_type" class="form-control rounded-3" value="跑步" list="exerciseTypeOptions" style="font-size: 1.1rem; padding: 12px;">
                                 <datalist id="exerciseTypeOptions">
                                     <option value="跑步">
                                     <option value="快走">
@@ -385,20 +1223,20 @@
                                 </datalist>
                             </div>
                             <div class="col-md-6">
-                                <label class="form-label small text-muted">距离 (km)</label>
-                                <input type="number" step="0.1" id="exercise_distance" class="form-control rounded-3">
+                                <label class="form-label" style="font-size: 1rem;">距离 (km)</label>
+                                <input type="number" step="0.1" id="exercise_distance" class="form-control rounded-3" style="font-size: 1.1rem; padding: 12px;">
                             </div>
                             <div class="col-md-4">
-                                <label class="form-label small text-muted">时长</label>
-                                <input type="text" id="exercise_duration" class="form-control rounded-3" placeholder="如：30分钟">
+                                <label class="form-label" style="font-size: 1rem;">时长</label>
+                                <input type="text" id="exercise_duration" class="form-control rounded-3" placeholder="如：30分钟" style="font-size: 1.1rem; padding: 12px;">
                             </div>
                             <div class="col-md-4">
-                                <label class="form-label small text-muted">心率 (bpm)</label>
-                                <input type="number" id="exercise_heart_rate" class="form-control rounded-3">
+                                <label class="form-label" style="font-size: 1rem;">心率 (bpm)</label>
+                                <input type="number" id="exercise_heart_rate" class="form-control rounded-3" style="font-size: 1.1rem; padding: 12px;">
                             </div>
                             <div class="col-md-4">
-                                <label class="form-label small text-muted">消耗 (kcal)</label>
-                                <input type="number" id="exercise_calories" class="form-control rounded-3">
+                                <label class="form-label" style="font-size: 1rem;">消耗 (kcal)</label>
+                                <input type="number" id="exercise_calories" class="form-control rounded-3" style="font-size: 1.1rem; padding: 12px;">
                             </div>
                         </div>
                     </div>
@@ -407,8 +1245,8 @@
                     <div id="medicationFields" class="col-12 d-none">
                         <div class="row g-3">
                             <div class="col-md-6">
-                                <label class="form-label small text-muted">药物名称 <span class="text-danger">*</span></label>
-                                <input type="text" id="med_name_manual" class="form-control rounded-3" list="medOptions2" placeholder="如：二甲双胍">
+                                <label class="form-label" style="font-size: 1rem;">药物名称 <span class="text-danger">*</span></label>
+                                <input type="text" id="med_name_manual" class="form-control rounded-3" list="medOptions2" placeholder="如：二甲双胍" style="font-size: 1.1rem; padding: 12px;">
                                 <datalist id="medOptions2">
                                     <option value="二甲双胍">
                                     <option value="阿卡波糖">
@@ -419,41 +1257,41 @@
                                 </datalist>
                             </div>
                             <div class="col-md-6">
-                                <label class="form-label small text-muted">剂量</label>
-                                <input type="text" id="med_dosage_manual" class="form-control rounded-3" placeholder="如：500mg">
+                                <label class="form-label" style="font-size: 1rem;">剂量</label>
+                                <input type="text" id="med_dosage_manual" class="form-control rounded-3" placeholder="如：500mg" style="font-size: 1.1rem; padding: 12px;">
                             </div>
                             <div class="col-md-6">
-                                <label class="form-label small text-muted">每天次数 <span class="text-danger">*</span></label>
-                                <input type="number" id="med_times_manual" class="form-control rounded-3" value="1" min="1" max="10">
+                                <label class="form-label" style="font-size: 1rem;">每天次数 <span class="text-danger">*</span></label>
+                                <input type="number" id="med_times_manual" class="form-control rounded-3" value="1" min="1" max="10" style="font-size: 1.1rem; padding: 12px;">
                             </div>
                             <div class="col-md-6">
-                                <label class="form-label small text-muted">服用时机</label>
-                                <input type="text" id="med_timing_manual" class="form-control rounded-3" placeholder="如：早晚餐前30分钟">
+                                <label class="form-label" style="font-size: 1rem;">服用时机</label>
+                                <input type="text" id="med_timing_manual" class="form-control rounded-3" placeholder="如：早晚餐前30分钟" style="font-size: 1.1rem; padding: 12px;">
                             </div>
                             <div class="col-md-6">
-                                <label class="form-label small text-muted">开始日期 <span class="text-danger">*</span></label>
-                                <input type="date" id="med_start_manual" class="form-control rounded-3">
+                                <label class="form-label" style="font-size: 1rem;">开始日期 <span class="text-danger">*</span></label>
+                                <input type="date" id="med_start_manual" class="form-control rounded-3" style="font-size: 1.1rem; padding: 12px;">
                             </div>
                             <div class="col-md-6">
-                                <label class="form-label small text-muted">结束日期 <small>(可选)</small></label>
-                                <input type="date" id="med_end_manual" class="form-control rounded-3">
+                                <label class="form-label" style="font-size: 1rem;">结束日期 <small>(可选)</small></label>
+                                <input type="date" id="med_end_manual" class="form-control rounded-3" style="font-size: 1.1rem; padding: 12px;">
                             </div>
                         </div>
                     </div>
 
                     <!-- 通用字段 -->
                     <div class="col-md-6">
-                        <label class="form-label small text-muted">时间 <span class="text-danger">*</span></label>
-                        <input type="datetime-local" id="manual_timestamp" class="form-control rounded-3" required>
+                        <label class="form-label" style="font-size: 1rem;">时间 <span class="text-danger">*</span></label>
+                        <input type="datetime-local" id="manual_timestamp" class="form-control rounded-3" required style="font-size: 1.1rem; padding: 12px;">
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label small text-muted">备注</label>
-                        <input type="text" id="manual_notes" class="form-control rounded-3" placeholder="其他说明...">
+                        <label class="form-label" style="font-size: 1rem;">备注</label>
+                        <input type="text" id="manual_notes" class="form-control rounded-3" placeholder="其他说明..." style="font-size: 1.1rem; padding: 12px;">
                     </div>
 
                     <div class="col-12 mt-4">
-                        <button type="submit" class="btn btn-primary w-100 rounded-pill py-2">
-                            <i class="bi bi-check-circle me-1"></i> 保存记录
+                        <button type="submit" class="btn btn-primary w-100 rounded-pill" style="font-size: 1.1rem; padding: 14px 24px;">
+                            <i class="bi bi-check-circle me-2"></i>保存记录
                         </button>
                     </div>
                 </form>
@@ -462,49 +1300,49 @@
     </div>
 </div>
 
-<!-- Day Details Modal -->
+<!-- Day Details Modal - Material Design -->
 <div class="modal fade" id="dayDetailsModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered modal-lg">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title fw-bold" id="dayModalTitle">日期详情</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                <h3 class="modal-title" id="dayModalTitle">日期详情</h3>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" style="font-size: 1.25rem;"></button>
             </div>
-            <div class="modal-body" id="dayModalBody">
+            <div class="modal-body" id="dayModalBody" style="font-size: 1.05rem;">
                 <!-- Content will be injected by JS -->
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" style="font-size: 1.1rem; padding: 12px 24px;">关闭</button>
             </div>
         </div>
     </div>
 </div>
 
-<!-- 编辑记录模态框 -->
+<!-- 编辑记录模态框 - Material Design -->
 <div class="modal fade" id="editModal" tabindex="-1" style="z-index: 1060;">
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">编辑记录</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                <h3 class="modal-title">编辑记录</h3>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" style="font-size: 1.25rem;"></button>
             </div>
             <div class="modal-body">
                 <input type="hidden" id="editId">
                 <div class="row g-3">
                     <div class="col-md-6">
-                        <label class="form-label">数值</label>
-                        <input type="number" step="0.1" id="editValue" class="form-control">
+                        <label class="form-label" style="font-size: 1rem;">数值</label>
+                        <input type="number" step="0.1" id="editValue" class="form-control" style="font-size: 1.1rem; padding: 12px;">
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label">单位</label>
-                        <select id="editUnit" class="form-select">
+                        <label class="form-label" style="font-size: 1rem;">单位</label>
+                        <select id="editUnit" class="form-select" style="font-size: 1.1rem; padding: 12px;">
                             <option value="mmol/L">mmol/L</option>
                             <option value="mg/dL">mg/dL</option>
                         </select>
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label">类型</label>
-                        <input type="text" id="editType" class="form-control" list="editTypeOptions">
+                        <label class="form-label" style="font-size: 1rem;">类型</label>
+                        <input type="text" id="editType" class="form-control" list="editTypeOptions" style="font-size: 1.1rem; padding: 12px;">
                         <datalist id="editTypeOptions">
                             <option value="空腹">
                             <option value="餐前">
@@ -516,50 +1354,50 @@
                         </datalist>
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label">时间</label>
-                        <input type="datetime-local" id="editTimestamp" class="form-control">
+                        <label class="form-label" style="font-size: 1rem;">时间</label>
+                        <input type="datetime-local" id="editTimestamp" class="form-control" style="font-size: 1.1rem; padding: 12px;">
                     </div>
                     <div class="col-12">
-                        <label class="form-label">备注</label>
-                        <input type="text" id="editNotes" class="form-control">
+                        <label class="form-label" style="font-size: 1rem;">备注</label>
+                        <input type="text" id="editNotes" class="form-control" style="font-size: 1.1rem; padding: 12px;">
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label">热量 (kcal)</label>
-                        <input type="number" id="editCalories" class="form-control">
+                        <label class="form-label" style="font-size: 1rem;">热量 (kcal)</label>
+                        <input type="number" id="editCalories" class="form-control" style="font-size: 1.1rem; padding: 12px;">
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label">距离 (km)</label>
-                        <input type="number" step="0.1" id="editDistance" class="form-control">
+                        <label class="form-label" style="font-size: 1rem;">距离 (km)</label>
+                        <input type="number" step="0.1" id="editDistance" class="form-control" style="font-size: 1.1rem; padding: 12px;">
                     </div>
                 </div>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
-                <button type="button" class="btn btn-primary" onclick="saveEdit()">保存</button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" style="font-size: 1.1rem; padding: 12px 24px;">取消</button>
+                <button type="button" class="btn btn-primary" onclick="saveEdit()" style="font-size: 1.1rem; padding: 12px 24px;">保存</button>
             </div>
         </div>
     </div>
 </div>
 
-<!-- 药物管理模态框 -->
+<!-- 药物管理模态框 - Material Design -->
 <div class="modal fade" id="medicationPlanModal" tabindex="-1">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title"><i class="bi bi-capsule me-2"></i>药物方案管理</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                <h3 class="modal-title"><i class="bi bi-capsule me-2"></i>药物方案管理</h3>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" style="font-size: 1.25rem;"></button>
             </div>
-            <div class="modal-body">
+            <div class="modal-body" style="font-size: 1.05rem;">
                 <!-- Current Plans List -->
                 <div id="medicationPlansList" class="mb-4"></div>
 
                 <!-- Add New Plan Section -->
-                <div class="border-top pt-3">
-                    <h6 class="text-muted mb-3"><i class="bi bi-plus-circle me-1"></i> 添加新药物方案</h6>
+                <div class="border-top pt-4">
+                    <h4 class="text-muted mb-3"><i class="bi bi-plus-circle me-2"></i>添加新药物方案</h4>
                     <form id="medicationPlanForm" class="row g-3">
                         <div class="col-md-6">
-                            <label class="form-label small">药物名称 <span class="text-danger">*</span></label>
-                            <input type="text" id="plan_name" class="form-control" list="medOptions" placeholder="如：二甲双胍" required>
+                            <label class="form-label" style="font-size: 1rem;">药物名称 <span class="text-danger">*</span></label>
+                            <input type="text" id="plan_name" class="form-control" list="medOptions" placeholder="如：二甲双胍" required style="font-size: 1.1rem; padding: 12px;">
                             <datalist id="medOptions">
                                 <option value="二甲双胍">
                                 <option value="阿卡波糖">
@@ -570,32 +1408,32 @@
                             </datalist>
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label small">剂量</label>
-                            <input type="text" id="plan_dosage" class="form-control" placeholder="如：500mg">
+                            <label class="form-label" style="font-size: 1rem;">剂量</label>
+                            <input type="text" id="plan_dosage" class="form-control" placeholder="如：500mg" style="font-size: 1.1rem; padding: 12px;">
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label small">每天次数 <span class="text-danger">*</span></label>
-                            <input type="number" id="plan_times" class="form-control" value="1" min="1" max="10" required>
+                            <label class="form-label" style="font-size: 1rem;">每天次数 <span class="text-danger">*</span></label>
+                            <input type="number" id="plan_times" class="form-control" value="1" min="1" max="10" required style="font-size: 1.1rem; padding: 12px;">
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label small">服用时机</label>
-                            <input type="text" id="plan_timing" class="form-control" placeholder="如：早晚餐前30分钟">
+                            <label class="form-label" style="font-size: 1rem;">服用时机</label>
+                            <input type="text" id="plan_timing" class="form-control" placeholder="如：早晚餐前30分钟" style="font-size: 1.1rem; padding: 12px;">
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label small">开始日期 <span class="text-danger">*</span></label>
-                            <input type="date" id="plan_start" class="form-control" required>
+                            <label class="form-label" style="font-size: 1rem;">开始日期 <span class="text-danger">*</span></label>
+                            <input type="date" id="plan_start" class="form-control" required style="font-size: 1.1rem; padding: 12px;">
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label small">结束日期 <small class="text-muted">(可选)</small></label>
-                            <input type="date" id="plan_end" class="form-control">
+                            <label class="form-label" style="font-size: 1rem;">结束日期 <small class="text-muted">(可选)</small></label>
+                            <input type="date" id="plan_end" class="form-control" style="font-size: 1.1rem; padding: 12px;">
                         </div>
                         <div class="col-12">
-                            <label class="form-label small">备注</label>
-                            <input type="text" id="plan_notes" class="form-control" placeholder="其他说明...">
+                            <label class="form-label" style="font-size: 1rem;">备注</label>
+                            <input type="text" id="plan_notes" class="form-control" placeholder="其他说明..." style="font-size: 1.1rem; padding: 12px;">
                         </div>
                         <div class="col-12">
-                            <button type="submit" class="btn btn-success w-100">
-                                <i class="bi bi-capsule me-1"></i> 保存药物方案
+                            <button type="submit" class="btn btn-success w-100" style="font-size: 1.1rem; padding: 14px 24px;">
+                                <i class="bi bi-capsule me-2"></i>保存药物方案
                             </button>
                         </div>
                     </form>
@@ -605,36 +1443,36 @@
     </div>
 </div>
 
-<!-- 用户设置模态框 -->
+<!-- 用户设置模态框 - Material Design -->
 <div class="modal fade" id="userSettingsModal" tabindex="-1">
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">个人健康资料</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                <h3 class="modal-title">个人健康资料</h3>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" style="font-size: 1.25rem;"></button>
             </div>
             <div class="modal-body">
                 <form id="userSettingsForm">
                     <div class="row g-3">
                         <div class="col-md-6">
-                            <label class="form-label">姓名</label>
-                            <input type="text" id="set_name" class="form-control" value="{{ stats.user.name }}">
+                            <label class="form-label" style="font-size: 1rem;">姓名</label>
+                            <input type="text" id="set_name" class="form-control" value="{{ stats.user.name }}" style="font-size: 1.1rem; padding: 12px;">
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label">出生年份</label>
-                            <input type="number" id="set_birth" class="form-control" value="{{ stats.user.birth_year }}">
+                            <label class="form-label" style="font-size: 1rem;">出生年份</label>
+                            <input type="number" id="set_birth" class="form-control" value="{{ stats.user.birth_year }}" style="font-size: 1.1rem; padding: 12px;">
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label">身高 (cm)</label>
-                            <input type="number" id="set_height" class="form-control" value="{{ stats.user.height }}">
+                            <label class="form-label" style="font-size: 1rem;">身高 (cm)</label>
+                            <input type="number" id="set_height" class="form-control" value="{{ stats.user.height }}" style="font-size: 1.1rem; padding: 12px;">
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label">体重 (kg)</label>
-                            <input type="number" step="0.1" id="set_weight" class="form-control" value="{{ stats.user.weight }}">
+                            <label class="form-label" style="font-size: 1rem;">体重 (kg)</label>
+                            <input type="number" step="0.1" id="set_weight" class="form-control" value="{{ stats.user.weight }}" style="font-size: 1.1rem; padding: 12px;">
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label">性别</label>
-                            <select id="set_gender" class="form-select">
+                            <label class="form-label" style="font-size: 1rem;">性别</label>
+                            <select id="set_gender" class="form-select" style="font-size: 1.1rem; padding: 12px;">
                                 <option value="male" {% if stats.user.gender == 'male' %}selected{% endif %}>男</option>
                                 <option value="female" {% if stats.user.gender == 'female' %}selected{% endif %}>女</option>
                             </select>
@@ -643,26 +1481,26 @@
                 </form>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
-                <button type="button" class="btn btn-primary" onclick="saveUserSettings()">保存修改</button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" style="font-size: 1.1rem; padding: 12px 24px;">取消</button>
+                <button type="button" class="btn btn-primary" onclick="saveUserSettings()" style="font-size: 1.1rem; padding: 12px 24px;">保存修改</button>
             </div>
         </div>
     </div>
 </div>
 
-<!-- 头像上传与裁剪模态框 -->
+<!-- 头像上传与裁剪模态框 - Material Design -->
 <div class="modal fade" id="avatarModal" tabindex="-1" data-bs-backdrop="static">
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">更换头像</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" onclick="resetAvatarModal()"></button>
+                <h3 class="modal-title">更换头像</h3>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" onclick="resetAvatarModal()" style="font-size: 1.25rem;"></button>
             </div>
             <div class="modal-body">
                 <div class="mb-3">
-                    <input type="file" id="avatarInput" class="form-control" accept="image/png, image/jpeg" onchange="loadAvatarImage(this)">
+                    <input type="file" id="avatarInput" class="form-control" accept="image/png, image/jpeg" onchange="loadAvatarImage(this)" style="font-size: 1.1rem; padding: 12px;">
                 </div>
-                
+
                 <div class="row g-2 d-none" id="cropArea">
                     <div class="col-8">
                         <div style="height: 300px; background-color: #f8f9fa;">
@@ -670,14 +1508,14 @@
                         </div>
                     </div>
                     <div class="col-4">
-                        <div class="small text-muted mb-2">预览:</div>
+                        <div class="small text-muted mb-2" style="font-size: 1rem;">预览:</div>
                         <div class="overflow-hidden rounded-circle border shadow-sm mx-auto" style="width: 100px; height: 100px;" id="avatarPreview"></div>
                     </div>
                 </div>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" onclick="resetAvatarModal()">取消</button>
-                <button type="button" class="btn btn-primary" id="saveAvatarBtn" onclick="cropAndUploadAvatar()" disabled>保存头像</button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" onclick="resetAvatarModal()" style="font-size: 1.1rem; padding: 12px 24px;">取消</button>
+                <button type="button" class="btn btn-primary" id="saveAvatarBtn" onclick="cropAndUploadAvatar()" disabled style="font-size: 1.1rem; padding: 12px 24px;">保存头像</button>
             </div>
         </div>
     </div>
@@ -691,11 +1529,31 @@
 <script>
     // Injected from server
     const timelineData = {{ timeline | tojson }};
-    const dayModal = new bootstrap.Modal(document.getElementById('dayDetailsModal'));
+    let dayModal = null;
 
     document.addEventListener('DOMContentLoaded', function() {
+        // Initialize dayModal after DOM is ready
+        dayModal = new bootstrap.Modal(document.getElementById('dayDetailsModal'));
+
+        // Fix aria-hidden focus warning for modals
+        document.querySelectorAll('.modal').forEach(modal => {
+            modal.addEventListener('hide.bs.modal', function(e) {
+                // Remove focus from any focused element within the modal
+                const focusedElement = modal.querySelector(':focus');
+                if (focusedElement) {
+                    focusedElement.blur();
+                }
+            });
+        });
+
         // Initialize Chart.js for glucose trend
         initGlucoseChart();
+
+        // Initialize Bootstrap Tooltips
+        var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+        var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+            return new bootstrap.Tooltip(tooltipTriggerEl);
+        });
 
         // Initialize Calendar
         var calendarEl = document.getElementById('calendar');
@@ -705,18 +1563,47 @@
             headerToolbar: {
                 left: 'prev,next today',
                 center: 'title',
-                right: 'dayGridMonth,dayGridWeek'
+                right: 'timeGridDay,dayGridWeek,dayGridMonth'
+            },
+            buttonText: {
+                today: '今天',
+                day: '日',
+                week: '周',
+                month: '月'
             },
             height: 'auto',
             aspectRatio: 1.5,
+            slotMinTime: '06:00:00',
+            slotMaxTime: '24:00:00',
+            nowIndicator: true,
             events: generateCalendarEvents(),
             dateClick: function(info) {
+                console.log('Date clicked:', info.dateStr);
                 renderDayDetails(info.dateStr);
             },
             eventClick: function(info) {
                 // If clicked on an event (badge), open the modal for that day
-                // event.startStr gives 'YYYY-MM-DD' if allDay is true
-                renderDayDetails(info.event.startStr);
+                // In Day view, show the detail modal
+                console.log('Event clicked:', info.event);
+                info.jsEvent.preventDefault(); // Prevent default action
+                info.jsEvent.stopPropagation(); // Stop event propagation
+                const dateStr = info.event.startStr.split('T')[0];
+                renderDayDetails(dateStr);
+            },
+            // Add stats header for Day view
+            viewDidMount: function(info) {
+                if (info.view.type === 'timeGridDay') {
+                    showDayStats(info.view.currentStart);
+                } else {
+                    hideDayStats();
+                }
+            },
+            datesSet: function(info) {
+                if (info.view.type === 'timeGridDay') {
+                    showDayStats(info.view.currentStart);
+                } else {
+                    hideDayStats();
+                }
             }
         });
         calendar.render();
@@ -747,16 +1634,16 @@
 
         const ctx = document.getElementById('glucoseChart').getContext('2d');
 
-        // Categorize data by type
+        // Categorize data by type with professional labels (避开绿/黄/红，防止与血糖状态混淆)
         const datasets = {
-            '空腹': { label: '空腹', data: [], borderColor: '#0d6efd', backgroundColor: '#0d6efd' },
-            '餐前': { label: '餐前', data: [], borderColor: '#0dcaf0', backgroundColor: '#0dcaf0' },
-            '运动后餐前': { label: '运动后餐前', data: [], borderColor: '#0dcaf0', backgroundColor: '#0dcaf0' },
-            '餐后1小时': { label: '餐后1h', data: [], borderColor: '#fd7e14', backgroundColor: '#fd7e14' },
-            '餐后2小时': { label: '餐后2h', data: [], borderColor: '#dc3545', backgroundColor: '#dc3545' },
-            '睡前': { label: '睡前', data: [], borderColor: '#6610f2', backgroundColor: '#6610f2' },
-            '运动后': { label: '运动后', data: [], borderColor: '#198754', backgroundColor: '#198754' },
-            '其他': { label: '其他', data: [], borderColor: '#6c757d', backgroundColor: '#6c757d' }
+            '空腹': { label: 'FPG (空腹)', data: [], borderColor: '#0d6efd', backgroundColor: '#0d6efd' },  // 蓝色
+            '餐前': { label: '餐前', data: [], borderColor: '#22b8cf', backgroundColor: '#22b8cf' },  // 青色
+            '运动后餐前': { label: '运动后餐前', data: [], borderColor: '#1971c2', backgroundColor: '#1971c2' },  // 深蓝
+            '餐后1小时': { label: 'PPG-1h', data: [], borderColor: '#ff922b', backgroundColor: '#ff922b' },  // 橙色
+            '餐后2小时': { label: 'PPG-2h', data: [], borderColor: '#f76707', backgroundColor: '#f76707' },  // 深橙
+            '睡前': { label: '睡前', data: [], borderColor: '#9775fa', backgroundColor: '#9775fa' },  // 淡紫
+            '运动后': { label: '运动后', data: [], borderColor: '#1e40af', backgroundColor: '#1e40af' },  // 深蓝
+            '其他': { label: '其他', data: [], borderColor: '#6c757d', backgroundColor: '#6c757d' }  // 灰色
         };
 
         // Populate datasets
@@ -781,12 +1668,21 @@
                 borderColor: ds.borderColor,
                 backgroundColor: ds.backgroundColor,
                 borderWidth: 3,
-                tension: 0.1,  // 减少平滑度，让波动更明显
-                pointRadius: 6,
-                pointHoverRadius: 9,
-                pointBackgroundColor: ds.data.map(point => getPointColor(key, point.y)),
+                tension: 0,  // 无平滑，使用直线连接，让波动更清晰
+                // 只显示超标的点（红色），正常和警戒状态的点隐藏
+                pointRadius: ds.data.map(point => {
+                    const color = getPointBorderColor(key, point.y);
+                    return color === '#dc3545' ? 8 : 0;  // 只有红色（超标）显示，其他隐藏
+                }),
+                pointHoverRadius: ds.data.map(point => {
+                    const color = getPointBorderColor(key, point.y);
+                    return color === '#dc3545' ? 12 : 6;  // 悬停时：超标放大，其他显示小点
+                }),
+                // 圆点颜色直接表示血糖状态（只有超标时显示红色）
+                pointBackgroundColor: ds.data.map(point => getPointBorderColor(key, point.y)),
                 pointBorderColor: '#fff',
                 pointBorderWidth: 2,
+                pointHoverBorderWidth: 3,
                 fill: false
             });
         }
@@ -799,9 +1695,10 @@
             if (r.value > maxValue) maxValue = r.value;
         });
 
-        // 缩小Y轴范围以增强视觉冲击
-        const yMin = Math.max(3, Math.floor(minValue - 0.5));
-        const yMax = Math.min(15, Math.ceil(maxValue + 0.5));
+        // 聚焦在5-8关键区间，动态调整Y轴范围以增强波动可见性
+        const padding = 0.3; // 减小上下留白，让曲线更饱满
+        const yMin = Math.max(3.5, Math.floor((minValue - padding) * 10) / 10);
+        const yMax = Math.min(10, Math.ceil((maxValue + padding) * 10) / 10);
 
         new Chart(ctx, {
             type: 'line',
@@ -952,7 +1849,26 @@
         });
     }
 
-    // Get point color based on glucose value and type
+    // Get point border color based on glucose value and type (表示血糖状态)
+    function getPointBorderColor(key, value) {
+        const green = '#198754';  // 正常
+        const yellow = '#ffc107'; // 警戒
+        const red = '#dc3545';    // 超标
+
+        if (value < 3.9) return red;
+
+        if (key === '空腹' || key === '餐前' || key === '睡前' || key === '运动后餐前') {
+            if (value < 6.1) return green;
+            if (value <= 7.0) return yellow;
+            return red;
+        } else {
+            if (value < 7.8) return green;
+            if (value <= 10.0) return yellow;
+            return red;
+        }
+    }
+
+    // Get point color based on glucose value and type (保留用于其他功能)
     function getPointColor(key, value) {
         const green = '#198754';
         const yellow = '#ffc107';
@@ -973,56 +1889,391 @@
 
     function generateCalendarEvents() {
         const events = [];
-        
+
         timelineData.forEach(day => {
             const stats = day.data.stats;
-            
-            // 1. Avg Glucose Badge
-            if (stats.avg_glucose > 0) {
-                let color = '#198754'; // green
-                if (stats.avg_glucose > 7.0) color = '#ffc107'; // yellow
-                if (stats.avg_glucose > 7.8) color = '#dc3545'; // red
+            const entries = day.data.entries;
+
+            // === Summary Events for Month/Week View (allDay) ===
+
+            // 1. 血糖达标率 Badge（百分比显示，适应任意测量次数）
+            if (stats.glucose_count > 0 && stats.avg_glucose > 0) {
+                // Calculate how many glucose readings are in normal range
+                let normalCount = 0;
+                entries.forEach(e => {
+                    if (e.value > 0 && !e.is_predicted) {
+                        // Check if within normal range based on type
+                        const isFasting = e.type && (e.type.includes('空腹') || e.type.includes('餐前') || e.type.includes('睡前'));
+                        const isNormal = isFasting
+                            ? (e.value >= 3.9 && e.value <= 6.1)
+                            : (e.value >= 3.9 && e.value <= 7.8);
+                        if (isNormal) normalCount++;
+                    }
+                });
+
+                // Calculate percentage
+                const percentage = Math.round((normalCount / stats.glucose_count) * 100);
+
+                let bgColor, textColor, icon;
+                if (percentage === 100) {
+                    // 100% normal
+                    bgColor = '#d4edda';
+                    textColor = '#155724';
+                    icon = '✓';
+                } else if (percentage >= 50) {
+                    // 50% or more normal
+                    bgColor = '#fff3cd';
+                    textColor = '#856404';
+                    icon = '⚠';
+                } else {
+                    // Less than 50% normal
+                    bgColor = '#f8d7da';
+                    textColor = '#721c24';
+                    icon = '✗';
+                }
 
                 events.push({
-                    title: '血糖 ' + stats.avg_glucose,
+                    title: `${icon} 血糖${stats.avg_glucose} (${percentage}%)`,
                     start: day.date,
-                    backgroundColor: color,
-                    borderColor: color,
-                    allDay: true
+                    backgroundColor: bgColor,
+                    textColor: textColor,
+                    borderColor: bgColor,
+                    allDay: true,
+                    display: 'auto',
+                    classNames: ['summary-event']
                 });
             }
 
-            // 2. Net Calories Badge
-            if (stats.is_deficit) {
+            // 2. 能量状态 Badge（减糖减脂 vs 脂糖累积）
+            if (stats.net_calories !== 0) {
+                let energyIcon, energyBg, energyText, displayText;
+                if (stats.is_deficit) {
+                    // 消耗 > 摄入（健康）
+                    energyIcon = '👍';
+                    energyBg = '#d4edda';
+                    energyText = '#155724';
+                    displayText = `${energyIcon} 减糖减脂 ${Math.abs(stats.net_calories)}`;
+                } else {
+                    // 摄入 > 消耗（需注意）
+                    energyIcon = '👎';
+                    energyBg = '#f8d7da';
+                    energyText = '#721c24';
+                    displayText = `${energyIcon} 脂糖累积 ${Math.abs(stats.net_calories)}`;
+                }
+
                 events.push({
-                    title: '缺口 ' + Math.abs(stats.net_calories),
+                    title: displayText,
                     start: day.date,
-                    backgroundColor: '#e9f7ef', // light green
-                    textColor: '#198754',
-                    borderColor: '#e9f7ef',
-                    allDay: true
-                });
-            } else {
-                events.push({
-                    title: '盈余 ' + Math.abs(stats.net_calories),
-                    start: day.date,
-                    backgroundColor: '#fbeaea', // light red
-                    textColor: '#dc3545',
-                    borderColor: '#fbeaea',
-                    allDay: true
+                    backgroundColor: energyBg,
+                    textColor: energyText,
+                    borderColor: energyBg,
+                    allDay: true,
+                    display: 'auto',
+                    classNames: ['summary-event']
                 });
             }
+
+            // 3. 运动标记 Badge
+            const exerciseEntries = entries.filter(e =>
+                e.distance > 0 || e.type === '跑步' || e.type === '运动'
+            );
+            if (exerciseEntries.length > 0) {
+                const totalDistance = exerciseEntries.reduce((sum, e) => sum + (e.distance || 0), 0);
+                const displayText = totalDistance > 0
+                    ? `🏃 ${totalDistance.toFixed(1)}km`
+                    : `🏃 运动`;
+
+                events.push({
+                    title: displayText,
+                    start: day.date,
+                    backgroundColor: '#d4edda',
+                    textColor: '#155724',
+                    borderColor: '#d4edda',
+                    allDay: true,
+                    display: 'auto',
+                    classNames: ['summary-event']
+                });
+            }
+
+            // 4. 用药打卡 Badge
+            const medPlans = day.data.medication_plans || [];
+            if (medPlans.length > 0) {
+                const medCount = medPlans.length;
+                const medNames = medPlans.map(p => p.medication_name).join('、');
+
+                events.push({
+                    title: `💊 ${medCount}种药物`,
+                    start: day.date,
+                    backgroundColor: '#e7e8f5',
+                    textColor: '#4a5568',
+                    borderColor: '#e7e8f5',
+                    allDay: true,
+                    display: 'auto',
+                    classNames: ['summary-event'],
+                    extendedProps: {
+                        tooltip: medNames
+                    }
+                });
+            }
+
+            // === Detailed Events for Day View (timed) ===
+
+            entries.forEach(entry => {
+                const timestamp = entry.timestamp; // "YYYY-MM-DD HH:MM:SS"
+
+                // Skip AI predictions in calendar
+                if (entry.is_predicted) return;
+
+                let eventTitle = '';
+                let eventColor = '#6c757d';
+                let eventIcon = '';
+
+                // Glucose measurement
+                if (entry.value > 0) {
+                    eventTitle = `${entry.value} ${entry.unit} ${entry.type}`;
+                    eventIcon = '🩸 ';
+                    if (entry.value < 3.9) eventColor = '#dc3545';
+                    else if (entry.value > 7.8) eventColor = '#ffc107';
+                    else eventColor = '#198754';
+                }
+                // Meal
+                else if (entry.type && ['早餐', '午餐', '晚餐', '加餐'].includes(entry.type)) {
+                    eventTitle = `${entry.type}`;
+                    if (entry.notes) eventTitle += `: ${entry.notes.substring(0, 20)}...`;
+                    eventIcon = '🍽️ ';
+                    eventColor = entry.type === '加餐' ? '#e91e8c' : '#fd7e14';
+                }
+                // Exercise
+                else if (entry.distance || entry.type === '跑步' || entry.type === '运动') {
+                    eventTitle = `${entry.type}`;
+                    if (entry.distance) eventTitle += ` ${entry.distance}km`;
+                    eventIcon = '🏃 ';
+                    eventColor = '#7cb889';
+                }
+
+                if (eventTitle) {
+                    events.push({
+                        title: eventIcon + eventTitle,
+                        start: timestamp,
+                        backgroundColor: eventColor,
+                        borderColor: eventColor,
+                        textColor: '#fff',
+                        allDay: false,
+                        classNames: ['detail-event'],
+                        extendedProps: {
+                            entry: entry
+                        }
+                    });
+                }
+            });
         });
         return events;
     }
 
+    // Show daily stats header in Day view
+    function showDayStats(date) {
+        const dateStr = date.toISOString().split('T')[0];
+        const dayData = timelineData.find(d => d.date === dateStr);
+
+        // Remove existing stats if any
+        hideDayStats();
+
+        // Add timeline-day-view class to parent card body
+        const calendarCardBody = document.querySelector('#calendar').closest('.card-body');
+        if (calendarCardBody) {
+            calendarCardBody.classList.add('timeline-day-view');
+        }
+
+        if (!dayData) {
+            const calendarEl = document.getElementById('calendar');
+            calendarEl.insertAdjacentHTML('beforebegin', `
+                <div id="dayStatsHeader" class="text-center text-muted py-5">
+                    <i class="bi bi-calendar-x fs-1 d-block mb-3"></i>
+                    <p>当天无记录</p>
+                </div>
+            `);
+            return;
+        }
+
+        const stats = dayData.data.stats;
+        const entries = dayData.data.entries;
+        const medPlans = dayData.data.medication_plans || [];
+
+        let html = `<div id="dayStatsHeader">`;
+
+        // Stats header
+        html += `
+            <div class="alert alert-info mb-3">
+                <div class="d-flex gap-3 small justify-content-center flex-wrap">
+                    <span><strong>🥗 饮食摄入</strong> ${stats.cal_in} kcal</span>
+                    <span class="border-start mx-1"></span>
+                    <span><strong>😴 基础代谢</strong> ${stats.cal_out_bmr} kcal</span>
+                    <span class="border-start mx-1"></span>
+                    <span><strong>🏃 运动消耗</strong> ${stats.cal_out_exercise} kcal</span>
+                    <span class="border-start mx-1"></span>
+                    <span class="fw-bold ${stats.is_deficit ? 'text-success' : 'text-danger'}">
+                        <strong>⚖️ ${stats.is_deficit ? '能量缺口' : '能量盈余'}</strong> ${Math.abs(stats.net_calories)} kcal
+                    </span>
+                </div>
+        `;
+
+        // Add medication plans if any
+        if (medPlans.length > 0) {
+            html += `
+                <div class="mt-2 pt-2 border-top">
+                    <div class="small text-muted mb-1"><i class="bi bi-capsule me-1"></i>今日用药方案</div>
+                    <div class="d-flex gap-2 flex-wrap">
+            `;
+            medPlans.forEach(plan => {
+                html += `
+                    <span class="badge bg-success">
+                        ${plan.medication_name} ${plan.dosage || ''} · ${plan.times_per_day}次/天
+                    </span>
+                `;
+            });
+            html += `</div></div>`;
+        }
+
+        html += '</div>'; // Close alert
+
+        // Timeline entries
+        entries.forEach(r => {
+            let dotClass = 'dot-food';
+            if (r.value > 0) dotClass = 'dot-glucose';
+            else if (r.systolic_pressure && r.diastolic_pressure) dotClass = 'dot-bloodpressure';
+            else if (r.distance) dotClass = 'dot-run';
+            else if (r.type === '加餐') dotClass = 'dot-snack';
+
+            html += `
+            <div class="timeline-item">
+                <div class="timeline-dot ${dotClass}"></div>
+                <div class="d-flex w-100 justify-content-between align-items-start">
+                    <div class="me-3 text-muted small" style="min-width: 45px;">
+                        ${r.timestamp.split(' ')[1].slice(0, 5)}
+                    </div>
+                    <div class="flex-grow-1">
+            `;
+
+            // Glucose
+            if (r.value > 0) {
+                let trendHtml = '';
+                if (r.trend_dir === 'up') trendHtml = `<small class="text-danger"><i class="bi bi-arrow-up"></i> ${r.trend}</small>`;
+                else if (r.trend_dir === 'down') trendHtml = `<small class="text-success"><i class="bi bi-arrow-down"></i> ${r.trend}</small>`;
+
+                let predictedBadge = r.is_predicted ? '<span class="badge bg-secondary ms-1" style="font-size: 0.6em;">预测</span>' : '';
+
+                let aiPrediction = '';
+                if (r.predicted_value && !r.is_predicted) {
+                    aiPrediction = `<small class="text-muted ms-2" title="AI预测值" style="font-size: 0.8em;"><i class="bi bi-robot"></i> ${r.predicted_value}</small>`;
+                }
+
+                html += `
+                    <div class="d-flex align-items-center mb-1">
+                        <h5 class="mb-0 text-primary fw-bold me-2">${r.value} <small class="text-muted fw-normal fs-6">${r.unit}</small></h5>
+                        <span class="badge bg-info text-dark me-2">${r.type}</span>
+                        ${predictedBadge}
+                        ${aiPrediction}
+                        ${trendHtml}
+                    </div>
+                `;
+            }
+
+            // Blood Pressure
+            if (r.systolic_pressure && r.diastolic_pressure) {
+                let bpStatus = '';
+                let bpColor = 'success';
+                if (r.systolic_pressure > 140 || r.diastolic_pressure > 90) {
+                    bpStatus = ' 偏高⚠️';
+                    bpColor = 'danger';
+                } else if (r.systolic_pressure > 130 || r.diastolic_pressure > 85) {
+                    bpStatus = ' 警戒';
+                    bpColor = 'warning';
+                } else {
+                    bpStatus = ' 正常';
+                }
+
+                html += `
+                    <div class="d-flex align-items-center mb-1">
+                        <h5 class="mb-0 fw-bold me-2" style="color: #9C27B0;">${r.systolic_pressure}/${r.diastolic_pressure} <small class="text-muted fw-normal fs-6">mmHg</small></h5>
+                        <span class="badge bg-${bpColor} me-2">${r.type}</span>
+                        <small class="text-${bpColor}">${bpStatus}</small>
+                        ${r.pulse_rate ? `<small class="text-muted ms-2">脉搏 ${r.pulse_rate} bpm</small>` : ''}
+                    </div>
+                `;
+            }
+
+            // Exercise
+            if (r.distance || r.duration || r.heart_rate) {
+                html += `
+                    <div class="mb-2 p-2 bg-light rounded border small">
+                        <div class="d-flex align-items-center text-success fw-bold mb-1"><i class="bi bi-activity me-2"></i> 运动打卡</div>
+                        <div class="text-nowrap overflow-auto">
+                            ${r.distance ? `<span class="me-2">🏃 <strong>${r.distance}</strong><small>km</small></span>` : ''}
+                            ${r.duration ? `<span class="me-2">⏱️ <strong>${r.duration}</strong></span>` : ''}
+                            ${r.heart_rate ? `<span class="me-2">❤️ <strong>${r.heart_rate}</strong><small>bpm</small></span>` : ''}
+                        </div>
+                    </div>
+                `;
+            }
+
+            // Food/Notes
+            if (r.notes) {
+                let icon = (r.value === 0 && !r.distance) ? '<i class="bi bi-cup-hot me-1 text-warning"></i>' : '';
+                html += `<div class="text-dark mb-1">${icon}${r.notes}</div>`;
+            }
+
+            // Calories
+            if (r.calories > 0 || r.diet_analysis) {
+                html += `
+                    <div class="small text-muted">
+                        ${r.calories > 0 ? `<span class="me-2">🔥 ${r.calories} kcal</span>` : ''}
+                        ${r.diet_analysis ? `<span>🥗 ${r.diet_analysis}</span>` : ''}
+                    </div>
+                `;
+            }
+
+            html += `
+                    </div>
+                    <div class="ms-2">
+                        <button class="btn btn-sm btn-link text-secondary opacity-50 p-0 me-1" onclick="openEditModal(${r.id})" title="编辑"><i class="bi bi-pencil"></i></button>
+                        <button class="btn btn-sm btn-link text-secondary opacity-25 p-0" onclick="deleteRecord(${r.id})" title="删除"><i class="bi bi-x-circle-fill"></i></button>
+                    </div>
+                </div>
+            </div>`;
+        });
+
+        html += '</div>'; // Close dayStatsHeader
+
+        // Insert before calendar
+        const calendarEl = document.getElementById('calendar');
+        calendarEl.insertAdjacentHTML('beforebegin', html);
+    }
+
+    function hideDayStats() {
+        const existing = document.getElementById('dayStatsHeader');
+        if (existing) {
+            existing.remove();
+        }
+
+        // Remove timeline-day-view class
+        const calendarCardBody = document.querySelector('#calendar').closest('.card-body');
+        if (calendarCardBody) {
+            calendarCardBody.classList.remove('timeline-day-view');
+        }
+    }
+
     function renderDayDetails(dateStr) {
+        // Ensure dayModal is initialized
+        if (!dayModal) {
+            dayModal = new bootstrap.Modal(document.getElementById('dayDetailsModal'));
+        }
+
         // Find data for this date
         const dayData = timelineData.find(d => d.date === dateStr);
-        
+
         const modalTitle = document.getElementById('dayModalTitle');
         const modalBody = document.getElementById('dayModalBody');
-        
+
         modalTitle.textContent = dateStr + ' 详情';
         modalBody.innerHTML = '';
 
@@ -1038,14 +2289,14 @@
         // 1. Render Stats Header
         let statsHtml = `
             <div class="d-flex gap-2 mb-3 small text-muted justify-content-center bg-light p-2 rounded">
-                <span>🍽️ 摄入 ${stats.cal_in}</span>
+                <span>🥗 饮食摄入 ${stats.cal_in}</span>
                 <span class="border-start mx-1"></span>
                 <span>😴 基础代谢 ${stats.cal_out_bmr}</span>
                 <span class="border-start mx-1"></span>
                 <span>🏃 运动消耗 ${stats.cal_out_exercise}</span>
                 <span class="border-start mx-1"></span>
                 <span class="${stats.is_deficit ? 'text-success' : 'text-danger'} fw-bold">
-                    ⚖️ ${stats.is_deficit ? '缺口' : '盈余'} ${Math.abs(stats.net_calories)}
+                    ⚖️ ${stats.is_deficit ? '能量缺口' : '能量盈余'} ${Math.abs(stats.net_calories)}
                 </span>
             </div>
         `;
@@ -1055,6 +2306,7 @@
         entries.forEach(r => {
             let dotClass = 'dot-food';
             if (r.value > 0) dotClass = 'dot-glucose';
+            else if (r.systolic_pressure && r.diastolic_pressure) dotClass = 'dot-bloodpressure';
             else if (r.distance) dotClass = 'dot-run';
             else if (r.type === '加餐') dotClass = 'dot-snack';
 
@@ -1089,6 +2341,30 @@
                         ${predictedBadge}
                         ${aiPrediction}
                         ${trendHtml}
+                    </div>
+                `;
+            }
+
+            // Blood Pressure
+            if (r.systolic_pressure && r.diastolic_pressure) {
+                let bpStatus = '';
+                let bpColor = 'success';
+                if (r.systolic_pressure > 140 || r.diastolic_pressure > 90) {
+                    bpStatus = ' 偏高⚠️';
+                    bpColor = 'danger';
+                } else if (r.systolic_pressure > 130 || r.diastolic_pressure > 85) {
+                    bpStatus = ' 警戒';
+                    bpColor = 'warning';
+                } else {
+                    bpStatus = ' 正常';
+                }
+
+                html += `
+                    <div class="d-flex align-items-center mb-1">
+                        <h5 class="mb-0 fw-bold me-2" style="color: #9C27B0;">${r.systolic_pressure}/${r.diastolic_pressure} <small class="text-muted fw-normal fs-6">mmHg</small></h5>
+                        <span class="badge bg-${bpColor} me-2">${r.type}</span>
+                        <small class="text-${bpColor}">${bpStatus}</small>
+                        ${r.pulse_rate ? `<small class="text-muted ms-2">脉搏 ${r.pulse_rate} bpm</small>` : ''}
                     </div>
                 `;
             }
@@ -1182,6 +2458,7 @@
 
         // Hide all fields
         document.getElementById('glucoseFields').classList.add('d-none');
+        document.getElementById('bloodPressureFields').classList.add('d-none');
         document.getElementById('mealFields').classList.add('d-none');
         document.getElementById('exerciseFields').classList.add('d-none');
         document.getElementById('medicationFields').classList.add('d-none');
@@ -1189,6 +2466,8 @@
         // Show selected field
         if (type === 'glucose') {
             document.getElementById('glucoseFields').classList.remove('d-none');
+        } else if (type === 'bloodpressure') {
+            document.getElementById('bloodPressureFields').classList.remove('d-none');
         } else if (type === 'meal') {
             document.getElementById('mealFields').classList.remove('d-none');
         } else if (type === 'exercise') {
@@ -1227,6 +2506,40 @@
                 });
                 if (res.ok) {
                     alert('血糖记录保存成功！');
+                    window.location.reload();
+                }
+            } catch (e) {
+                alert('保存失败: ' + e);
+            }
+
+        } else if (type === 'bloodpressure') {
+            // 提交血压记录
+            const systolic = parseInt(document.getElementById('bp_systolic').value);
+            const diastolic = parseInt(document.getElementById('bp_diastolic').value);
+
+            if (!systolic || !diastolic) {
+                alert('请输入收缩压和舒张压');
+                return;
+            }
+
+            const data = {
+                value: 0,
+                type: document.getElementById('bp_type').value || '血压测量',
+                timestamp: timestamp,
+                notes: notes,
+                systolic_pressure: systolic,
+                diastolic_pressure: diastolic,
+                pulse_rate: parseInt(document.getElementById('bp_pulse').value) || null
+            };
+
+            try {
+                const res = await fetch('/add', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(data)
+                });
+                if (res.ok) {
+                    alert('血压记录保存成功！');
                     window.location.reload();
                 }
             } catch (e) {
@@ -1370,6 +2683,7 @@
         container.innerHTML = '';
 
         const glucoseRecords = [];
+        const bloodPressureRecords = [];
         const mealRecords = [];
         const exerciseRecords = [];
         const medicationRecords = [];
@@ -1380,6 +2694,8 @@
         parsedData.forEach(item => {
             if (item.medication_name) {
                 medicationRecords.push(item);
+            } else if (item.systolic_pressure && item.diastolic_pressure) {
+                bloodPressureRecords.push(item);
             } else if (exerciseTypes.includes(item.type) || item.distance) {
                 exerciseRecords.push(item);
             } else if (mealTypes.includes(item.type) || (item.value == 0 && item.calories > 0)) {
@@ -1424,6 +2740,41 @@
                             <small class="text-muted">${item.datetime}</small>
                             ${item.notes ? `<p class="mb-0 small text-secondary">${item.notes}</p>` : ''}
                         </div>
+                    </div>
+                `;
+            });
+        }
+
+        // 渲染血压记录
+        if (bloodPressureRecords.length > 0) {
+            container.innerHTML += `<div class="fw-bold mb-2 mt-3" style="color: #9C27B0;"><i class="bi bi-heart-pulse-fill"></i> 血压记录</div>`;
+            bloodPressureRecords.forEach(item => {
+                let bpStatus = '';
+                let bpColor = 'success';
+                if (item.systolic_pressure > 140 || item.diastolic_pressure > 90) {
+                    bpStatus = '偏高⚠️';
+                    bpColor = 'danger';
+                } else if (item.systolic_pressure > 130 || item.diastolic_pressure > 85) {
+                    bpStatus = '警戒';
+                    bpColor = 'warning';
+                } else {
+                    bpStatus = '正常';
+                }
+
+                container.innerHTML += `
+                    <div class="list-group-item mb-1" style="border-left: 3px solid #9C27B0;">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <strong style="color: #9C27B0; font-size: 1.2rem;">${item.systolic_pressure}/${item.diastolic_pressure} mmHg</strong>
+                                <span class="badge bg-${bpColor} ms-2">${bpStatus}</span>
+                            </div>
+                            <small class="text-muted">${item.datetime}</small>
+                        </div>
+                        <div class="mt-1">
+                            <span class="badge" style="background: #9C27B0;">${item.type}</span>
+                            ${item.pulse_rate ? `<span class="ms-2 small text-muted">脉搏: ${item.pulse_rate} bpm</span>` : ''}
+                        </div>
+                        ${item.notes ? `<p class="mb-0 small text-secondary mt-1">${item.notes}</p>` : ''}
                     </div>
                 `;
             });
@@ -1568,18 +2919,30 @@
         parsedData = [];
     }
 
+    // Toggle Manual Input Panel
+    function toggleManualInput() {
+        const panel = document.getElementById('manualInputPanel');
+        panel.classList.toggle('d-none');
+    }
+
+    // Auto-resize textarea based on content
+    function autoResizeTextarea(textarea) {
+        textarea.style.height = 'auto';
+        textarea.style.height = Math.min(textarea.scrollHeight, 150) + 'px';
+    }
+
     function toggleLoading(isLoading) {
         const btn = document.getElementById('analyzeBtn');
-        const text = document.getElementById('btnText');
+        const icon = document.getElementById('btnIcon');
         const spinner = document.getElementById('btnSpinner');
-        
+
         if (isLoading) {
             btn.disabled = true;
-            text.textContent = ' 正在分析...';
+            icon.classList.add('d-none');
             spinner.classList.remove('d-none');
         } else {
             btn.disabled = false;
-            text.textContent = '识别并添加';
+            icon.classList.remove('d-none');
             spinner.classList.add('d-none');
         }
     }
@@ -1759,6 +3122,171 @@
         }
 
         input.value = '';
+    }
+
+    // ========== 用户设置功能 ==========
+
+    async function saveUserSettings() {
+        try {
+            const data = {
+                name: document.getElementById('set_name').value,
+                birth_year: parseInt(document.getElementById('set_birth').value),
+                height: parseInt(document.getElementById('set_height').value),
+                weight: parseFloat(document.getElementById('set_weight').value),
+                gender: document.getElementById('set_gender').value
+            };
+
+            // 验证数据
+            if (!data.name || !data.birth_year || !data.height || !data.weight) {
+                alert('请填写完整的个人信息');
+                return;
+            }
+
+            if (data.birth_year < 1900 || data.birth_year > 2025) {
+                alert('请输入有效的出生年份');
+                return;
+            }
+
+            if (data.height < 100 || data.height > 250) {
+                alert('请输入有效的身高 (100-250cm)');
+                return;
+            }
+
+            if (data.weight < 30 || data.weight > 300) {
+                alert('请输入有效的体重 (30-300kg)');
+                return;
+            }
+
+            const res = await fetch('/settings', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(data)
+            });
+
+            const result = await res.json();
+            if (result.status === 'success') {
+                alert('个人信息更新成功！');
+                // 关闭模态框
+                bootstrap.Modal.getInstance(document.getElementById('userSettingsModal')).hide();
+                // 刷新页面以显示新数据
+                window.location.reload();
+            } else {
+                alert('保存失败: ' + result.message);
+            }
+        } catch (e) {
+            alert('保存失败: ' + e);
+        }
+    }
+
+    // ========== 头像上传功能 ==========
+
+    let cropper = null;
+    let avatarModal = null;
+
+    function openAvatarModal() {
+        if (!avatarModal) {
+            avatarModal = new bootstrap.Modal(document.getElementById('avatarModal'));
+        }
+        avatarModal.show();
+    }
+
+    function loadAvatarImage(input) {
+        if (input.files && input.files[0]) {
+            const file = input.files[0];
+
+            // 验证文件类型
+            if (!file.type.match('image/(png|jpeg|jpg)')) {
+                alert('请上传 PNG 或 JPEG 格式的图片');
+                return;
+            }
+
+            // 验证文件大小（最大5MB）
+            if (file.size > 5 * 1024 * 1024) {
+                alert('图片大小不能超过5MB');
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const image = document.getElementById('cropImage');
+                image.src = e.target.result;
+
+                // 显示裁剪区域
+                document.getElementById('cropArea').classList.remove('d-none');
+                document.getElementById('saveAvatarBtn').disabled = false;
+
+                // 销毁旧的cropper实例
+                if (cropper) {
+                    cropper.destroy();
+                }
+
+                // 初始化Cropper
+                cropper = new Cropper(image, {
+                    aspectRatio: 1,
+                    viewMode: 1,
+                    preview: '#avatarPreview',
+                    autoCropArea: 0.8,
+                    restore: false,
+                    guides: true,
+                    center: true,
+                    highlight: false,
+                    cropBoxMovable: true,
+                    cropBoxResizable: true,
+                    toggleDragModeOnDblclick: false
+                });
+            };
+            reader.readAsDataURL(file);
+        }
+    }
+
+    function resetAvatarModal() {
+        if (cropper) {
+            cropper.destroy();
+            cropper = null;
+        }
+        document.getElementById('avatarInput').value = '';
+        document.getElementById('cropImage').src = '';
+        document.getElementById('cropArea').classList.add('d-none');
+        document.getElementById('saveAvatarBtn').disabled = true;
+    }
+
+    async function cropAndUploadAvatar() {
+        if (!cropper) {
+            alert('请先选择图片');
+            return;
+        }
+
+        try {
+            // 获取裁剪后的canvas
+            const canvas = cropper.getCroppedCanvas({
+                width: 200,
+                height: 200,
+                imageSmoothingQuality: 'high'
+            });
+
+            // 转换为blob
+            canvas.toBlob(async function(blob) {
+                const formData = new FormData();
+                formData.append('avatar', blob, 'avatar.png');
+
+                const res = await fetch('/upload_avatar', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await res.json();
+                if (result.status === 'success') {
+                    alert('头像更新成功！');
+                    resetAvatarModal();
+                    avatarModal.hide();
+                    window.location.reload();
+                } else {
+                    alert('上传失败: ' + result.message);
+                }
+            }, 'image/png');
+        } catch (e) {
+            alert('上传失败: ' + e);
+        }
     }
 
     // ========== 药物方案功能 ==========

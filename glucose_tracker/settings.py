@@ -31,12 +31,16 @@ def calculate_bmr():
 
 def get_ai_system_prompt():
     config = load_config()
+    glucose_pattern = config.get('glucose_pattern', {
+        'fasting_range': '6.0-7.2',
+        'postmeal_range': '6.5-8.0'
+    })
     return f"""
     【用户健康档案】
     - 身份：二型糖尿病患者（{config['gender']}, {datetime.datetime.now().year - config['birth_year']}岁）
     - 控糖状态：血糖控制良好
     - 血糖特点：
-      - 空腹通常在 {config['glucose_pattern']['fasting_range']}，餐后通常在 {config['glucose_pattern']['postmeal_range']}
+      - 空腹通常在 {glucose_pattern['fasting_range']}，餐后通常在 {glucose_pattern['postmeal_range']}
     """
 
 DAILY_ROUTINE = """

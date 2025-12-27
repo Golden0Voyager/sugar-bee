@@ -39,7 +39,7 @@ def parse_glucose_input(text, history_context=None, image_data=None, mime_type=N
     routine_str = settings.DAILY_ROUTINE
 
     prompt = f"""
-    你是一个血糖、运动与用药数据分析助手。你的任务是从自然语言文本或图片中提取数据。
+    你是一个血糖、血压、运动与用药数据分析助手。你的任务是从自然语言文本或图片中提取数据。
 
     当前录入时间: {current_time}
     {context_str}
@@ -48,9 +48,10 @@ def parse_glucose_input(text, history_context=None, image_data=None, mime_type=N
 
     输入文本: "{text if text else '见图片内容'}"
 
-    **核心原则：餐食记录、血糖记录、药物记录必须分开！**
+    **核心原则：餐食记录、血糖记录、血压记录、药物记录必须分开！**
     - 餐食记录：value=0，记录食物内容和热量
     - 血糖记录：value=实际测量值，不包含食物信息
+    - 血压记录：systolic_pressure和diastolic_pressure存在，记录血压数据
     - 药物记录：medication_name存在，记录药物信息
 
     指示:
@@ -59,6 +60,7 @@ def parse_glucose_input(text, history_context=None, image_data=None, mime_type=N
          - 具体时间："这是今天午餐" → 类型=午餐，时间=11:30
          - 补充信息："吃了半碗" → 调整热量估算
          - 血糖值："餐后7.2" → 额外生成实际血糖记录
+         - 血压值："137/73" → 生成血压记录
          - 纠正信息："不是午餐，是早餐" → 按早餐处理
 
        - **情况 A：运动/健康App截图**
@@ -82,6 +84,9 @@ def parse_glucose_input(text, history_context=None, image_data=None, mime_type=N
        - **情况 C：药物/药盒照片**
          - 识别药物名称、剂量信息
          - 生成药物记录，设置 medication_name
+       - **情况 D：血压计照片**
+         - 识别收缩压(高压)和舒张压(低压)
+         - 生成血压记录，设置 systolic_pressure 和 diastolic_pressure
 
     **药物识别规则**:
     - 识别关键词：服用/吃了/用了 + 药物名称（二甲双胍、阿卡波糖、胰岛素等）
@@ -94,6 +99,18 @@ def parse_glucose_input(text, history_context=None, image_data=None, mime_type=N
       - "今天开始服用二甲双胍，每天两次，早晚餐前" → medication_is_new_plan: true
       - "刚吃了一片二甲双胍" → medication_is_new_plan: false
       - "医生开了新药：阿卡波糖100mg，三餐餐中服用" → medication_is_new_plan: true
+
+    **血压识别规则**:
+    - 识别格式：137/73、"高压137低压73"、"收缩压137舒张压73"
+    - 提取信息：
+      - systolic_pressure: 收缩压/高压（正常范围90-140 mmHg）
+      - diastolic_pressure: 舒张压/低压（正常范围60-90 mmHg）
+      - pulse_rate: 脉搏（可选，正常范围60-100 bpm）
+      - type: "血压测量"、"空腹血压"、"餐后血压"等
+    - 示例：
+      - "早晨空腹基础血压137/73" → type="空腹血压", systolic_pressure=137, diastolic_pressure=73, datetime=今天07:15
+      - "中午13:10测的124/68" → type="血压测量", systolic_pressure=124, diastolic_pressure=68, datetime=今天13:10
+      - "餐后血压130/75，脉搏82" → type="餐后血压", systolic_pressure=130, diastolic_pressure=75, pulse_rate=82
 
     **血糖预测规则（用于计算 predicted_value）**:
     - 预测值必须基于用户历史数据（空腹均值、餐后均值）合理推算
@@ -125,6 +142,7 @@ def parse_glucose_input(text, history_context=None, image_data=None, mime_type=N
 
     3. **记录类型分类**:
        - 血糖测量：'空腹', '运动后餐前', '餐后2小时', '睡前'
+       - 血压测量：'空腹血压', '血压测量', '餐后血压'
        - 餐食记录：'早餐', '午餐', '晚餐', '加餐'（value=0）
        - 运动记录：'跑步', '运动'（value=0）
        - 药物记录：medication_name 不为空
@@ -137,7 +155,7 @@ def parse_glucose_input(text, history_context=None, image_data=None, mime_type=N
     JSON 结构要求:
     [
         {{
-            "value": float (血糖值，若是纯运动/餐食/药物记录则设为0),
+            "value": float (血糖值，若是纯运动/餐食/药物/血压记录则设为0),
             "predicted_value": float (AI基于食物和历史估算的预测值，必填，无预测则null),
             "unit": "mmol/L" 或 "mg/dL",
             "type": "string",
@@ -151,6 +169,9 @@ def parse_glucose_input(text, history_context=None, image_data=None, mime_type=N
             "heart_rate": int,
             "pace": "string",
             "cadence": int,
+            "systolic_pressure": int (收缩压/高压，可选),
+            "diastolic_pressure": int (舒张压/低压，可选),
+            "pulse_rate": int (脉搏，可选),
             "medication_name": "string (药物名称，可选)",
             "medication_dosage": "string (剂量，可选)",
             "medication_timing": "string (服用时机，可选)",
