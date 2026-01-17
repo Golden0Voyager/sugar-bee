@@ -1,6 +1,6 @@
 
 flask
-google-generativeai
+google-genai
 python-dotenv
 pandas
 openpyxl

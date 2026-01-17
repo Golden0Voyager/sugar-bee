@@ -1,4 +1,5 @@
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 import os
 import json
 import datetime
@@ -10,19 +11,16 @@ load_dotenv()
 
 # Configure API
 api_key = os.getenv("GEMINI_API_KEY")
-if api_key:
-    genai.configure(api_key=api_key)
 
-def parse_glucose_input(text, history_context=None, image_data=None, mime_type=None):
+def parse_glucose_input(text, history_context=None, images_data=None, mime_type=None):
     if not api_key:
         print("Error: API Key not found")
         return []
 
-    # Upgrade to the latest Gemini 3 Flash Preview (Released Dec 17, 2025)
-    model = genai.GenerativeModel('gemini-3-flash-preview')
-    
+    client = genai.Client(api_key=api_key)
+
     current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    
+
     context_str = "无历史数据参考，请使用通用医疗标准。"
     if history_context:
         context_str = f"""
@@ -34,9 +32,35 @@ def parse_glucose_input(text, history_context=None, image_data=None, mime_type=N
 
     # 用户健康档案 (从配置中动态获取)
     user_profile = settings.get_ai_system_prompt()
-        
+
     # User Daily Routine Context (从配置中获取)
     routine_str = settings.DAILY_ROUTINE
+
+    # 判断是否为多张图片的同一餐情况
+    num_images = len(images_data) if images_data else 0
+    multi_image_note = ""
+    if num_images > 1:
+        multi_image_note = f"""
+
+    **重要提示：用户上传了 {num_images} 张照片**
+    这很可能是同一餐的多个菜品照片（例如：午餐的主食、蔬菜、肉类各拍了一张）。
+
+    **累加规则**：
+    1. **餐食记录**：为每张照片生成单独的餐食记录，记录具体食物内容
+    2. **血糖预测**：只生成一条餐后血糖预测记录，预测值需要考虑所有照片中食物的累积效应
+    3. **卡路里累加**：计算所有照片中食物的总卡路里
+    4. **升糖预测**：基于所有食物的总GI和总热量，预测餐后2小时血糖
+       - 如果总热量超过500kcal，或含有多种高GI食物，预测值应适当上调
+       - 如果以低GI食物为主，预测值可以持平或微升
+
+    **示例输出**（3张午餐照片：米饭、西兰花、鸡胸肉）：
+    [
+        {{"value": 0, "type": "午餐", "notes": "一碗白米饭（约150g）", "calories": 200, "datetime": "2024-12-31 11:30:00", "is_predicted": false}},
+        {{"value": 0, "type": "午餐", "notes": "清炒西兰花（约100g）", "calories": 50, "datetime": "2024-12-31 11:30:00", "is_predicted": false}},
+        {{"value": 0, "type": "午餐", "notes": "鸡胸肉（约100g）", "calories": 165, "datetime": "2024-12-31 11:30:00", "is_predicted": false}},
+        {{"value": 7.8, "predicted_value": 7.8, "type": "餐后2小时", "notes": "基于午餐总热量415kcal的预测", "datetime": "2024-12-31 13:30:00", "is_predicted": true}}
+    ]
+    """
 
     prompt = f"""
     你是一个血糖、血压、运动与用药数据分析助手。你的任务是从自然语言文本或图片中提取数据。
@@ -45,6 +69,7 @@ def parse_glucose_input(text, history_context=None, image_data=None, mime_type=N
     {context_str}
     {user_profile}
     {routine_str}
+    {multi_image_note}
 
     输入文本: "{text if text else '见图片内容'}"
 
@@ -140,8 +165,12 @@ def parse_glucose_input(text, history_context=None, image_data=None, mime_type=N
          - "晚餐后" -> 20:00
          - "睡前" -> 22:00
 
-    3. **记录类型分类**:
-       - 血糖测量：'空腹', '运动后餐前', '餐后2小时', '睡前'
+    3. **记录类型分类（必须严格使用以下标准类型，不要创造新类型）**:
+       - 血糖测量：'空腹', '餐前', '运动后餐前', '餐后1小时', '餐后2小时', '睡前', '运动后'
+         **重要**:
+         - 早餐后/午餐后/晚餐后测量 → 统一使用 '餐后2小时'（默认）或 '餐后1小时'
+         - 早饭前/午饭前/晚饭前 → 统一使用 '餐前'
+         - 不要使用 "早餐后2小时"、"晚饭前" 等变体
        - 血压测量：'空腹血压', '血压测量', '餐后血压'
        - 餐食记录：'早餐', '午餐', '晚餐', '加餐'（value=0）
        - 运动记录：'跑步', '运动'（value=0）
@@ -180,24 +209,32 @@ def parse_glucose_input(text, history_context=None, image_data=None, mime_type=N
     ]
     你必须只返回一个JSON数组，不要包含任何 markdown 格式化。
     """
-    
-    try:
-        content = [prompt]
-        if image_data:
-            content.append({"mime_type": mime_type, "data": image_data})
-        else:
-            content.append(text if text else "")
 
-        response = model.generate_content(content)
+    try:
+        contents = [prompt]
+
+        # 如果有多张图片，逐一添加到内容中
+        if images_data:
+            for image_data in images_data:
+                contents.append(types.Part.from_bytes(data=image_data, mime_type=mime_type))
+
+        # 添加文本输入（如果有）
+        if text:
+            contents.append(text)
+
+        response = client.models.generate_content(
+            model='gemini-3-flash-preview',
+            contents=contents
+        )
         raw_text = response.text
         print(f"DEBUG: Raw AI response text: {raw_text}")
-        
+
         # More robust extraction
         match = re.search(r'(\[[\s\S]*\])', raw_text)
         if match:
             return json.loads(match.group(1))
         return []
-            
+
     except Exception as e:
         print(f"Error parsing AI response: {e}")
         return []

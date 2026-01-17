@@ -10,31 +10,43 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css" rel="stylesheet">
     <script src='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.js'></script>
+    <!-- Markdown Parser -->
+    <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js"></script>
+    <!-- PDF Export -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <style>
         :root {
-            /* Material Design Color System */
-            --md-primary: #1976D2;
-            --md-primary-dark: #1565C0;
-            --md-primary-light: #42A5F5;
-            --md-secondary: #FFA726;
-            --md-secondary-dark: #F57C00;
+            /* 清新薄荷配色方案 - Fresh Mint Theme */
+            --md-primary: #00BFA5;
+            --md-primary-dark: #00897B;
+            --md-primary-light: #64FFDA;
+            --md-secondary: #FF7043;
+            --md-secondary-dark: #E64A19;
             --md-surface: #FFFFFF;
-            --md-background: #F5F5F5;
-            --md-error: #D32F2F;
-            --md-success: #388E3C;
-            --md-warning: #F57C00;
-            --md-info: #0288D1;
+            --md-background: #E0F2F1;
+            --md-error: #EF5350;
+            --md-success: #4CAF50;
+            --md-warning: #FFA726;
+            --md-info: #26C6DA;
+
+            /* 血糖状态颜色 */
+            --glucose-optimal: #4CAF50;
+            --glucose-acceptable: #8BC34A;
+            --glucose-warning: #FFA726;
+            --glucose-danger: #EF5350;
+            --glucose-low: #FF7043;
 
             /* Text colors */
             --md-text-primary: rgba(0, 0, 0, 0.87);
             --md-text-secondary: rgba(0, 0, 0, 0.60);
             --md-text-disabled: rgba(0, 0, 0, 0.38);
 
-            /* Elevation shadows */
-            --md-shadow-1: 0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.24);
-            --md-shadow-2: 0 3px 6px rgba(0,0,0,0.16), 0 3px 6px rgba(0,0,0,0.23);
-            --md-shadow-3: 0 10px 20px rgba(0,0,0,0.19), 0 6px 6px rgba(0,0,0,0.23);
-            --md-shadow-4: 0 14px 28px rgba(0,0,0,0.25), 0 10px 10px rgba(0,0,0,0.22);
+            /* Elevation shadows - 薄荷色调阴影 */
+            --md-shadow-1: 0 1px 3px rgba(0,150,136,0.12), 0 1px 2px rgba(0,150,136,0.24);
+            --md-shadow-2: 0 3px 6px rgba(0,150,136,0.16), 0 3px 6px rgba(0,150,136,0.23);
+            --md-shadow-3: 0 10px 20px rgba(0,150,136,0.19), 0 6px 6px rgba(0,150,136,0.23);
+            --md-shadow-4: 0 14px 28px rgba(0,150,136,0.25), 0 10px 10px rgba(0,150,136,0.22);
         }
 
         /* Base Typography - Larger for elderly users */
@@ -67,6 +79,121 @@
         }
         .card-body {
             padding: 24px;
+        }
+
+        /* Collapse Icon Rotation Animation */
+        .collapse-toggle-icon {
+            transition: transform 0.3s ease;
+        }
+        [aria-expanded="false"] .collapse-toggle-icon {
+            transform: rotate(-90deg);
+        }
+        [aria-expanded="true"] .collapse-toggle-icon {
+            transform: rotate(0deg);
+        }
+
+        /* Glucose Slot Styling - 今日概览血糖槽位 */
+        .glucose-slot {
+            padding: 8px 4px;
+            border-radius: 8px;
+            transition: all 0.2s ease;
+            border: 2px solid transparent;
+        }
+        .glucose-slot:hover {
+            background: rgba(0, 0, 0, 0.03);
+        }
+        .glucose-slot.slot-measured {
+            border-color: var(--md-success);
+            background: rgba(56, 142, 60, 0.05);
+        }
+        .glucose-slot.slot-predicted {
+            border: 2px dashed var(--md-info);
+            background: rgba(2, 136, 209, 0.05);
+        }
+        .glucose-slot.slot-pending {
+            border: 2px dashed #dee2e6;
+            opacity: 0.7;
+        }
+        .glucose-slot.slot-active {
+            border-color: var(--md-primary);
+            box-shadow: 0 0 0 3px rgba(0, 191, 165, 0.2);
+        }
+
+        /* Progress Bar Animation */
+        .today-progress {
+            position: relative;
+            height: 8px;
+            background: rgba(0,0,0,0.08);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        .today-progress .progress-bar {
+            height: 100%;
+            float: left;
+        }
+        .today-progress::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 50%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
+            animation: progress-shimmer 2.5s ease-in-out infinite;
+        }
+        @keyframes progress-shimmer {
+            0% { left: -50%; }
+            100% { left: 100%; }
+        }
+
+        /* AI Prediction Button - Material Design with Gradient */
+        .btn-ai-predict {
+            background: linear-gradient(135deg, #00BFA5 0%, #00897B 100%);
+            border: none;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 500;
+            box-shadow: 0 2px 8px rgba(0, 191, 165, 0.4);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            overflow: hidden;
+        }
+        .btn-ai-predict:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 191, 165, 0.5);
+            color: white;
+        }
+        .btn-ai-predict:active {
+            transform: translateY(0);
+            box-shadow: 0 2px 6px rgba(0, 191, 165, 0.4);
+        }
+        .btn-ai-predict::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+            transition: left 0.5s;
+        }
+        .btn-ai-predict:hover::before {
+            left: 100%;
+        }
+        .btn-ai-predict .ai-icon {
+            display: inline-block;
+            animation: pulse-glow 2s ease-in-out infinite;
+        }
+        @keyframes pulse-glow {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.6; }
+        }
+        .btn-ai-predict:disabled {
+            background: linear-gradient(135deg, #a0a0a0 0%, #808080 100%);
+            box-shadow: none;
+            transform: none;
         }
 
         /* Logo Design - Material Style */
@@ -493,6 +620,184 @@
         .btn-circle-icon.active i {
             color: white;
         }
+
+        /* Markdown Content Styling */
+        .markdown-content {
+            font-size: 16px;
+            line-height: 1.8;
+            color: #333;
+        }
+        .markdown-content h1 {
+            font-size: 1.8rem;
+            font-weight: 600;
+            color: #1976D2;
+            margin-top: 1.5rem;
+            margin-bottom: 1rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 2px solid #1976D2;
+        }
+        .markdown-content h2 {
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: #0288D1;
+            margin-top: 1.5rem;
+            margin-bottom: 0.8rem;
+        }
+        .markdown-content h3 {
+            font-size: 1.3rem;
+            font-weight: 600;
+            color: #0097A7;
+            margin-top: 1.2rem;
+            margin-bottom: 0.6rem;
+        }
+        .markdown-content h4 {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: #00796B;
+            margin-top: 1rem;
+            margin-bottom: 0.5rem;
+        }
+        .markdown-content p {
+            margin-bottom: 1rem;
+        }
+        .markdown-content ul, .markdown-content ol {
+            margin-bottom: 1rem;
+            padding-left: 2rem;
+        }
+        .markdown-content li {
+            margin-bottom: 0.5rem;
+        }
+        .markdown-content strong {
+            color: #D32F2F;
+            font-weight: 600;
+        }
+        .markdown-content em {
+            color: #F57C00;
+            font-style: italic;
+        }
+        .markdown-content blockquote {
+            border-left: 4px solid #1976D2;
+            padding-left: 1rem;
+            margin: 1rem 0;
+            color: #666;
+            background-color: #F5F5F5;
+            padding: 1rem;
+            border-radius: 4px;
+        }
+        .markdown-content code {
+            background-color: #F5F5F5;
+            padding: 0.2rem 0.4rem;
+            border-radius: 3px;
+            font-family: 'Consolas', 'Monaco', monospace;
+            color: #D32F2F;
+        }
+        .markdown-content pre {
+            background-color: #F5F5F5;
+            padding: 1rem;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+        .markdown-content hr {
+            border: 0;
+            border-top: 2px solid #E0E0E0;
+            margin: 2rem 0;
+        }
+        .markdown-content table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 1rem;
+        }
+        .markdown-content table th,
+        .markdown-content table td {
+            border: 1px solid #E0E0E0;
+            padding: 0.5rem;
+            text-align: left;
+        }
+        .markdown-content table th {
+            background-color: #F5F5F5;
+            font-weight: 600;
+        }
+
+        /* Unified User Dropdown Styles */
+        #unifiedUserDropdown {
+            font-size: 0.95rem;
+            padding: 0.5rem 1rem;
+            border-width: 2px;
+            transition: all 0.2s ease;
+        }
+        #unifiedUserDropdown:hover {
+            background-color: var(--md-primary);
+            color: white;
+            border-color: var(--md-primary);
+        }
+        #unifiedUserDropdown:hover .bg-primary {
+            background-color: white !important;
+        }
+        #unifiedUserDropdown:hover .text-primary {
+            color: var(--md-primary) !important;
+        }
+
+        /* Dropdown menu enhancements */
+        .dropdown-menu {
+            border: none;
+            box-shadow: var(--md-shadow-3);
+            border-radius: 12px;
+            overflow: hidden;
+            max-height: 600px;
+            overflow-y: auto;
+        }
+        .dropdown-header {
+            font-size: 0.75rem;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            padding: 0.5rem 1rem;
+            margin-top: 0.25rem;
+        }
+        .dropdown-item {
+            padding: 0.65rem 1rem;
+            transition: all 0.15s ease;
+            display: flex;
+            align-items: center;
+        }
+        .dropdown-item:hover {
+            background-color: var(--md-primary);
+            color: white;
+            padding-left: 1.25rem;
+        }
+        .dropdown-item.active {
+            background-color: var(--md-primary);
+            background-opacity: 0.1;
+            color: var(--md-primary);
+            font-weight: 500;
+        }
+        .dropdown-item i {
+            width: 20px;
+            text-align: center;
+        }
+        .dropdown-divider {
+            margin: 0.5rem 0;
+            opacity: 0.1;
+        }
+
+        /* User list container */
+        #userListContainer {
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        #userListContainer::-webkit-scrollbar {
+            width: 6px;
+        }
+        #userListContainer::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 10px;
+        }
+        #userListContainer::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 10px;
+        }
+        #userListContainer::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
     </style>
 </head>
 <body class="bg-light">
@@ -510,43 +815,85 @@
                 <p class="slogan-en">Manage Diligently, Live Sweetly</p>
             </div>
         </div>
-        <!-- User Profile Dropdown -->
-        <div class="dropdown">
-            <button class="btn btn-sm btn-light border d-flex align-items-center gap-2" type="button" data-bs-toggle="dropdown">
-                {% if stats.user.avatar %}
-                <img src="/static/avatars/{{ stats.user.avatar }}" class="rounded-circle" style="width: 32px; height: 32px; object-fit: cover;">
-                {% else %}
-                <div class="bg-primary bg-opacity-10 rounded-circle d-flex align-items-center justify-content-center" style="width: 32px; height: 32px;">
-                    <i class="bi bi-person-circle text-primary"></i>
-                </div>
-                {% endif %}
-                <span>{{ stats.user.name }}</span>
-                <i class="bi bi-chevron-down small"></i>
-            </button>
-            <ul class="dropdown-menu dropdown-menu-end shadow">
-                <li class="px-3 py-2 border-bottom">
-                    <div class="small text-muted mb-1">个人信息</div>
-                    <div class="fw-bold">{{ stats.user.name }}</div>
-                    <div class="small text-muted">{{ stats.user.gender == 'male' and '男' or '女' }} · {{ 2025 - stats.user.birth_year }}岁</div>
-                    <div class="small mt-1">身高 {{ stats.user.height }}cm · 体重 {{ stats.user.weight }}kg</div>
-                </li>
-                <li><hr class="dropdown-divider"></li>
-                <li>
-                    <a class="dropdown-item" href="#" onclick="openAvatarModal()" data-bs-dismiss="dropdown">
-                        <i class="bi bi-camera me-2"></i>更换头像
-                    </a>
-                </li>
-                <li>
-                    <a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#userSettingsModal">
-                        <i class="bi bi-gear me-2"></i>个人设置
-                    </a>
-                </li>
-                <li>
-                    <a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#medicationPlanModal">
-                        <i class="bi bi-capsule me-2"></i>药物管理
-                    </a>
-                </li>
-            </ul>
+
+        <div class="d-flex align-items-center gap-3">
+            <!-- Unified User Dropdown (Merged Switcher + Profile) -->
+            <div class="dropdown">
+                <button class="btn btn-outline-primary dropdown-toggle d-flex align-items-center gap-2"
+                        type="button"
+                        id="unifiedUserDropdown"
+                        data-bs-toggle="dropdown"
+                        aria-expanded="false">
+                    {% if stats.user.avatar %}
+                    <img src="/static/avatars/{{ stats.user.avatar }}" class="rounded-circle" style="width: 32px; height: 32px; object-fit: cover;">
+                    {% else %}
+                    <div class="bg-primary bg-opacity-10 rounded-circle d-flex align-items-center justify-content-center" style="width: 32px; height: 32px;">
+                        <i class="bi bi-person-circle text-primary"></i>
+                    </div>
+                    {% endif %}
+                    <span id="currentUserName">{{ stats.user.name }}</span>
+                    <i class="bi bi-chevron-down small"></i>
+                </button>
+                <ul class="dropdown-menu dropdown-menu-end shadow" style="min-width: 280px;" aria-labelledby="unifiedUserDropdown">
+                    <!-- Current User Info Card -->
+                    <li class="px-3 py-3 border-bottom bg-light bg-opacity-50">
+                        <div class="d-flex align-items-center gap-3 mb-2">
+                            {% if stats.user.avatar %}
+                            <img src="/static/avatars/{{ stats.user.avatar }}" class="rounded-circle" style="width: 48px; height: 48px; object-fit: cover;">
+                            {% else %}
+                            <div class="bg-primary bg-opacity-10 rounded-circle d-flex align-items-center justify-content-center" style="width: 48px; height: 48px;">
+                                <i class="bi bi-person-circle text-primary fs-4"></i>
+                            </div>
+                            {% endif %}
+                            <div class="flex-grow-1">
+                                <div class="fw-bold mb-1">{{ stats.user.name }}</div>
+                                <div class="small text-muted">{{ stats.user.gender == 'male' and '男' or '女' }} · {{ 2025 - stats.user.birth_year }}岁</div>
+                            </div>
+                        </div>
+                        <div class="small text-muted">身高 {{ stats.user.height }}cm · 体重 {{ stats.user.weight }}kg</div>
+                    </li>
+
+                    <!-- User Switcher Section -->
+                    <li><hr class="dropdown-divider my-2"></li>
+                    <li><h6 class="dropdown-header text-primary"><i class="bi bi-people me-2"></i>切换用户</h6></li>
+                    <div id="userListContainer">
+                        <!-- 动态加载用户列表 -->
+                    </div>
+
+                    <!-- User Management Section -->
+                    <li><hr class="dropdown-divider my-2"></li>
+                    <li><h6 class="dropdown-header text-primary"><i class="bi bi-person-gear me-2"></i>个人管理</h6></li>
+                    <li>
+                        <a class="dropdown-item" href="#" onclick="openAvatarModal()" data-bs-dismiss="dropdown">
+                            <i class="bi bi-camera me-2"></i>更换头像
+                        </a>
+                    </li>
+                    <li>
+                        <a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#userSettingsModal">
+                            <i class="bi bi-gear me-2"></i>个人设置
+                        </a>
+                    </li>
+                    <li>
+                        <a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#medicationPlanModal">
+                            <i class="bi bi-capsule me-2"></i>药物管理
+                        </a>
+                    </li>
+
+                    <!-- Data Management Section -->
+                    <li><hr class="dropdown-divider my-2"></li>
+                    <li><h6 class="dropdown-header text-primary"><i class="bi bi-database me-2"></i>数据管理</h6></li>
+                    <li>
+                        <a class="dropdown-item" href="#" onclick="findDuplicates()">
+                            <i class="bi bi-search me-2"></i>查找重复数据
+                        </a>
+                    </li>
+                    <li>
+                        <a class="dropdown-item text-danger" href="#" onclick="confirmDeleteDuplicates()">
+                            <i class="bi bi-trash me-2"></i>清理重复数据
+                        </a>
+                    </li>
+                </ul>
+            </div>
         </div>
     </div>
 
@@ -557,10 +904,7 @@
             <div class="chat-input-container">
                 <!-- Image Preview Area -->
                 <div id="imagePreviewContainer" class="mb-3 d-none">
-                    <div class="position-relative d-inline-block">
-                        <img id="selectedImage" src="#" class="img-thumbnail rounded-3" style="max-height: 120px;">
-                        <button type="button" class="btn-close position-absolute top-0 end-0 bg-white m-1 shadow-sm" onclick="clearImage()"></button>
-                    </div>
+                    <div id="imagePreviewList" class="d-flex gap-2 flex-wrap"></div>
                 </div>
 
                 <!-- Main Input Bar -->
@@ -578,10 +922,10 @@
                         <!-- Image Upload Button -->
                         <label class="btn btn-light rounded-circle d-flex align-items-center justify-content-center"
                                for="imageUpload"
-                               title="上传图片"
+                               title="上传图片（可多选）"
                                style="width: 48px; height: 48px; cursor: pointer;">
                             <i class="bi bi-image text-primary" style="font-size: 1.2rem;"></i>
-                            <input type="file" id="imageUpload" accept="image/*" class="d-none" onchange="previewImage(this)">
+                            <input type="file" id="imageUpload" accept="image/*" multiple class="d-none" onchange="previewImage(this)">
                         </label>
 
                         <!-- Voice Input Button -->
@@ -848,15 +1192,335 @@
         </div>
     </div>
 
-    <!-- Stats Dashboard - 4 Sections in One Row -->
-    <div class="row g-4 mb-4">
-        <!-- 1. 血糖板块 -->
-        <div class="col-xl-3 col-lg-6 col-12">
-            <div class="card h-100">
+    <!-- ========== 今日概览卡片 ========== -->
+    <div class="card mb-4" id="todayOverviewCard">
+        <div class="card-body">
+            <!-- 标题栏 -->
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <div class="d-flex align-items-center gap-2">
+                    <i class="bi bi-calendar-check text-primary fs-4"></i>
+                    <div>
+                        <h5 class="mb-0">今日概览</h5>
+                        <small class="text-muted">{{ stats.today_str }}</small>
+                    </div>
+                </div>
+                <div class="d-flex align-items-center gap-2">
+                    <!-- AI预测按钮 -->
+                    <button class="btn btn-ai-predict" onclick="triggerRemainingPredictions()" title="基于已测数据预测剩余时间点">
+                        <span class="ai-icon">✨</span>
+                        <span>AI预测</span>
+                    </button>
+                    <!-- 完成进度 -->
+                    <div class="text-end">
+                        <div class="fs-5 fw-bold text-primary">{{ stats.today_completion.measured }}/{{ stats.today_completion.total }}</div>
+                        <small class="text-muted">已测量</small>
+                    </div>
+                    <!-- 达标徽章 -->
+                    {% if stats.today_completion.measured > 0 %}
+                    <span class="badge rounded-pill fs-6" style="background: {{ stats.compliance_badge.bg_color }}; color: {{ stats.compliance_badge.text_color }};">
+                        {{ stats.compliance_badge.icon }} {{ stats.compliance }}%
+                    </span>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- 血糖测量时间轴 -->
+            <div class="today-glucose-timeline mb-3">
+                <div class="d-flex justify-content-between gap-1">
+                    {% for slot in stats.today_overview %}
+                    <div class="text-center flex-fill glucose-slot slot-{{ slot.status }}"
+                         data-slot-key="{{ slot.key }}"
+                         style="cursor: pointer;"
+                         onclick="focusSlot('{{ slot.key }}')"
+                         title="{% if slot.status == 'predicted' %}AI预测值，点击录入实测值{% elif slot.status == 'pending' %}点击录入血糖值{% else %}已测量{% endif %}">
+                        <!-- 图标 -->
+                        <div class="mb-1" style="font-size: 1.1rem;">
+                            {% if slot.key == 'fasting' %}
+                            🌅
+                            {% elif slot.key == 'post_exercise' %}
+                            🏃
+                            {% elif slot.key == 'post_breakfast' %}
+                            ☕
+                            {% elif slot.key == 'post_lunch' %}
+                            🌞
+                            {% elif slot.key == 'post_dinner' %}
+                            🌙
+                            {% elif slot.key == 'bedtime' %}
+                            😴
+                            {% else %}
+                            🩸
+                            {% endif %}
+                        </div>
+                        <!-- 数值 -->
+                        <div class="fw-bold" style="font-size: 0.9rem;">
+                            {% if slot.value %}
+                                <span class="{% if slot.status == 'predicted' %}text-info{% elif slot.compliance == 'optimal' %}text-success{% elif slot.compliance == 'high' or slot.compliance == 'low' %}text-danger{% else %}text-warning{% endif %}">
+                                    {{ "%.1f"|format(slot.value) }}
+                                </span>
+                                {% if slot.status == 'predicted' %}
+                                <small class="text-info">*</small>
+                                {% endif %}
+                            {% else %}
+                                <span class="text-muted">--</span>
+                            {% endif %}
+                        </div>
+                        <!-- 名称 -->
+                        <div class="text-muted" style="font-size: 0.7rem;">{{ slot.name }}</div>
+                        <!-- 时间 -->
+                        <div class="text-muted" style="font-size: 0.65rem;">{{ slot.time }}</div>
+                    </div>
+                    {% endfor %}
+                </div>
+                <!-- 进度条 -->
+                <div class="today-progress mt-2">
+                    {% set measured_pct = (stats.today_completion.measured / stats.today_completion.total * 100)|round(1) %}
+                    {% set predicted_pct = (stats.today_completion.predicted / stats.today_completion.total * 100)|round(1) %}
+                    {% set pending_pct = 100 - measured_pct - predicted_pct %}
+                    {% if measured_pct > 0 %}
+                    <div class="progress-bar" style="width: {{ measured_pct }}%; background: linear-gradient(90deg, #4CAF50, #81C784);"></div>
+                    {% endif %}
+                    {% if predicted_pct > 0 %}
+                    <div class="progress-bar" style="width: {{ predicted_pct }}%; background: linear-gradient(90deg, #26C6DA, #80DEEA);"></div>
+                    {% endif %}
+                </div>
+                <div class="d-flex justify-content-between mt-1">
+                    <small class="text-muted">
+                        <span style="color: #4CAF50;">●</span> 实际测量 {{ stats.today_completion.measured }}
+                        {% if stats.today_completion.predicted > 0 %}
+                        <span style="color: #26C6DA;" class="ms-2">●</span> AI预测 {{ stats.today_completion.predicted }}
+                        {% endif %}
+                    </small>
+                    {% if stats.today_completion.total - stats.today_completion.measured - stats.today_completion.predicted > 0 %}
+                    <small class="text-muted">
+                        待测量 {{ stats.today_completion.total - stats.today_completion.measured - stats.today_completion.predicted }}
+                    </small>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- 今日快捷信息 -->
+            <div class="row g-2">
+                <!-- 运动 -->
+                <div class="col-md-4 col-12">
+                    <div class="p-2 rounded h-100" style="background: var(--bs-light); min-height: 120px;">
+                        <div class="d-flex align-items-center gap-1 mb-2">
+                            <span style="font-size: 1rem;">🏃</span>
+                            <span class="fw-bold" style="color: var(--md-primary);">运动</span>
+                        </div>
+                        {% if stats.today_exercise %}
+                        <div style="font-size: 0.75rem;" class="text-muted">
+                            <div class="fw-semibold text-dark mb-1">{{ stats.today_exercise.type }}</div>
+                            <div>📏 {{ stats.today_exercise.distance or 0 }}km · {{ stats.today_exercise.duration or '--' }}</div>
+                            {% if stats.today_exercise.pace %}
+                            <div>⏱️ 配速 {{ stats.today_exercise.pace }}/km</div>
+                            {% endif %}
+                            {% if stats.today_exercise.heart_rate %}
+                            <div>💓 均心率 {{ stats.today_exercise.heart_rate }}bpm</div>
+                            {% endif %}
+                        </div>
+                        {% else %}
+                        <div class="text-muted small">暂无运动记录</div>
+                        {% endif %}
+                    </div>
+                </div>
+                <!-- 血压 -->
+                <div class="col-md-4 col-12">
+                    <div class="p-2 rounded h-100" style="background: var(--bs-light); min-height: 120px;">
+                        <div class="d-flex align-items-center gap-1 mb-2">
+                            <span style="font-size: 1rem;">❤️</span>
+                            <span class="fw-bold" style="color: var(--md-secondary);">血压</span>
+                        </div>
+                        {% if stats.today_bp %}
+                        <div style="font-size: 0.75rem;" class="text-muted">
+                            <div class="fw-semibold text-dark mb-1">{{ stats.today_bp.systolic }}/{{ stats.today_bp.diastolic }} mmHg</div>
+                            {% if stats.today_bp.heart_rate %}
+                            <div>💓 静息心率 {{ stats.today_bp.heart_rate }}bpm</div>
+                            {% endif %}
+                            <div>🕐 测量时间 {{ stats.today_bp.time }}</div>
+                        </div>
+                        {% else %}
+                        <div class="text-muted small">暂无血压记录</div>
+                        {% endif %}
+                    </div>
+                </div>
+                <!-- 用药 -->
+                <div class="col-md-4 col-12">
+                    <div class="p-2 rounded h-100" style="background: var(--bs-light); min-height: 120px;">
+                        <div class="d-flex align-items-center gap-1 mb-2">
+                            <span style="font-size: 1rem;">💊</span>
+                            <span class="fw-bold" style="color: var(--md-info);">用药</span>
+                        </div>
+                        {% if stats.today_med_status and stats.today_med_status.plans %}
+                        <div style="font-size: 0.7rem;" class="text-muted">
+                            <div class="fw-semibold text-dark mb-1">今日 {{ stats.today_med_status.plans|length }} 种药物</div>
+                            {% for med in stats.today_med_status.plans %}
+                            <div class="d-flex align-items-center gap-1"
+                                 data-bs-toggle="tooltip"
+                                 title="{{ med.name }} {{ med.dosage }} - {{ med.timing }}">
+                                {% set taken = stats.today_med_status.taken_details[med.id] if med.id in stats.today_med_status.taken_details else 0 %}
+                                {% if taken >= med.times %}
+                                <span style="color: #4CAF50;">✓</span>
+                                {% else %}
+                                <span style="color: #ccc;">○</span>
+                                {% endif %}
+                                <span class="text-truncate">{{ med.name }}</span>
+                            </div>
+                            {% endfor %}
+                        </div>
+                        {% else %}
+                        <div class="text-muted small">无用药计划</div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Health Analysis Card -->
+    {% if stats.latest_analysis %}
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
                 <div class="card-body">
-                    <h6 class="mb-3 text-primary fw-bold"><i class="bi bi-droplet-fill me-2"></i>血糖监测（近7天）</h6>
+                    <!-- 标题栏（始终可见） -->
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div class="d-flex align-items-center gap-3">
+                            <div>
+                                <h5 class="mb-0"><i class="bi bi-heart-pulse-fill me-2"></i>综合健康分析</h5>
+                                <small style="opacity: 0.9;">{{ stats.latest_analysis.analysis_date }}</small>
+                            </div>
+                            <button class="btn btn-link text-white p-0"
+                                    type="button"
+                                    data-bs-toggle="collapse"
+                                    data-bs-target="#healthAnalysisDetails"
+                                    aria-expanded="false"
+                                    title="展开/收起详情">
+                                <i class="bi bi-chevron-down collapse-toggle-icon" id="healthAnalysisIcon"></i>
+                            </button>
+                        </div>
+                        <div class="text-end">
+                            <div class="fs-1 fw-bold">{{ stats.latest_analysis.health_score }}<small class="fs-5">/100</small></div>
+                            <small style="opacity: 0.9;">健康评分</small>
+                        </div>
+                    </div>
+
+                    <!-- 详情内容（可折叠，默认收起） -->
+                    <div class="collapse" id="healthAnalysisDetails">
+                        <div class="row g-3 mb-3 mt-2">
+                            <div class="col-md-3 col-6">
+                                <div class="p-3 rounded" style="background: rgba(255,255,255,0.15);">
+                                    <small class="d-block mb-1" style="opacity: 0.9;"><i class="bi bi-droplet me-1"></i>血糖控制</small>
+                                    <div class="small">{{ stats.latest_analysis.glucose_summary }}</div>
+                                </div>
+                            </div>
+                            <div class="col-md-3 col-6">
+                                <div class="p-3 rounded" style="background: rgba(255,255,255,0.15);">
+                                    <small class="d-block mb-1" style="opacity: 0.9;"><i class="bi bi-heart me-1"></i>血压状况</small>
+                                    <div class="small">{{ stats.latest_analysis.blood_pressure_summary }}</div>
+                                </div>
+                            </div>
+                            <div class="col-md-3 col-6">
+                                <div class="p-3 rounded" style="background: rgba(255,255,255,0.15);">
+                                    <small class="d-block mb-1" style="opacity: 0.9;"><i class="bi bi-bicycle me-1"></i>运动情况</small>
+                                    <div class="small">{{ stats.latest_analysis.exercise_summary }}</div>
+                                </div>
+                            </div>
+                            <div class="col-md-3 col-6">
+                                <div class="p-3 rounded" style="background: rgba(255,255,255,0.15);">
+                                    <small class="d-block mb-1" style="opacity: 0.9;"><i class="bi bi-capsule me-1"></i>用药评估</small>
+                                    <div class="small">{{ stats.latest_analysis.medication_summary }}</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <strong class="d-block mb-2"><i class="bi bi-lightbulb me-1"></i>健康建议</strong>
+                            <ul class="mb-0" style="padding-left: 1.2rem;">
+                                {% for rec in stats.latest_analysis.recommendations %}
+                                <li class="mb-1">{{ rec }}</li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+
+                        <div class="d-flex gap-2 flex-wrap">
+                            <button class="btn btn-light btn-sm" onclick="showFullAnalysis()">
+                                <i class="bi bi-file-text me-1"></i>查看完整报告
+                            </button>
+                            <button class="btn btn-outline-light btn-sm" data-bs-toggle="modal" data-bs-target="#analysisOptionsModal">
+                                <i class="bi bi-arrow-clockwise me-1"></i>生成分析
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card bg-light">
+                <div class="card-body text-center py-4">
+                    <i class="bi bi-heart-pulse fs-1 text-muted mb-3"></i>
+                    <h5 class="text-muted mb-2">暂无健康分析</h5>
+                    <p class="text-secondary mb-3">选择一个时间范围，系统将基于您的数据生成综合健康分析</p>
+                    <div class="btn-group" role="group">
+                        <button type="button" class="btn btn-primary btn-sm" onclick="triggerManualAnalysis(7)">
+                            <i class="bi bi-calendar-week me-1"></i>近7天分析
+                        </button>
+                        <button type="button" class="btn btn-primary btn-sm" onclick="triggerManualAnalysis(14)">
+                            <i class="bi bi-calendar2-week me-1"></i>近14天分析
+                        </button>
+                        <button type="button" class="btn btn-primary btn-sm" onclick="triggerManualAnalysis(30)">
+                            <i class="bi bi-calendar-month me-1"></i>近30天分析
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Stats Dashboard - 标签页形式 -->
+    <div class="card mb-4" id="statsTabsCard">
+        <div class="card-body">
+            <!-- 标签页导航 -->
+            <ul class="nav nav-pills nav-fill mb-3" id="statsTab" role="tablist">
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link active py-2" id="glucose-tab" data-bs-toggle="pill" data-bs-target="#glucose-stats" type="button" role="tab">
+                        <i class="bi bi-droplet-fill text-primary me-1"></i>
+                        <span class="d-none d-sm-inline">血糖</span>
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link py-2" id="exercise-tab" data-bs-toggle="pill" data-bs-target="#exercise-stats" type="button" role="tab">
+                        <i class="bi bi-bicycle text-success me-1"></i>
+                        <span class="d-none d-sm-inline">运动</span>
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link py-2" id="bp-tab" data-bs-toggle="pill" data-bs-target="#bp-stats" type="button" role="tab">
+                        <i class="bi bi-heart-pulse-fill me-1" style="color: #9C27B0;"></i>
+                        <span class="d-none d-sm-inline">血压</span>
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link py-2" id="med-tab" data-bs-toggle="pill" data-bs-target="#med-stats" type="button" role="tab">
+                        <i class="bi bi-capsule me-1" style="color: #5E35B1;"></i>
+                        <span class="d-none d-sm-inline">用药</span>
+                    </button>
+                </li>
+            </ul>
+
+            <!-- 标签页内容 -->
+            <div class="tab-content" id="statsTabContent">
+                <!-- 血糖统计 -->
+                <div class="tab-pane fade show active" id="glucose-stats" role="tabpanel">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <h6 class="mb-0 text-primary fw-bold"><i class="bi bi-droplet-fill me-2"></i>血糖监测（近7天）</h6>
+                        <span class="badge bg-primary-subtle text-primary">达标率 {{ stats.compliance }}%</span>
+                    </div>
                     <div class="row g-2">
-                        <div class="col-6">
+                        <div class="col-6 col-md-3">
                             <div class="text-center p-2 bg-light rounded">
                                 <small class="text-muted d-block">平均早空腹</small>
                                 <div class="fs-5 fw-bold text-warning">
@@ -865,7 +1529,7 @@
                                 <small class="text-muted">mmol/L</small>
                             </div>
                         </div>
-                        <div class="col-6">
+                        <div class="col-6 col-md-3">
                             <div class="text-center p-2 bg-light rounded">
                                 <small class="text-muted d-block">平均餐后2h</small>
                                 <div class="fs-5 fw-bold text-primary">
@@ -874,55 +1538,55 @@
                                 <small class="text-muted">mmol/L</small>
                             </div>
                         </div>
-                        <div class="col-6">
+                        <div class="col-6 col-md-3">
                             <div class="text-center p-2 bg-light rounded">
                                 <small class="text-muted d-block">最高血糖</small>
-                                <div class="fs-6 fw-bold text-danger">
+                                <div class="fs-5 fw-bold text-danger">
                                     {{ "%.1f"|format(stats.max_glucose_7d) if stats.max_glucose_7d > 0 else '-' }}
                                 </div>
+                                <small class="text-muted">mmol/L</small>
                             </div>
                         </div>
-                        <div class="col-6">
+                        <div class="col-6 col-md-3">
                             <div class="text-center p-2 bg-light rounded">
                                 <small class="text-muted d-block">最低血糖</small>
-                                <div class="fs-6 fw-bold text-success">
+                                <div class="fs-5 fw-bold text-success">
                                     {{ "%.1f"|format(stats.min_glucose_7d) if stats.min_glucose_7d > 0 else '-' }}
                                 </div>
+                                <small class="text-muted">mmol/L</small>
                             </div>
                         </div>
                     </div>
                 </div>
-            </div>
-        </div>
 
-        <!-- 2. 运动板块 -->
-        <div class="col-xl-3 col-lg-6 col-12">
-            <div class="card h-100">
-                <div class="card-body">
-                    <h6 class="mb-3 text-success fw-bold"><i class="bi bi-activity me-2"></i>运动记录（近7天）</h6>
+                <!-- 运动统计 -->
+                <div class="tab-pane fade" id="exercise-stats" role="tabpanel">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <h6 class="mb-0 text-success fw-bold"><i class="bi bi-activity me-2"></i>运动记录（近7天）</h6>
+                    </div>
                     <div class="row g-2">
-                        <div class="col-12">
-                            <div class="text-center p-2 bg-light rounded">
+                        <div class="col-12 col-md-4">
+                            <div class="text-center p-3 bg-light rounded">
                                 <small class="text-muted d-block">跑步总里程</small>
-                                <div class="fs-4 fw-bold text-success">
+                                <div class="fs-3 fw-bold text-success">
                                     {{ "%.1f"|format(stats.total_distance_7d) if stats.total_distance_7d > 0 else '0' }}
                                 </div>
                                 <small class="text-muted">公里</small>
                             </div>
                         </div>
-                        <div class="col-6">
-                            <div class="text-center p-2 bg-light rounded">
-                                <small class="text-muted d-block">消耗</small>
-                                <div class="fs-6 fw-bold" style="color: #FF7043;">
+                        <div class="col-6 col-md-4">
+                            <div class="text-center p-3 bg-light rounded">
+                                <small class="text-muted d-block">消耗热量</small>
+                                <div class="fs-4 fw-bold" style="color: #FF7043;">
                                     {{ stats.total_exercise_cal_7d if stats.total_exercise_cal_7d > 0 else '0' }}
                                 </div>
                                 <small class="text-muted">kcal</small>
                             </div>
                         </div>
-                        <div class="col-6">
-                            <div class="text-center p-2 bg-light rounded">
-                                <small class="text-muted d-block">心率</small>
-                                <div class="fs-6 fw-bold" style="color: #EC407A;">
+                        <div class="col-6 col-md-4">
+                            <div class="text-center p-3 bg-light rounded">
+                                <small class="text-muted d-block">平均心率</small>
+                                <div class="fs-4 fw-bold" style="color: #EC407A;">
                                     {{ stats.avg_heart_rate_7d if stats.avg_heart_rate_7d > 0 else '-' }}
                                 </div>
                                 <small class="text-muted">bpm</small>
@@ -930,19 +1594,18 @@
                         </div>
                     </div>
                 </div>
-            </div>
-        </div>
 
-        <!-- 3. 血压板块 -->
-        <div class="col-xl-3 col-lg-6 col-12">
-            <div class="card h-100">
-                <div class="card-body">
-                    <h6 class="mb-3 fw-bold" style="color: #9C27B0;"><i class="bi bi-heart-pulse-fill me-2"></i>血压监测（近7天）</h6>
+                <!-- 血压统计 -->
+                <div class="tab-pane fade" id="bp-stats" role="tabpanel">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <h6 class="mb-0 fw-bold" style="color: #9C27B0;"><i class="bi bi-heart-pulse-fill me-2"></i>血压监测（近7天）</h6>
+                        <span class="badge" style="background: rgba(156,39,176,0.1); color: #9C27B0;">{{ stats.bp_count_7d }}次测量</span>
+                    </div>
                     <div class="row g-2">
-                        <div class="col-12">
-                            <div class="text-center p-2 bg-light rounded">
+                        <div class="col-12 col-md-4">
+                            <div class="text-center p-3 bg-light rounded">
                                 <small class="text-muted d-block">平均血压</small>
-                                <div class="fs-4 fw-bold" style="color: #9C27B0;">
+                                <div class="fs-3 fw-bold" style="color: #9C27B0;">
                                     {% if stats.avg_systolic_7d > 0 %}
                                     {{ stats.avg_systolic_7d }}/{{ stats.avg_diastolic_7d }}
                                     {% else %}
@@ -952,42 +1615,45 @@
                                 <small class="text-muted">mmHg</small>
                             </div>
                         </div>
-                        <div class="col-6">
-                            <div class="text-center p-2 bg-light rounded">
-                                <small class="text-muted d-block">最高</small>
-                                <div class="fs-6 fw-bold" style="color: #E91E63;">
+                        <div class="col-6 col-md-4">
+                            <div class="text-center p-3 bg-light rounded">
+                                <small class="text-muted d-block">最高 ({{ stats.bp_max_date }})</small>
+                                <div class="fs-4 fw-bold" style="color: #E91E63;">
                                     {% if stats.bp_max_sys > 0 %}{{ stats.bp_max_sys }}/{{ stats.bp_max_dia }}{% else %}-/-{% endif %}
                                 </div>
+                                <small class="text-muted">mmHg</small>
                             </div>
                         </div>
-                        <div class="col-6">
-                            <div class="text-center p-2 bg-light rounded">
-                                <small class="text-muted d-block">最低</small>
-                                <div class="fs-6 fw-bold" style="color: #7CB342;">
+                        <div class="col-6 col-md-4">
+                            <div class="text-center p-3 bg-light rounded">
+                                <small class="text-muted d-block">最低 ({{ stats.bp_min_date }})</small>
+                                <div class="fs-4 fw-bold" style="color: #7CB342;">
                                     {% if stats.bp_min_sys > 0 %}{{ stats.bp_min_sys }}/{{ stats.bp_min_dia }}{% else %}-/-{% endif %}
                                 </div>
+                                <small class="text-muted">mmHg</small>
                             </div>
                         </div>
                     </div>
                 </div>
-            </div>
-        </div>
 
-        <!-- 4. 用药板块 -->
-        <div class="col-xl-3 col-lg-6 col-12">
-            <div class="card h-100">
-                <div class="card-body">
-                    <h6 class="mb-3 fw-bold" style="color: #5E35B1;"><i class="bi bi-capsule me-2"></i>当前用药</h6>
+                <!-- 用药统计 -->
+                <div class="tab-pane fade" id="med-stats" role="tabpanel">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <h6 class="mb-0 fw-bold" style="color: #5E35B1;"><i class="bi bi-capsule me-2"></i>今日用药</h6>
+                        <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#medicationPlanModal">
+                            <i class="bi bi-gear me-1"></i>管理
+                        </button>
+                    </div>
                     {% if stats.active_medications and stats.active_medications|length > 0 %}
-                    <div class="d-flex flex-column gap-2">
+                    <div class="row g-2">
                         {% for med in stats.active_medications %}
-                        <div class="p-2 bg-light rounded">
-                            <div class="d-flex align-items-center gap-2">
-                                <i class="bi bi-capsule-pill text-success"></i>
+                        <div class="col-12 col-md-6">
+                            <div class="d-flex align-items-center p-2 bg-light rounded">
+                                <i class="bi bi-capsule-pill text-success fs-4 me-2"></i>
                                 <div class="flex-grow-1">
-                                    <div class="fw-bold small">{{ med.name }}</div>
+                                    <div class="fw-bold">{{ med.name }}</div>
                                     <small class="text-muted">
-                                        {% if med.dosage %}{{ med.dosage }}·{% endif %}{{ med.times }}次/天
+                                        {% if med.dosage %}{{ med.dosage }} · {% endif %}{{ med.times }}次/天
                                     </small>
                                 </div>
                             </div>
@@ -996,8 +1662,11 @@
                     </div>
                     {% else %}
                     <div class="text-center text-muted py-4">
-                        <i class="bi bi-info-circle d-block fs-2 mb-2"></i>
-                        <small>暂无用药</small>
+                        <i class="bi bi-info-circle d-block fs-3 mb-2"></i>
+                        <div>暂无用药计划</div>
+                        <button class="btn btn-sm btn-primary mt-2" data-bs-toggle="modal" data-bs-target="#medicationPlanModal">
+                            <i class="bi bi-plus-lg me-1"></i>添加用药
+                        </button>
                     </div>
                     {% endif %}
                 </div>
@@ -1005,11 +1674,46 @@
         </div>
     </div>
 
-    <!-- Chart Section - Material Design -->
-    <div class="card mb-4">
+    <!-- 预测对比图模态框 -->
+    <div class="modal fade" id="predictionComparisonModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-graph-up-arrow me-2"></i>预测 vs 真实值对比</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <select id="comparisonDaysSelect" class="form-select form-select-sm" style="width: auto;" onchange="loadPredictionComparison()">
+                            <option value="7" selected>近7天</option>
+                            <option value="14">近14天</option>
+                            <option value="30">近30天</option>
+                        </select>
+                    </div>
+                    <canvas id="predictionComparisonChart" height="100"></canvas>
+                    <div id="comparisonStats" class="mt-3 p-3 bg-light rounded"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 血糖监测综合卡片（趋势图 + 预测状态） -->
+    <div class="card mb-4" id="glucoseMonitorCard">
         <div class="card-body">
+            <!-- 标题栏 -->
             <div class="d-flex justify-content-between align-items-start mb-3">
-                <h3 class="mb-0"><i class="bi bi-graph-up me-2" style="color: var(--md-primary);"></i>血糖趋势</h3>
+                <div class="d-flex align-items-center gap-3">
+                    <h3 class="mb-0"><i class="bi bi-graph-up me-2" style="color: var(--md-primary);"></i>血糖趋势</h3>
+                    <!-- 时间范围选择器 -->
+                    <select id="timeRangeSelector" class="form-select form-select-sm" style="width: auto;" onchange="changeTimeRange(this.value)">
+                        <option value="7">最近7天</option>
+                        <option value="14" selected>最近14天</option>
+                        <option value="30">最近30天</option>
+                        <option value="60">最近60天</option>
+                        <option value="90">最近90天</option>
+                        <option value="all">全部数据</option>
+                    </select>
+                </div>
                 <!-- 血糖状态图例 -->
                 <div class="d-flex gap-3 align-items-center small">
                     <div class="d-flex align-items-center gap-1">
@@ -1036,6 +1740,50 @@
             </div>
 
             <canvas id="glucoseChart" height="80"></canvas>
+
+            <!-- AI 预测区域（可折叠） -->
+            <div class="border-top mt-3 pt-3">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <button class="btn btn-link text-decoration-none p-0 d-flex align-items-center gap-2"
+                            type="button"
+                            data-bs-toggle="collapse"
+                            data-bs-target="#predictionSection"
+                            aria-expanded="true">
+                        <i class="bi bi-magic text-primary"></i>
+                        <span class="fw-bold text-dark">AI 血糖预测</span>
+                        <i class="bi bi-chevron-down text-muted small collapse-toggle-icon" id="predictionCollapseIcon"></i>
+                    </button>
+                    <div class="d-flex gap-2">
+                        <button class="btn btn-sm btn-outline-primary" onclick="refreshPredictionStatus()" title="刷新预测状态">
+                            <i class="bi bi-arrow-clockwise"></i>
+                        </button>
+                        <button class="btn btn-sm btn-primary" onclick="triggerManualPrediction()" title="手动生成预测">
+                            <i class="bi bi-plus-lg me-1"></i>预测
+                        </button>
+                    </div>
+                </div>
+
+                <div class="collapse show" id="predictionSection">
+                    <!-- 预测列表 -->
+                    <div id="predictionList" class="mb-3">
+                        <div class="text-center text-muted py-3">
+                            <div class="spinner-border spinner-border-sm me-2" role="status"></div>
+                            加载预测状态...
+                        </div>
+                    </div>
+
+                    <!-- 预测准确性统计 -->
+                    <div id="predictionAccuracyStats" class="border-top pt-2 mt-2 d-none">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <small class="text-muted fw-bold">近7天预测准确性</small>
+                            <button class="btn btn-link btn-sm p-0 text-decoration-none" onclick="showPredictionComparison()">
+                                查看对比图 <i class="bi bi-arrow-right-short"></i>
+                            </button>
+                        </div>
+                        <div id="accuracyBadges" class="d-flex flex-wrap gap-2"></div>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -1067,19 +1815,31 @@
     <!-- Calendar View - Material Design -->
     <div class="card">
         <div class="card-body">
-            <div class="d-flex justify-content-between align-items-center mb-4">
-                <h3 class="mb-0"><i class="bi bi-calendar3 me-2" style="color: var(--md-primary);"></i>每日复盘</h3>
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <div class="d-flex align-items-center gap-2">
+                    <h3 class="mb-0"><i class="bi bi-calendar3 me-2" style="color: var(--md-primary);"></i>每日复盘</h3>
+                    <button class="btn btn-link text-muted p-0"
+                            type="button"
+                            data-bs-toggle="collapse"
+                            data-bs-target="#calendarSection"
+                            aria-expanded="true"
+                            title="展开/收起日历">
+                        <i class="bi bi-chevron-down collapse-toggle-icon" id="calendarCollapseIcon"></i>
+                    </button>
+                </div>
                 <div class="d-flex gap-2 align-items-center">
-                    <label class="btn btn-primary" for="csvImport" title="导入 CSV" style="min-height: 40px; padding: 8px 20px;">
+                    <label class="btn btn-primary btn-sm" for="csvImport" title="导入 CSV">
                         <i class="bi bi-upload me-1"></i>导入
                         <input type="file" id="csvImport" accept=".csv" class="d-none" onchange="importCSV(this)">
                     </label>
-                    <a href="/export" class="btn btn-primary" title="导出 CSV" style="min-height: 40px; padding: 8px 20px;">
+                    <a href="/export" class="btn btn-primary btn-sm" title="导出 CSV">
                         <i class="bi bi-download me-1"></i>导出
                     </a>
                 </div>
             </div>
-            <div id="calendar"></div>
+            <div class="collapse show" id="calendarSection">
+                <div id="calendar"></div>
+            </div>
         </div>
     </div>
 </div>
@@ -1454,6 +2214,29 @@
                             <input type="number" id="plan_times" class="form-control" value="1" min="1" max="10" required style="font-size: 1.1rem; padding: 12px;">
                         </div>
                         <div class="col-md-6">
+                            <label class="form-label" style="font-size: 1rem;">服药频率 <span class="text-danger">*</span></label>
+                            <select id="plan_frequency" class="form-select" style="font-size: 1.1rem; padding: 12px;" onchange="updateFrequencyDetail()">
+                                <option value="daily" selected>每天</option>
+                                <option value="weekly">每周</option>
+                                <option value="monthly">每月</option>
+                            </select>
+                        </div>
+                        <div class="col-md-12" id="frequency_detail_container" style="display: none;">
+                            <label class="form-label" style="font-size: 1rem;">频率详情</label>
+                            <!-- 每周选择 -->
+                            <select id="plan_frequency_detail_weekly" class="form-select" style="font-size: 1.1rem; padding: 12px; display: none;">
+                                <option value="Monday">每周一</option>
+                                <option value="Tuesday">每周二</option>
+                                <option value="Wednesday">每周三</option>
+                                <option value="Thursday">每周四</option>
+                                <option value="Friday">每周五</option>
+                                <option value="Saturday">每周六</option>
+                                <option value="Sunday">每周日</option>
+                            </select>
+                            <!-- 每月选择 -->
+                            <input type="text" id="plan_frequency_detail_monthly" class="form-control" placeholder="如：1,15（每月1号和15号）" style="font-size: 1.1rem; padding: 12px; display: none;">
+                        </div>
+                        <div class="col-md-12">
                             <label class="form-label" style="font-size: 1rem;">服用时机</label>
                             <input type="text" id="plan_timing" class="form-control" placeholder="如：早晚餐前30分钟" style="font-size: 1.1rem; padding: 12px;">
                         </div>
@@ -1571,7 +2354,693 @@
     let glucoseChart = null;  // 全局图表实例
     let predictionDatasetMap = {};  // 记录每个类型对应的预测数据集索引
 
+    // ========== 全局血糖达标标准和徽章奖励系统 ==========
+    // 使用后端传递的科学达标标准（基于《中国糖尿病防治指南（2024版）》）
+    const GLUCOSE_TARGETS = {{ stats.glucose_targets | tojson }};
+    const BADGE_SYSTEM = {{ stats.badge_system | tojson }};
+
+    /**
+     * 根据血糖类型获取对应的达标标准
+     * @param {string} glucoseType - 血糖类型（如 '空腹', '餐后2小时' 等）
+     * @returns {object} 达标标准 {min, max, optimal_max, name}
+     */
+    function getGlucoseTarget(glucoseType) {
+        glucoseType = glucoseType || '';
+        if (glucoseType.includes('空腹') && !glucoseType.includes('血压')) {
+            return GLUCOSE_TARGETS.fasting;
+        } else if (glucoseType.includes('餐后1小时') || glucoseType.toLowerCase().includes('餐后1h')) {
+            return GLUCOSE_TARGETS.postmeal_1h;
+        } else if (glucoseType.includes('餐后2小时') || glucoseType.toLowerCase().includes('餐后2h') || glucoseType.includes('餐后')) {
+            return GLUCOSE_TARGETS.postmeal_2h;
+        } else if (glucoseType.includes('餐前')) {
+            return GLUCOSE_TARGETS.premeal;
+        } else if (glucoseType.includes('睡前')) {
+            return GLUCOSE_TARGETS.bedtime;
+        } else if (glucoseType.includes('运动后')) {
+            return GLUCOSE_TARGETS.post_exercise;
+        }
+        return GLUCOSE_TARGETS.default;
+    }
+
+    /**
+     * 检查血糖值是否达标，返回状态和对应的徽章
+     * @param {number} value - 血糖值 (mmol/L)
+     * @param {string} glucoseType - 血糖类型
+     * @returns {object} {level, badge, isCompliant, isOptimal, target}
+     */
+    function checkGlucoseCompliance(value, glucoseType) {
+        const target = getGlucoseTarget(glucoseType);
+        const isCompliant = value >= target.min && value <= target.max;
+        const isOptimal = value >= target.min && value <= target.optimal_max;
+
+        // Google Fit 配色方案
+        let level, badge;
+        if (value < target.min) {
+            level = 'low';
+            badge = { icon: '⚠️', name: '偏低', color: '#EA4335', bgColor: '#fce8e6', textColor: '#c5221f' };  // Google Red
+        } else if (value <= target.optimal_max) {
+            level = 'optimal';
+            badge = { icon: '🌟', name: '理想', color: '#34A853', bgColor: '#e6f4ea', textColor: '#1e8e3e' };  // Google Green
+        } else if (value <= target.max) {
+            level = 'acceptable';
+            badge = { icon: '👍', name: '达标', color: '#FBBC04', bgColor: '#fef7e0', textColor: '#b06000' };  // Google Yellow
+        } else {
+            level = 'high';
+            badge = { icon: '⚠️', name: '偏高', color: '#EA4335', bgColor: '#fce8e6', textColor: '#c5221f' };  // Google Red
+        }
+
+        return { level, badge, isCompliant, isOptimal, target };
+    }
+
+    /**
+     * 根据达标率获取对应的徽章
+     * @param {number} rate - 达标率 (0-100)
+     * @returns {object} 徽章信息
+     */
+    function getBadgeForRate(rate) {
+        if (rate >= BADGE_SYSTEM.gold.min_rate) return { key: 'gold', ...BADGE_SYSTEM.gold };
+        if (rate >= BADGE_SYSTEM.silver.min_rate) return { key: 'silver', ...BADGE_SYSTEM.silver };
+        if (rate >= BADGE_SYSTEM.bronze.min_rate) return { key: 'bronze', ...BADGE_SYSTEM.bronze };
+        return { key: 'encourage', ...BADGE_SYSTEM.encourage };
+    }
+
+    // ========== 今日概览功能 ==========
+    /**
+     * 点击时间点槽位，滚动到输入区域并预填类型
+     */
+    function focusSlot(slotKey) {
+        // 类型映射
+        const typeMap = {
+            'fasting': '空腹',
+            'post_exercise': '运动后餐前',
+            'post_breakfast': '早餐后2小时',
+            'post_lunch': '午餐后2小时',
+            'post_dinner': '晚餐后2小时',
+            'bedtime': '睡前'
+        };
+
+        const typeName = typeMap[slotKey] || '';
+
+        // 滚动到输入区域
+        const inputArea = document.getElementById('aiInput');
+        if (inputArea) {
+            inputArea.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            inputArea.focus();
+
+            // 预填提示文本
+            if (!inputArea.value) {
+                inputArea.placeholder = `输入${typeName}血糖值，如：${typeName} 6.5`;
+            }
+        }
+
+        // 高亮当前选中的槽位
+        document.querySelectorAll('.glucose-slot').forEach(el => {
+            el.classList.remove('slot-active');
+        });
+        const currentSlot = document.querySelector(`[data-slot-key="${slotKey}"]`);
+        if (currentSlot) {
+            currentSlot.classList.add('slot-active');
+        }
+    }
+
+    /**
+     * 触发AI预测剩余时间点血糖
+     */
+    async function triggerRemainingPredictions() {
+        const btn = event.currentTarget;
+        const originalHTML = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<i class="bi bi-hourglass-split"></i> 预测中...';
+
+        try {
+            const response = await fetch('/trigger_prediction', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ type: 'remaining' })
+            });
+
+            const data = await response.json();
+
+            if (response.status === 429) {
+                // API 配额已用尽
+                showPredictionQuotaModal(data.retry_after || 60);
+                return;
+            }
+
+            if (data.status === 'success' && data.results) {
+                const successCount = data.results.filter(r => r.status === 'success').length;
+                if (successCount > 0) {
+                    showToast(`成功生成 ${successCount} 个时间点的预测`, 'success');
+                    // 刷新页面显示新预测
+                    setTimeout(() => window.location.reload(), 1000);
+                } else {
+                    showToast('无需预测：所有时间点已有数据或无实测基准', 'info');
+                }
+            } else {
+                showToast(data.message || '预测失败', 'warning');
+            }
+        } catch (error) {
+            console.error('Prediction error:', error);
+            showToast('预测请求失败，请检查网络', 'danger');
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = originalHTML;
+        }
+    }
+
+    // 时间范围切换函数
+    function changeTimeRange(range) {
+        // 保存用户选择到localStorage
+        localStorage.setItem('glucoseTimeRange', range);
+
+        // 构建新的URL并重新加载页面
+        const url = new URL(window.location.href);
+        if (range === 'all') {
+            url.searchParams.set('all', 'true');
+            url.searchParams.delete('days');
+        } else {
+            url.searchParams.set('days', range);
+            url.searchParams.delete('all');
+        }
+
+        // 显示加载提示
+        const selector = document.getElementById('timeRangeSelector');
+        selector.disabled = true;
+
+        // 重新加载页面
+        window.location.href = url.toString();
+    }
+
+    // ========== 预测状态卡片功能 ==========
+    let predictionComparisonChart = null;
+
+    /**
+     * 加载并显示预测状态
+     */
+    async function loadPredictionStatus() {
+        try {
+            const response = await fetch('/prediction_status');
+            const data = await response.json();
+
+            renderPredictionList(data.predictions);
+            renderAccuracyStats(data.accuracy_by_type);
+
+        } catch (error) {
+            console.error('Error loading prediction status:', error);
+            document.getElementById('predictionList').innerHTML = `
+                <div class="text-center text-muted py-3">
+                    <i class="bi bi-exclamation-triangle me-2"></i>
+                    加载失败，请刷新重试
+                </div>
+            `;
+        }
+    }
+
+    /**
+     * 渲染预测列表
+     */
+    function renderPredictionList(predictions) {
+        const container = document.getElementById('predictionList');
+
+        if (!predictions || predictions.length === 0) {
+            container.innerHTML = `
+                <div class="text-center text-muted py-3">
+                    <i class="bi bi-info-circle d-block fs-4 mb-1"></i>
+                    <small>今日暂无预测数据</small>
+                    <br>
+                    <small class="text-primary" style="cursor: pointer;" onclick="triggerManualPrediction()">
+                        点击生成预测 →
+                    </small>
+                </div>
+            `;
+            return;
+        }
+
+        let html = '<div class="list-group list-group-flush">';
+
+        predictions.forEach((pred, index) => {
+            const time = pred.timestamp.split(' ')[1].substring(0, 5);
+            const statusIcon = pred.verified ? '✓' : '⏳';
+            const statusColor = pred.verified ? 'success' : 'warning';
+            const statusText = pred.verified ? '已验证' : '待测量';
+
+            // 计算预测值的达标状态
+            const predResult = checkGlucoseCompliance(pred.predicted_value, pred.type);
+            const predBadge = predResult.badge;
+
+            // 误差显示
+            let errorHtml = '';
+            if (pred.verified && pred.error !== null) {
+                const errorColor = Math.abs(pred.error) < 0.5 ? 'success' : (Math.abs(pred.error) < 1.0 ? 'warning' : 'danger');
+                const errorSign = pred.error > 0 ? '+' : '';
+                errorHtml = `<span class="badge bg-${errorColor}-subtle text-${errorColor} ms-2">误差 ${errorSign}${pred.error}</span>`;
+            }
+
+            // 处理预测依据（从notes中提取）
+            const hasNotes = pred.notes && pred.notes.trim().length > 0;
+            const cleanNotes = hasNotes ? pred.notes.replace('AI预测: ', '').replace('AI预测:', '') : '';
+            const collapseId = `predBasis${index}`;
+
+            html += `
+                <div class="list-group-item px-0 py-2 border-0 border-bottom">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div class="d-flex align-items-center gap-2">
+                            <span class="badge bg-light text-dark">${time}</span>
+                            <span class="fw-medium">${pred.type}</span>
+                            ${hasNotes ? `
+                                <button class="btn btn-link btn-sm p-0 text-muted"
+                                        data-bs-toggle="collapse"
+                                        data-bs-target="#${collapseId}"
+                                        aria-expanded="false"
+                                        title="查看预测依据">
+                                    <i class="bi bi-info-circle"></i>
+                                </button>
+                            ` : ''}
+                        </div>
+                        <div class="d-flex align-items-center gap-2">
+                            ${pred.verified ? `
+                                <span class="text-muted small">${pred.predicted_value}</span>
+                                <i class="bi bi-arrow-right text-muted small"></i>
+                                <span class="fw-bold" style="color: ${predBadge.color};">${pred.real_value}</span>
+                                ${errorHtml}
+                            ` : `
+                                <span class="fw-bold" style="color: ${predBadge.color};">${pred.predicted_value}</span>
+                                <span class="badge bg-${statusColor}-subtle text-${statusColor}">${statusIcon} ${statusText}</span>
+                            `}
+                        </div>
+                    </div>
+                    ${hasNotes ? `
+                        <div class="collapse mt-2" id="${collapseId}">
+                            <div class="p-2 rounded" style="background: var(--bs-light); font-size: 0.85rem;">
+                                <div class="d-flex align-items-start gap-2">
+                                    <i class="bi bi-lightbulb text-warning"></i>
+                                    <div class="text-muted">${cleanNotes}</div>
+                                </div>
+                            </div>
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+        });
+
+        html += '</div>';
+        container.innerHTML = html;
+    }
+
+    /**
+     * 渲染准确性统计
+     */
+    function renderAccuracyStats(accuracyByType) {
+        const container = document.getElementById('predictionAccuracyStats');
+        const badgesContainer = document.getElementById('accuracyBadges');
+
+        if (!accuracyByType || Object.keys(accuracyByType).length === 0) {
+            container.classList.add('d-none');
+            return;
+        }
+
+        container.classList.remove('d-none');
+
+        let html = '';
+        for (const [type, stats] of Object.entries(accuracyByType)) {
+            const accuracy = stats.accuracy || 0;
+            const mae = stats.mae || 0;
+
+            // 根据准确率选择颜色
+            let color = 'success';
+            if (accuracy < 60) color = 'danger';
+            else if (accuracy < 80) color = 'warning';
+
+            html += `
+                <div class="d-flex align-items-center gap-2 px-3 py-2 rounded-pill" style="background: var(--bs-${color}-bg-subtle);">
+                    <span class="fw-medium text-${color}">${type}</span>
+                    <span class="badge bg-${color}">${accuracy.toFixed(0)}%</span>
+                    <small class="text-muted">MAE: ${mae}</small>
+                </div>
+            `;
+        }
+
+        badgesContainer.innerHTML = html;
+    }
+
+    /**
+     * 刷新预测状态
+     */
+    async function refreshPredictionStatus() {
+        const container = document.getElementById('predictionList');
+        container.innerHTML = `
+            <div class="text-center text-muted py-3">
+                <div class="spinner-border spinner-border-sm me-2" role="status"></div>
+                刷新中...
+            </div>
+        `;
+        await loadPredictionStatus();
+    }
+
+    /**
+     * 手动触发预测
+     */
+    async function triggerManualPrediction() {
+        try {
+            const btn = event.target.closest('button');
+            if (btn) {
+                btn.disabled = true;
+                btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>生成中...';
+            }
+
+            const response = await fetch('/trigger_prediction', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ type: 'all' })
+            });
+
+            const data = await response.json();
+
+            if (data.status === 'success') {
+                showToast('预测生成完成', 'success');
+                await loadPredictionStatus();
+            } else {
+                // 检查是否是配额错误
+                if (data.error_type === 'quota_exceeded' && data.retry_after > 0) {
+                    showPredictionQuotaModal(data.retry_after);
+                } else {
+                    showToast('预测生成失败: ' + (data.message || '未知错误'), 'danger');
+                }
+            }
+
+        } catch (error) {
+            console.error('Error triggering prediction:', error);
+            showToast('预测生成失败，请重试', 'danger');
+        } finally {
+            const btn = document.querySelector('[onclick="triggerManualPrediction()"]');
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="bi bi-plus-lg me-1"></i>生成预测';
+            }
+        }
+    }
+
+    /**
+     * 显示预测配额耗尽模态框
+     */
+    function showPredictionQuotaModal(retryAfter) {
+        let modal = document.getElementById('predictionQuotaModal');
+        if (!modal) {
+            modal = document.createElement('div');
+            modal.className = 'modal fade';
+            modal.id = 'predictionQuotaModal';
+            modal.innerHTML = `
+                <div class="modal-dialog modal-dialog-centered">
+                    <div class="modal-content">
+                        <div class="modal-header bg-warning text-dark">
+                            <h5 class="modal-title">
+                                <i class="bi bi-hourglass-split me-2"></i>AI 服务繁忙
+                            </h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                        </div>
+                        <div class="modal-body text-center py-4">
+                            <i class="bi bi-clock-history text-warning" style="font-size: 3rem;"></i>
+                            <p class="mt-3 mb-2">AI 预测服务配额暂时用尽</p>
+                            <p class="text-muted mb-3">系统将在倒计时结束后自动重试</p>
+                            <div class="display-4 fw-bold text-primary" id="predQuotaCountdown">${retryAfter}</div>
+                            <small class="text-muted">秒后自动重试</small>
+                        </div>
+                        <div class="modal-footer justify-content-center">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                            <button type="button" class="btn btn-primary" id="retryPredBtn" disabled onclick="retryPredictionNow()">
+                                <i class="bi bi-arrow-clockwise me-1"></i>立即重试
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+        }
+
+        const bsModal = new bootstrap.Modal(modal);
+        bsModal.show();
+
+        // 开始倒计时
+        let countdown = retryAfter;
+        const countdownEl = document.getElementById('predQuotaCountdown');
+        const retryBtn = document.getElementById('retryPredBtn');
+
+        // 重置状态
+        countdownEl.textContent = retryAfter;
+        retryBtn.disabled = true;
+
+        const timer = setInterval(() => {
+            countdown--;
+            countdownEl.textContent = countdown;
+
+            if (countdown <= 0) {
+                clearInterval(timer);
+                retryBtn.disabled = false;
+                countdownEl.textContent = '0';
+
+                // 自动重试
+                bsModal.hide();
+                triggerManualPrediction();
+            }
+        }, 1000);
+
+        // 模态框关闭时清除定时器
+        modal.addEventListener('hidden.bs.modal', function() {
+            clearInterval(timer);
+        }, { once: true });
+    }
+
+    /**
+     * 立即重试预测
+     */
+    function retryPredictionNow() {
+        const modal = document.getElementById('predictionQuotaModal');
+        bootstrap.Modal.getInstance(modal).hide();
+        triggerManualPrediction();
+    }
+
+    /**
+     * 显示预测对比图
+     */
+    function showPredictionComparison() {
+        const modal = new bootstrap.Modal(document.getElementById('predictionComparisonModal'));
+        modal.show();
+        loadPredictionComparison();
+    }
+
+    /**
+     * 加载预测对比数据并绘制图表
+     */
+    async function loadPredictionComparison() {
+        try {
+            const days = document.getElementById('comparisonDaysSelect').value;
+            const response = await fetch(`/prediction_comparison?days=${days}`);
+            const data = await response.json();
+
+            renderPredictionComparisonChart(data.data);
+            renderComparisonStats(data.data);
+
+        } catch (error) {
+            console.error('Error loading prediction comparison:', error);
+        }
+    }
+
+    /**
+     * 绘制预测对比图表
+     */
+    function renderPredictionComparisonChart(data) {
+        const ctx = document.getElementById('predictionComparisonChart').getContext('2d');
+
+        if (predictionComparisonChart) {
+            predictionComparisonChart.destroy();
+        }
+
+        if (!data || data.length === 0) {
+            document.getElementById('predictionComparisonChart').parentElement.innerHTML = `
+                <div class="text-center text-muted py-5">
+                    <i class="bi bi-info-circle d-block fs-4 mb-2"></i>
+                    暂无已验证的预测数据
+                </div>
+            `;
+            return;
+        }
+
+        // 按日期分组
+        const dates = [...new Set(data.map(d => d.date))];
+        const predictedValues = dates.map(date => {
+            const items = data.filter(d => d.date === date);
+            return items.length > 0 ? items.reduce((sum, d) => sum + d.predicted, 0) / items.length : null;
+        });
+        const realValues = dates.map(date => {
+            const items = data.filter(d => d.date === date);
+            return items.length > 0 ? items.reduce((sum, d) => sum + d.real, 0) / items.length : null;
+        });
+
+        predictionComparisonChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: dates.map(d => d.substring(5)),  // MM-DD 格式
+                datasets: [
+                    {
+                        label: '预测值',
+                        data: predictedValues,
+                        borderColor: '#1A73E8',
+                        backgroundColor: 'rgba(26, 115, 232, 0.1)',
+                        borderWidth: 2,
+                        borderDash: [5, 5],
+                        pointRadius: 4,
+                        pointBackgroundColor: '#1A73E8',
+                        tension: 0.3
+                    },
+                    {
+                        label: '真实值',
+                        data: realValues,
+                        borderColor: '#34A853',
+                        backgroundColor: 'rgba(52, 168, 83, 0.1)',
+                        borderWidth: 2,
+                        pointRadius: 5,
+                        pointBackgroundColor: '#34A853',
+                        tension: 0.3
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'top',
+                        labels: {
+                            usePointStyle: true,
+                            pointStyle: 'circle',
+                            padding: 20
+                        }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return `${context.dataset.label}: ${context.parsed.y.toFixed(1)} mmol/L`;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: false,
+                        min: 4,
+                        max: 10,
+                        title: {
+                            display: true,
+                            text: '血糖 (mmol/L)'
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    /**
+     * 渲染对比统计数据
+     */
+    function renderComparisonStats(data) {
+        const container = document.getElementById('comparisonStats');
+
+        if (!data || data.length === 0) {
+            container.innerHTML = '';
+            return;
+        }
+
+        const totalPredictions = data.length;
+        const avgError = data.reduce((sum, d) => sum + (d.error || 0), 0) / totalPredictions;
+        const mae = data.reduce((sum, d) => sum + Math.abs(d.error || 0), 0) / totalPredictions;
+        const accurateCount = data.filter(d => Math.abs(d.error || 0) < 0.5).length;
+        const accuracy = (accurateCount / totalPredictions * 100).toFixed(1);
+
+        // 偏差方向判断
+        let biasText = '预测准确';
+        let biasColor = 'success';
+        if (avgError > 0.2) {
+            biasText = '预测偏低';
+            biasColor = 'warning';
+        } else if (avgError < -0.2) {
+            biasText = '预测偏高';
+            biasColor = 'info';
+        }
+
+        container.innerHTML = `
+            <div class="row text-center">
+                <div class="col-3">
+                    <div class="fs-4 fw-bold text-primary">${totalPredictions}</div>
+                    <small class="text-muted">预测次数</small>
+                </div>
+                <div class="col-3">
+                    <div class="fs-4 fw-bold text-success">${accuracy}%</div>
+                    <small class="text-muted">准确率</small>
+                </div>
+                <div class="col-3">
+                    <div class="fs-4 fw-bold text-warning">${mae.toFixed(2)}</div>
+                    <small class="text-muted">MAE</small>
+                </div>
+                <div class="col-3">
+                    <div class="fs-4 fw-bold text-${biasColor}">${avgError > 0 ? '+' : ''}${avgError.toFixed(2)}</div>
+                    <small class="text-muted">${biasText}</small>
+                </div>
+            </div>
+        `;
+    }
+
+    /**
+     * 显示 Toast 提示（如果没有定义）
+     */
+    function showToast(message, type = 'info') {
+        // 检查是否已有 toast 容器
+        let toastContainer = document.querySelector('.toast-container');
+        if (!toastContainer) {
+            toastContainer = document.createElement('div');
+            toastContainer.className = 'toast-container position-fixed bottom-0 end-0 p-3';
+            toastContainer.style.zIndex = '9999';
+            document.body.appendChild(toastContainer);
+        }
+
+        const toastId = 'toast-' + Date.now();
+        const bgClass = type === 'success' ? 'bg-success' : (type === 'danger' ? 'bg-danger' : 'bg-primary');
+
+        const toastHtml = `
+            <div id="${toastId}" class="toast align-items-center text-white ${bgClass} border-0" role="alert">
+                <div class="d-flex">
+                    <div class="toast-body">${message}</div>
+                    <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+                </div>
+            </div>
+        `;
+
+        toastContainer.insertAdjacentHTML('beforeend', toastHtml);
+        const toastElement = document.getElementById(toastId);
+        const toast = new bootstrap.Toast(toastElement, { delay: 3000 });
+        toast.show();
+
+        toastElement.addEventListener('hidden.bs.toast', () => toastElement.remove());
+    }
+
     document.addEventListener('DOMContentLoaded', function() {
+        // 恢复用户上次选择的时间范围
+        const savedRange = localStorage.getItem('glucoseTimeRange');
+        const urlParams = new URLSearchParams(window.location.search);
+        const currentRange = urlParams.get('all') === 'true' ? 'all' : (urlParams.get('days') || '14');
+
+        const selector = document.getElementById('timeRangeSelector');
+        if (selector) {
+            // 如果URL中有参数，使用URL参数；否则使用保存的值
+            selector.value = currentRange;
+
+            // 如果没有URL参数但有保存的值，且保存的值与当前不同，则跳转
+            if (!urlParams.has('days') && !urlParams.has('all') && savedRange && savedRange !== '14') {
+                changeTimeRange(savedRange);
+                return;
+            }
+        }
+
         // Initialize dayModal after DOM is ready
         dayModal = new bootstrap.Modal(document.getElementById('dayDetailsModal'));
 
@@ -1591,6 +3060,9 @@
 
         // Initialize Blood Pressure Chart
         initBloodPressureChart();
+
+        // 加载预测状态卡片
+        loadPredictionStatus();
 
         // Initialize Bootstrap Tooltips
         var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
@@ -1693,21 +3165,44 @@
         const ctx = document.getElementById('glucoseChart').getContext('2d');
 
         // Categorize data by type with professional labels (避开绿/黄/红，防止与血糖状态混淆)
+        // Google Fit / Material Design 配色方案
         const datasets = {
-            '空腹': { label: 'FPG (空腹)', data: [], predictedData: [], borderColor: '#0d6efd', backgroundColor: '#0d6efd' },  // 蓝色
-            '餐前': { label: '餐前', data: [], predictedData: [], borderColor: '#22b8cf', backgroundColor: '#22b8cf' },  // 青色
-            '运动后餐前': { label: '运动后餐前', data: [], predictedData: [], borderColor: '#1971c2', backgroundColor: '#1971c2' },  // 深蓝
-            '餐后1小时': { label: 'PPG-1h', data: [], predictedData: [], borderColor: '#ff922b', backgroundColor: '#ff922b' },  // 橙色
-            '餐后2小时': { label: 'PPG-2h', data: [], predictedData: [], borderColor: '#f76707', backgroundColor: '#f76707' },  // 深橙
-            '睡前': { label: '睡前', data: [], predictedData: [], borderColor: '#9775fa', backgroundColor: '#9775fa' },  // 淡紫
-            '运动后': { label: '运动后', data: [], predictedData: [], borderColor: '#1e40af', backgroundColor: '#1e40af' },  // 深蓝
-            '其他': { label: '其他', data: [], predictedData: [], borderColor: '#6c757d', backgroundColor: '#6c757d' }  // 灰色
+            '空腹': { label: 'FPG (空腹)', data: [], predictedData: [], borderColor: '#1A73E8', backgroundColor: '#1A73E8' },  // Google Blue
+            '餐前': { label: '餐前', data: [], predictedData: [], borderColor: '#00ACC1', backgroundColor: '#00ACC1' },  // Cyan 600
+            '运动后餐前': { label: '运动后餐前', data: [], predictedData: [], borderColor: '#00897B', backgroundColor: '#00897B' },  // Teal 600
+            '餐后1小时': { label: 'PPG-1h', data: [], predictedData: [], borderColor: '#FB8C00', backgroundColor: '#FB8C00' },  // Orange 600
+            '餐后2小时': { label: 'PPG-2h', data: [], predictedData: [], borderColor: '#F4511E', backgroundColor: '#F4511E' },  // Deep Orange 600
+            '睡前': { label: '睡前', data: [], predictedData: [], borderColor: '#8E24AA', backgroundColor: '#8E24AA' },  // Purple 600
+            '运动后': { label: '运动后', data: [], predictedData: [], borderColor: '#3949AB', backgroundColor: '#3949AB' },  // Indigo 600
+            '其他': { label: '其他', data: [], predictedData: [], borderColor: '#757575', backgroundColor: '#757575' }  // Grey 600
         };
 
-        // Populate datasets - 真实记录
+        // Populate datasets - 真实记录（智能匹配类型变体）
         allRecords.forEach(record => {
-            const key = datasets[record.type] ? record.type : '其他';
-            const pointColor = getPointColor(key, record.value);
+            let key = '其他';
+
+            // 优先精确匹配
+            if (datasets[record.type]) {
+                key = record.type;
+            }
+            // 智能匹配餐后类型变体
+            else if (record.type.includes('早餐后2小时') || record.type.includes('午餐后2小时') || record.type.includes('晚餐后2小时')) {
+                key = '餐后2小时';
+            }
+            else if (record.type.includes('早餐后1小时') || record.type.includes('午餐后1小时') || record.type.includes('晚餐后1小时')) {
+                key = '餐后1小时';
+            }
+            // 智能匹配餐前类型变体
+            else if (record.type.includes('晚饭前') || record.type.includes('午饭前') || record.type.includes('早饭前')) {
+                key = '餐前';
+            }
+            // 通用模糊匹配（兜底）
+            else if (record.type.includes('餐后') && !record.type.includes('运动')) {
+                key = '餐后2小时';  // 默认归为2小时
+            }
+            else if (record.type.includes('餐前') && !record.type.includes('运动')) {
+                key = '餐前';
+            }
 
             datasets[key].data.push({
                 x: record.timestamp,
@@ -1726,9 +3221,56 @@
         console.log('按类型统计:', typeCount);
         console.log('===========================');
 
-        // Populate datasets - AI预测记录
+        // 构建真实记录索引：记录每天每种类型是否有真实记录
+        const realRecordIndex = {};
+        allRecords.forEach(record => {
+            const date = record.timestamp.split(' ')[0]; // 提取日期 YYYY-MM-DD
+            let key = record.type;
+            // 标准化类型名称
+            if (key.includes('空腹')) key = '空腹';
+            else if (key.includes('运动后餐前')) key = '运动后餐前';
+            else if (key.includes('餐前')) key = '餐前';
+            else if (key.includes('餐后2小时') || key.includes('早餐后2小时') || key.includes('午餐后2小时') || key.includes('晚餐后2小时')) key = '餐后2小时';
+            else if (key.includes('餐后1小时') || key.includes('早餐后1小时') || key.includes('午餐后1小时') || key.includes('晚餐后1小时')) key = '餐后1小时';
+            else if (key.includes('餐后')) key = '餐后2小时';
+            else if (key.includes('睡前')) key = '睡前';
+            else if (key.includes('运动后')) key = '运动后';
+
+            const indexKey = `${date}_${key}`;
+            realRecordIndex[indexKey] = true;
+        });
+        console.log('真实记录索引:', Object.keys(realRecordIndex));
+
+        // Populate datasets - AI预测记录（使用相同的智能匹配逻辑，并检查是否有对应真实记录）
         predictedRecords.forEach(record => {
-            const key = datasets[record.type] ? record.type : '其他';
+            const date = record.timestamp.split(' ')[0]; // 提取日期
+            let key = '其他';
+
+            // 优先精确匹配
+            if (datasets[record.type]) {
+                key = record.type;
+            }
+            // 智能匹配餐后类型变体
+            else if (record.type.includes('早餐后2小时') || record.type.includes('午餐后2小时') || record.type.includes('晚餐后2小时')) {
+                key = '餐后2小时';
+            }
+            else if (record.type.includes('早餐后1小时') || record.type.includes('午餐后1小时') || record.type.includes('晚餐后1小时')) {
+                key = '餐后1小时';
+            }
+            // 智能匹配餐前类型变体
+            else if (record.type.includes('晚饭前') || record.type.includes('午饭前') || record.type.includes('早饭前')) {
+                key = '餐前';
+            }
+            // 通用模糊匹配（兜底）
+            else if (record.type.includes('餐后') && !record.type.includes('运动')) {
+                key = '餐后2小时';
+            }
+            else if (record.type.includes('餐前') && !record.type.includes('运动')) {
+                key = '餐前';
+            }
+
+            // 预测记录始终添加到预测数据集，用于显示预测曲线对比
+            // 不再跳过有真实数据的预测（用户可以通过按钮控制是否显示预测曲线）
             datasets[key].predictedData.push({
                 x: record.timestamp,
                 y: record.value
@@ -1751,17 +3293,21 @@
                     borderColor: ds.borderColor,
                     backgroundColor: ds.backgroundColor,
                     borderWidth: 3,
-                    tension: 0,  // 无平滑，使用直线连接，让波动更清晰
-                    // 只显示超标的点（红色），正常和警戒状态的点隐藏
+                    tension: 0,  // 折线，让波动更清晰
+                    // 显示所有状态的点：红色（超标）、黄色（警戒）、绿色（正常）
                     pointRadius: ds.data.map(point => {
                         const color = getPointBorderColor(key, point.y);
-                        return color === '#dc3545' ? 8 : 0;  // 只有红色（超标）显示，其他隐藏
+                        if (color === '#dc3545') return 8;      // 红色（超标）- 大点
+                        if (color === '#ffc107') return 6;      // 黄色（警戒）- 中等
+                        return 5;                                // 绿色（正常）- 小点
                     }),
                     pointHoverRadius: ds.data.map(point => {
                         const color = getPointBorderColor(key, point.y);
-                        return color === '#dc3545' ? 12 : 6;  // 悬停时：超标放大，其他显示小点
+                        if (color === '#dc3545') return 12;     // 悬停时放大
+                        if (color === '#ffc107') return 9;
+                        return 8;
                     }),
-                    // 圆点颜色直接表示血糖状态（只有超标时显示红色）
+                    // 圆点颜色表示血糖状态：绿色（正常）、黄色（警戒）、红色（超标）
                     pointBackgroundColor: ds.data.map(point => getPointBorderColor(key, point.y)),
                     pointBorderColor: '#fff',
                     pointBorderWidth: 2,
@@ -1780,7 +3326,7 @@
                     backgroundColor: ds.backgroundColor,
                     borderWidth: 2,
                     borderDash: [6, 3],  // 虚线样式
-                    tension: 0.2,  // 稍微平滑
+                    tension: 0,  // 折线
                     pointRadius: 3,  // 小圆点
                     pointHoverRadius: 7,
                     pointBackgroundColor: '#fff',  // 空心圆点
@@ -1841,9 +3387,12 @@
                         display: true,
                         position: 'top',
                         labels: {
-                            usePointStyle: true,
-                            padding: 15,
-                            font: { size: 12, weight: 'bold' },
+                            usePointStyle: true,  // Google Fit 风格：使用圆形图例
+                            pointStyle: 'circle',
+                            padding: 20,
+                            font: { size: 13, family: "'Roboto', 'Helvetica Neue', sans-serif", weight: '500' },
+                            boxWidth: 8,  // 圆形图例大小
+                            boxHeight: 8,
                             // 过滤掉AI预测的图例项
                             filter: function(item, chart) {
                                 return !item.text.includes('AI预测');
@@ -1864,70 +3413,84 @@
                                     return context.dataset.label + ': ' + value + ' mmol/L';
                                 }
 
-                                // 真实记录才显示状态
-                                let status = '';
-                                if (context.parsed.y < 3.9) status = ' ⚠️ 偏低';
-                                else if (context.parsed.y > 7.8) status = ' ⚠️ 偏高';
-                                else status = ' ✓ 正常';
-                                return context.dataset.label + ': ' + value + ' mmol/L' + status;
+                                // 真实记录使用科学标准和徽章显示状态
+                                const glucoseType = context.dataset.label; // 血糖类型（如 '空腹', '餐后2小时' 等）
+                                const result = checkGlucoseCompliance(context.parsed.y, glucoseType);
+                                const badge = result.badge;
+                                const targetInfo = `(${result.target.name}: ${result.target.min}-${result.target.max})`;
+                                return `${context.dataset.label}: ${value} mmol/L ${badge.icon} ${badge.name} ${targetInfo}`;
                             }
                         }
                     },
                     annotation: {
                         annotations: {
-                            dangerHigh: {
-                                type: 'line',
-                                yMin: 10.0,
-                                yMax: 10.0,
-                                borderColor: 'rgba(220, 53, 69, 0.3)',
-                                borderWidth: 2,
-                                borderDash: [10, 5],
-                                label: {
-                                    content: '危险上限 10.0',
-                                    enabled: true,
-                                    position: 'end',
-                                    backgroundColor: 'rgba(220, 53, 69, 0.8)',
-                                    color: '#fff',
-                                    font: { size: 10 }
-                                }
+                            // Google Fit 风格：柔和的目标区域和简洁的边界线
+                            targetZone: {
+                                type: 'box',
+                                yMin: 3.9,
+                                yMax: 7.8,
+                                backgroundColor: 'rgba(52, 168, 83, 0.08)',  // Google Green 淡色
+                                borderWidth: 0
+                            },
+                            optimalZone: {
+                                type: 'box',
+                                yMin: 4.4,
+                                yMax: 6.1,
+                                backgroundColor: 'rgba(52, 168, 83, 0.12)',  // Google Green 稍深
+                                borderWidth: 0
                             },
                             warningHigh: {
                                 type: 'line',
                                 yMin: 7.8,
                                 yMax: 7.8,
-                                borderColor: 'rgba(255, 193, 7, 0.4)',
-                                borderWidth: 2,
-                                borderDash: [5, 5],
+                                borderColor: 'rgba(251, 188, 4, 0.6)',  // Google Yellow
+                                borderWidth: 1.5,
+                                borderDash: [6, 4],
                                 label: {
-                                    content: '警戒线 7.8',
+                                    content: '目标上限 7.8',
                                     enabled: true,
                                     position: 'end',
-                                    backgroundColor: 'rgba(255, 193, 7, 0.8)',
-                                    color: '#000',
-                                    font: { size: 10 }
+                                    backgroundColor: 'rgba(251, 188, 4, 0.9)',
+                                    color: '#202124',
+                                    font: { size: 10, family: "'Roboto', sans-serif" },
+                                    padding: { top: 2, bottom: 2, left: 6, right: 6 },
+                                    borderRadius: 4
                                 }
                             },
-                            targetZone: {
-                                type: 'box',
-                                yMin: 3.9,
-                                yMax: 7.8,
-                                backgroundColor: 'rgba(25, 135, 84, 0.05)',
-                                borderWidth: 0
+                            dangerHigh: {
+                                type: 'line',
+                                yMin: 10.0,
+                                yMax: 10.0,
+                                borderColor: 'rgba(234, 67, 53, 0.5)',  // Google Red
+                                borderWidth: 1.5,
+                                borderDash: [8, 4],
+                                label: {
+                                    content: '危险 10.0',
+                                    enabled: true,
+                                    position: 'end',
+                                    backgroundColor: 'rgba(234, 67, 53, 0.9)',
+                                    color: '#fff',
+                                    font: { size: 10, family: "'Roboto', sans-serif" },
+                                    padding: { top: 2, bottom: 2, left: 6, right: 6 },
+                                    borderRadius: 4
+                                }
                             },
                             dangerLow: {
                                 type: 'line',
                                 yMin: 3.9,
                                 yMax: 3.9,
-                                borderColor: 'rgba(220, 53, 69, 0.4)',
-                                borderWidth: 2,
-                                borderDash: [5, 5],
+                                borderColor: 'rgba(234, 67, 53, 0.5)',  // Google Red
+                                borderWidth: 1.5,
+                                borderDash: [6, 4],
                                 label: {
-                                    content: '低血糖警戒 3.9',
+                                    content: '低血糖 3.9',
                                     enabled: true,
                                     position: 'start',
-                                    backgroundColor: 'rgba(220, 53, 69, 0.8)',
+                                    backgroundColor: 'rgba(234, 67, 53, 0.9)',
                                     color: '#fff',
-                                    font: { size: 10 }
+                                    font: { size: 10, family: "'Roboto', sans-serif" },
+                                    padding: { top: 2, bottom: 2, left: 6, right: 6 },
+                                    borderRadius: 4
                                 }
                             }
                         }
@@ -2158,17 +3721,18 @@
                                     return '脉搏: ' + context.parsed.y + ' bpm';
                                 }
 
-                                let status = '';
+                                // 使用徽章显示血压状态
+                                let statusIcon, statusName;
                                 if (bp.systolic > 140 || bp.diastolic > 90) {
-                                    status = ' ⚠️ 偏高';
+                                    statusIcon = '⚠️'; statusName = '偏高';
                                 } else if (bp.systolic > 130 || bp.diastolic > 85) {
-                                    status = ' ⚠ 警戒';
+                                    statusIcon = '👍'; statusName = '警戒';
                                 } else {
-                                    status = ' ✓ 正常';
+                                    statusIcon = '🌟'; statusName = '理想';
                                 }
 
                                 if (context.dataset.label === '收缩压（高压）') {
-                                    return bp.systolic + '/' + bp.diastolic + ' mmHg' + status;
+                                    return bp.systolic + '/' + bp.diastolic + ' mmHg ' + statusIcon + ' ' + statusName;
                                 }
                                 return ''; // 舒张压不单独显示，避免重复
                             }
@@ -2297,98 +3861,89 @@
         });
     }
 
-    // 生成AI预测控制按钮
+    // 生成AI预测控制按钮（统一开关）
     function generatePredictionToggles(datasetIndexMap, datasets) {
         const togglesContainer = document.getElementById('predictionToggles');
         const controlPanel = document.getElementById('aiPredictionControls');
 
-        let hasAnyPrediction = false;
-
-        console.log('=== AI预测控制按钮生成 ===');
-
-        // 遍历所有数据类型，只为同时有真实数据和预测数据的类型生成按钮
+        // 收集所有有预测数据的类型
+        const predictionTypes = [];
         for (const [key, indices] of Object.entries(datasetIndexMap)) {
-            console.log(`检查类型: ${key}`, indices);
-
-            // 只有当既有真实数据又有预测数据时，才显示控制按钮
             if (indices.real >= 0 && indices.predicted >= 0) {
-                console.log(`  ✓ 生成按钮: ${key}`);
-                hasAnyPrediction = true;
-                const ds = datasets[key];
-
-                const button = document.createElement('button');
-                button.className = 'btn btn-sm btn-outline-secondary';
-                button.style.borderColor = ds.borderColor;
-                button.style.color = ds.borderColor;
-                button.innerHTML = `
-                    <i class="bi bi-eye-slash me-1"></i>
-                    <span>${ds.label}</span>
-                `;
-                button.onclick = () => togglePrediction(key, button, ds.borderColor);
-
-                togglesContainer.appendChild(button);
-            } else {
-                console.log(`  ✗ 跳过: 真实=${indices.real}, 预测=${indices.predicted}`);
+                predictionTypes.push(key);
             }
         }
 
-        console.log('===========================');
-
-        // 如果有预测数据，显示控制面板
-        if (hasAnyPrediction) {
+        // 如果有预测数据，生成统一开关按钮
+        if (predictionTypes.length > 0) {
+            const button = document.createElement('button');
+            button.id = 'toggleAllPredictions';
+            button.className = 'btn btn-sm btn-outline-primary';
+            button.innerHTML = `<i class="bi bi-eye-slash me-1"></i><span>显示预测曲线</span>`;
+            button.dataset.visible = 'false';
+            button.onclick = () => toggleAllPredictions(button, predictionTypes);
+            togglesContainer.appendChild(button);
             controlPanel.classList.remove('d-none');
         }
     }
 
-    // 切换预测曲线的显示/隐藏
-    function togglePrediction(type, button, color) {
-        if (!glucoseChart || !predictionDatasetMap[type]) return;
+    // 切换所有预测曲线的显示/隐藏（与实际血糖曲线联动）
+    function toggleAllPredictions(button, types) {
+        if (!glucoseChart) return;
 
-        const predIndex = predictionDatasetMap[type].predicted;
-        if (predIndex < 0) return;
+        const isCurrentlyVisible = button.dataset.visible === 'true';
+        const newVisibility = !isCurrentlyVisible;
 
-        const meta = glucoseChart.getDatasetMeta(predIndex);
-        const isHidden = meta.hidden;
+        // 切换预测数据集的显示状态（根据对应实际数据的显示状态）
+        for (const type of types) {
+            if (!predictionDatasetMap[type]) continue;
+            const realIndex = predictionDatasetMap[type].real;
+            const predIndex = predictionDatasetMap[type].predicted;
+            if (predIndex < 0) continue;
 
-        // 切换显示/隐藏
-        meta.hidden = !isHidden;
+            const predMeta = glucoseChart.getDatasetMeta(predIndex);
+
+            if (newVisibility) {
+                // 显示预测曲线时，检查对应的实际数据是否正在显示
+                if (realIndex >= 0) {
+                    const realMeta = glucoseChart.getDatasetMeta(realIndex);
+                    // 只有当实际数据正在显示时，才显示对应的预测曲线
+                    predMeta.hidden = realMeta.hidden;
+                } else {
+                    predMeta.hidden = false;
+                }
+            } else {
+                // 隐藏所有预测曲线
+                predMeta.hidden = true;
+            }
+        }
+
         glucoseChart.update();
 
-        // 更新按钮样式
-        if (meta.hidden) {
-            // 隐藏状态 - 轮廓样式
-            button.className = 'btn btn-sm btn-outline-secondary';
-            button.style.borderColor = color;
-            button.style.color = color;
-            button.style.backgroundColor = '';
-            button.innerHTML = `<i class="bi bi-eye-slash me-1"></i><span>${button.querySelector('span').textContent}</span>`;
+        // 更新按钮样式和状态
+        button.dataset.visible = newVisibility.toString();
+        if (newVisibility) {
+            button.className = 'btn btn-sm btn-primary';
+            button.innerHTML = `<i class="bi bi-eye me-1"></i><span>隐藏预测曲线</span>`;
         } else {
-            // 显示状态 - 填充样式
-            button.className = 'btn btn-sm';
-            button.style.borderColor = color;
-            button.style.backgroundColor = color;
-            button.style.color = '#fff';
-            button.innerHTML = `<i class="bi bi-eye me-1"></i><span>${button.querySelector('span').textContent}</span>`;
+            button.className = 'btn btn-sm btn-outline-primary';
+            button.innerHTML = `<i class="bi bi-eye-slash me-1"></i><span>显示预测曲线</span>`;
         }
     }
 
     // Get point border color based on glucose value and type (表示血糖状态)
+    // 使用全局的科学达标标准 + Google Fit 配色
     function getPointBorderColor(key, value) {
-        const green = '#198754';  // 正常
-        const yellow = '#ffc107'; // 警戒
-        const red = '#dc3545';    // 超标
+        const green = '#34A853';  // Google Green - 理想
+        const yellow = '#FBBC04'; // Google Yellow - 达标（警戒）
+        const red = '#EA4335';    // Google Red - 超标
 
-        if (value < 3.9) return red;
+        const result = checkGlucoseCompliance(value, key);
 
-        if (key === '空腹' || key === '餐前' || key === '睡前' || key === '运动后餐前') {
-            if (value < 6.1) return green;
-            if (value <= 7.0) return yellow;
-            return red;
-        } else {
-            if (value < 7.8) return green;
-            if (value <= 10.0) return yellow;
-            return red;
-        }
+        if (result.level === 'low') return red;      // 低血糖
+        if (result.level === 'optimal') return green; // 理想
+        if (result.level === 'acceptable') return yellow; // 达标但偏高
+        return red;  // 超标
     }
 
     // Get point color based on glucose value and type (保留用于其他功能)
@@ -2419,51 +3974,40 @@
 
             // === Summary Events for Month/Week View (allDay) ===
 
-            // 1. 血糖达标率 Badge（百分比显示，适应任意测量次数）
+            // 1. 血糖达标率 Badge（使用全局的科学达标标准和徽章奖励系统）
             if (stats.glucose_count > 0 && stats.avg_glucose > 0) {
-                // Calculate how many glucose readings are in normal range
+                // 计算达标数量（使用全局函数）
                 let normalCount = 0;
+                let glucoseCount = 0;
                 entries.forEach(e => {
-                    if (e.value > 0 && !e.is_predicted) {
-                        // Check if within normal range based on type
-                        const isFasting = e.type && (e.type.includes('空腹') || e.type.includes('餐前') || e.type.includes('睡前'));
-                        const isNormal = isFasting
-                            ? (e.value >= 3.9 && e.value <= 6.1)
-                            : (e.value >= 3.9 && e.value <= 7.8);
-                        if (isNormal) normalCount++;
+                    if (e.value > 0 && !e.is_predicted && !e.systolic_pressure) {
+                        glucoseCount++;
+                        const result = checkGlucoseCompliance(e.value, e.type);
+                        if (result.isCompliant) {
+                            normalCount++;
+                        }
                     }
                 });
 
-                // Calculate percentage
-                const percentage = Math.round((normalCount / stats.glucose_count) * 100);
+                // 计算达标率
+                const percentage = glucoseCount > 0 ? Math.round((normalCount / glucoseCount) * 100) : 0;
 
-                let bgColor, textColor, icon;
-                if (percentage === 100) {
-                    // 100% normal
-                    bgColor = '#d4edda';
-                    textColor = '#155724';
-                    icon = '✓';
-                } else if (percentage >= 50) {
-                    // 50% or more normal
-                    bgColor = '#fff3cd';
-                    textColor = '#856404';
-                    icon = '⚠';
-                } else {
-                    // Less than 50% normal
-                    bgColor = '#f8d7da';
-                    textColor = '#721c24';
-                    icon = '✗';
-                }
+                // 根据达标率获取对应的徽章（使用全局函数）
+                const badge = getBadgeForRate(percentage);
 
                 events.push({
-                    title: `${icon} 血糖${stats.avg_glucose} (${percentage}%)`,
+                    title: `${badge.icon} 血糖${stats.avg_glucose} (${percentage}%)`,
                     start: day.date,
-                    backgroundColor: bgColor,
-                    textColor: textColor,
-                    borderColor: bgColor,
+                    backgroundColor: badge.bg_color,
+                    textColor: badge.text_color,
+                    borderColor: badge.bg_color,
                     allDay: true,
                     display: 'auto',
-                    classNames: ['summary-event']
+                    classNames: ['summary-event'],
+                    extendedProps: {
+                        badgeName: badge.name,
+                        badgeDescription: badge.description
+                    }
                 });
             }
 
@@ -2659,8 +4203,8 @@
 
         html += '</div>'; // Close alert
 
-        // Timeline entries - 只显示真实记录，不显示AI预测
-        entries.filter(r => !r.is_predicted).forEach(r => {
+        // Timeline entries - 显示真实记录 + 未验证的预测，排除已验证的预测
+        entries.filter(r => !r.is_predicted || !r.is_verified).forEach(r => {
             let dotClass = 'dot-food';
             if (r.value > 0) dotClass = 'dot-glucose';
             else if (r.systolic_pressure && r.diastolic_pressure) dotClass = 'dot-bloodpressure';
@@ -2751,9 +4295,13 @@
 
             html += `
                     </div>
-                    <div class="ms-2">
-                        <button class="btn btn-sm btn-link text-secondary opacity-50 p-0 me-1" onclick="openEditModal(${r.id})" title="编辑"><i class="bi bi-pencil"></i></button>
-                        <button class="btn btn-sm btn-link text-secondary opacity-25 p-0" onclick="deleteRecord(${r.id})" title="删除"><i class="bi bi-x-circle-fill"></i></button>
+                    <div class="ms-2 d-flex gap-1">
+                        <button class="btn btn-sm btn-outline-primary p-1 px-2" onclick="openEditModal(${r.id})" title="编辑" style="border-radius: 6px;">
+                            <i class="bi bi-pencil" style="font-size: 0.9rem;"></i>
+                        </button>
+                        <button class="btn btn-sm btn-outline-danger p-1 px-2" onclick="deleteRecord(${r.id})" title="删除" style="border-radius: 6px;">
+                            <i class="bi bi-trash" style="font-size: 0.9rem;"></i>
+                        </button>
                     </div>
                 </div>
             </div>`;
@@ -2819,8 +4367,8 @@
         `;
         modalBody.innerHTML += statsHtml;
 
-        // 2. Render Timeline Items - 只显示真实记录，不显示AI预测
-        entries.filter(r => !r.is_predicted).forEach(r => {
+        // 2. Render Timeline Items - 显示真实记录 + 未验证的预测，排除已验证的预测
+        entries.filter(r => !r.is_predicted || !r.is_verified).forEach(r => {
             let dotClass = 'dot-food';
             if (r.value > 0) dotClass = 'dot-glucose';
             else if (r.systolic_pressure && r.diastolic_pressure) dotClass = 'dot-bloodpressure';
@@ -2911,9 +4459,13 @@
 
             itemHtml += `
                     </div>
-                    <div class="ms-2">
-                        <button class="btn btn-sm btn-link text-secondary opacity-50 p-0 me-1" onclick="openEditModal(${r.id})" title="编辑"><i class="bi bi-pencil"></i></button>
-                        <button class="btn btn-sm btn-link text-secondary opacity-25 p-0" onclick="deleteRecord(${r.id})" title="删除"><i class="bi bi-x-circle-fill"></i></button>
+                    <div class="ms-2 d-flex gap-1">
+                        <button class="btn btn-sm btn-outline-primary p-1 px-2" onclick="openEditModal(${r.id})" title="编辑" style="border-radius: 6px;">
+                            <i class="bi bi-pencil" style="font-size: 0.9rem;"></i>
+                        </button>
+                        <button class="btn btn-sm btn-outline-danger p-1 px-2" onclick="deleteRecord(${r.id})" title="删除" style="border-radius: 6px;">
+                            <i class="bi bi-trash" style="font-size: 0.9rem;"></i>
+                        </button>
                     </div>
                 </div>
             </div>`;
@@ -3139,43 +4691,88 @@
     });
 
     let parsedData = [];
-    let selectedImageBase64 = null;
+    let selectedImagesBase64 = []; // 改为数组以支持多张图片
 
     function previewImage(input) {
-        if (input.files && input.files[0]) {
-            const reader = new FileReader();
-            reader.onload = function(e) {
-                selectedImageBase64 = e.target.result;
-                document.getElementById('selectedImage').src = selectedImageBase64;
-                document.getElementById('imagePreviewContainer').classList.remove('d-none');
-            }
-            reader.readAsDataURL(input.files[0]);
+        if (input.files && input.files.length > 0) {
+            selectedImagesBase64 = []; // 重置数组
+            const previewList = document.getElementById('imagePreviewList');
+            previewList.innerHTML = '';
+
+            // 遍历所有选择的文件
+            Array.from(input.files).forEach((file, index) => {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    selectedImagesBase64.push(e.target.result);
+
+                    // 创建预览元素
+                    const previewWrapper = document.createElement('div');
+                    previewWrapper.className = 'position-relative d-inline-block';
+                    previewWrapper.innerHTML = `
+                        <img src="${e.target.result}" class="img-thumbnail rounded-3" style="max-height: 120px;">
+                        <button type="button" class="btn-close position-absolute top-0 end-0 bg-white m-1 shadow-sm" onclick="removeImage(${index})"></button>
+                        <div class="position-absolute bottom-0 start-0 bg-primary text-white px-2 py-1 m-1 rounded" style="font-size: 0.75rem;">
+                            ${index + 1}/${input.files.length}
+                        </div>
+                    `;
+                    previewList.appendChild(previewWrapper);
+                };
+                reader.readAsDataURL(file);
+            });
+
+            document.getElementById('imagePreviewContainer').classList.remove('d-none');
+        }
+    }
+
+    function removeImage(index) {
+        selectedImagesBase64.splice(index, 1);
+
+        if (selectedImagesBase64.length === 0) {
+            clearImage();
+        } else {
+            // 重新渲染预览列表
+            const previewList = document.getElementById('imagePreviewList');
+            previewList.innerHTML = '';
+
+            selectedImagesBase64.forEach((imgData, idx) => {
+                const previewWrapper = document.createElement('div');
+                previewWrapper.className = 'position-relative d-inline-block';
+                previewWrapper.innerHTML = `
+                    <img src="${imgData}" class="img-thumbnail rounded-3" style="max-height: 120px;">
+                    <button type="button" class="btn-close position-absolute top-0 end-0 bg-white m-1 shadow-sm" onclick="removeImage(${idx})"></button>
+                    <div class="position-absolute bottom-0 start-0 bg-primary text-white px-2 py-1 m-1 rounded" style="font-size: 0.75rem;">
+                        ${idx + 1}/${selectedImagesBase64.length}
+                    </div>
+                `;
+                previewList.appendChild(previewWrapper);
+            });
         }
     }
 
     function clearImage() {
-        selectedImageBase64 = null;
+        selectedImagesBase64 = [];
         document.getElementById('imageUpload').value = '';
         document.getElementById('imagePreviewContainer').classList.add('d-none');
+        document.getElementById('imagePreviewList').innerHTML = '';
     }
 
     async function analyzeText() {
         const text = document.getElementById('aiInput').value;
-        if (!text && !selectedImageBase64) return;
+        if (!text && selectedImagesBase64.length === 0) return;
 
         toggleLoading(true);
-        
+
         try {
             const response = await fetch('/parse_ai', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({
                     text: text,
-                    image: selectedImageBase64
+                    images: selectedImagesBase64 // 发送图片数组
                 })
             });
             parsedData = await response.json();
-            
+
             if (parsedData.length > 0) {
                 renderPreview();
             } else {
@@ -3818,6 +5415,31 @@
         }
     });
 
+    // 控制频率详情字段的显示
+    function updateFrequencyDetail() {
+        const frequency = document.getElementById('plan_frequency').value;
+        const container = document.getElementById('frequency_detail_container');
+        const weeklySelect = document.getElementById('plan_frequency_detail_weekly');
+        const monthlyInput = document.getElementById('plan_frequency_detail_monthly');
+
+        if (frequency === 'daily') {
+            // 每天服用，隐藏详情字段
+            container.style.display = 'none';
+            weeklySelect.style.display = 'none';
+            monthlyInput.style.display = 'none';
+        } else if (frequency === 'weekly') {
+            // 每周服用，显示星期选择
+            container.style.display = 'block';
+            weeklySelect.style.display = 'block';
+            monthlyInput.style.display = 'none';
+        } else if (frequency === 'monthly') {
+            // 每月服用，显示日期输入
+            container.style.display = 'block';
+            weeklySelect.style.display = 'none';
+            monthlyInput.style.display = 'block';
+        }
+    }
+
     // 加载药物方案列表
     async function loadMedicationPlans() {
         try {
@@ -3886,6 +5508,15 @@
     document.getElementById('medicationPlanForm')?.addEventListener('submit', async function(e) {
         e.preventDefault();
 
+        // 获取频率详情
+        const frequency = document.getElementById('plan_frequency').value;
+        let frequency_detail = null;
+        if (frequency === 'weekly') {
+            frequency_detail = document.getElementById('plan_frequency_detail_weekly').value;
+        } else if (frequency === 'monthly') {
+            frequency_detail = document.getElementById('plan_frequency_detail_monthly').value;
+        }
+
         const data = {
             medication_name: document.getElementById('plan_name').value,
             dosage: document.getElementById('plan_dosage').value,
@@ -3893,7 +5524,9 @@
             timing_notes: document.getElementById('plan_timing').value,
             start_date: document.getElementById('plan_start').value,
             end_date: document.getElementById('plan_end').value || null,
-            notes: document.getElementById('plan_notes').value
+            notes: document.getElementById('plan_notes').value,
+            frequency: frequency,
+            frequency_detail: frequency_detail
         };
 
         try {
@@ -3952,6 +5585,633 @@
         }
     }
 
+    // ========== Health Analysis Functions ==========
+
+    /**
+     * 手动触发健康分析
+     */
+    async function triggerManualAnalysis(days = 7) {
+        try {
+            const res = await fetch('/analyze_health', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ days: days })
+            });
+
+            const result = await res.json();
+
+            if (result.status === 'success') {
+                showToast(`✅ 基于近${days}天的健康分析生成成功！`, 'success');
+                // 延迟刷新，让用户看到成功提示
+                setTimeout(() => {
+                    location.reload();
+                }, 1500);
+            } else {
+                // 检查是否是配额错误
+                if (result.error_type === 'quota_exceeded' && result.retry_after > 0) {
+                    showQuotaExhaustedModal(result.retry_after, days);
+                } else {
+                    showToast('❌ 生成失败: ' + (result.message || '未知错误'), 'error');
+                }
+            }
+        } catch (e) {
+            console.error('Health analysis error:', e);
+            showToast('❌ 生成失败: ' + e.message, 'error');
+        }
+    }
+
+    /**
+     * 显示配额耗尽模态框，带倒计时重试功能
+     */
+    function showQuotaExhaustedModal(retryAfter, days) {
+        // 创建模态框
+        let modal = document.getElementById('quotaExhaustedModal');
+        if (!modal) {
+            modal = document.createElement('div');
+            modal.className = 'modal fade';
+            modal.id = 'quotaExhaustedModal';
+            modal.innerHTML = `
+                <div class="modal-dialog modal-dialog-centered">
+                    <div class="modal-content">
+                        <div class="modal-header bg-warning text-dark">
+                            <h5 class="modal-title">
+                                <i class="bi bi-hourglass-split me-2"></i>AI 服务繁忙
+                            </h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                        </div>
+                        <div class="modal-body text-center py-4">
+                            <i class="bi bi-clock-history text-warning" style="font-size: 3rem;"></i>
+                            <p class="mt-3 mb-2">AI 服务配额暂时用尽</p>
+                            <p class="text-muted mb-3">系统将在倒计时结束后自动重试</p>
+                            <div class="display-4 fw-bold text-primary" id="quotaCountdown">${retryAfter}</div>
+                            <small class="text-muted">秒后自动重试</small>
+                        </div>
+                        <div class="modal-footer justify-content-center">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                            <button type="button" class="btn btn-primary" id="retryNowBtn" disabled onclick="retryAnalysisNow()">
+                                <i class="bi bi-arrow-clockwise me-1"></i>立即重试
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+        }
+
+        // 存储当前的 days 参数
+        modal.dataset.days = days;
+
+        const bsModal = new bootstrap.Modal(modal);
+        bsModal.show();
+
+        // 开始倒计时
+        let countdown = retryAfter;
+        const countdownEl = document.getElementById('quotaCountdown');
+        const retryBtn = document.getElementById('retryNowBtn');
+
+        const timer = setInterval(() => {
+            countdown--;
+            countdownEl.textContent = countdown;
+
+            if (countdown <= 0) {
+                clearInterval(timer);
+                retryBtn.disabled = false;
+                countdownEl.textContent = '0';
+
+                // 自动重试
+                bsModal.hide();
+                triggerManualAnalysis(parseInt(modal.dataset.days) || 7);
+            }
+        }, 1000);
+
+        // 模态框关闭时清除定时器
+        modal.addEventListener('hidden.bs.modal', function() {
+            clearInterval(timer);
+        }, { once: true });
+    }
+
+    /**
+     * 立即重试分析
+     */
+    function retryAnalysisNow() {
+        const modal = document.getElementById('quotaExhaustedModal');
+        const days = parseInt(modal.dataset.days) || 7;
+        bootstrap.Modal.getInstance(modal).hide();
+        triggerManualAnalysis(days);
+    }
+
+    /**
+     * 显示完整健康分析报告（模态框）
+     */
+    function showFullAnalysis() {
+        const analysis = {{ stats.latest_analysis | tojson | safe }};
+
+        if (!analysis || !analysis.full_analysis) {
+            alert('暂无完整报告');
+            return;
+        }
+
+        // 创建模态框
+        const modal = document.createElement('div');
+        modal.className = 'modal fade';
+        modal.id = 'healthAnalysisModal';
+        modal.innerHTML = `
+            <div class="modal-dialog modal-xl modal-dialog-scrollable">
+                <div class="modal-content">
+                    <div class="modal-header bg-primary text-white">
+                        <h5 class="modal-title">
+                            <i class="bi bi-file-earmark-medical me-2"></i>完整健康分析报告
+                        </h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body" id="reportContent">
+                        <div class="row mb-4">
+                            <div class="col-md-4 text-center">
+                                <div class="display-3 fw-bold text-primary">${analysis.health_score}</div>
+                                <div class="text-muted">健康评分</div>
+                            </div>
+                            <div class="col-md-8">
+                                <div class="mb-3">
+                                    <strong>分析日期：</strong>${analysis.analysis_date}
+                                </div>
+                                <div class="mb-3">
+                                    <strong>生成方式：</strong>
+                                    <span class="badge ${analysis.is_auto_generated ? 'bg-success' : 'bg-info'}">
+                                        ${analysis.is_auto_generated ? '自动生成' : '手动生成'}
+                                    </span>
+                                </div>
+                                <div>
+                                    <strong>用户：</strong>{{ stats.user.name }} · {{ stats.user.gender == 'male' and '男' or '女' }} · {{ 2026 - stats.user.birth_year }}岁
+                                </div>
+                            </div>
+                        </div>
+                        <hr>
+                        <div id="fullAnalysisContent" class="markdown-content"></div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-primary" onclick="exportToPDF()">
+                            <i class="bi bi-file-earmark-pdf me-2"></i>导出 PDF
+                        </button>
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(modal);
+        const bsModal = new bootstrap.Modal(modal);
+
+        // 使用 marked.js 渲染 Markdown
+        const contentDiv = modal.querySelector('#fullAnalysisContent');
+        if (typeof marked !== 'undefined') {
+            contentDiv.innerHTML = marked.parse(analysis.full_analysis);
+        } else {
+            // 简单的换行处理
+            contentDiv.innerHTML = analysis.full_analysis.replace(/\n/g, '<br>');
+        }
+
+        // 清理：模态框关闭后移除
+        modal.addEventListener('hidden.bs.modal', () => {
+            bsModal.dispose();
+            modal.remove();
+        });
+
+        bsModal.show();
+    }
+
+    /**
+     * 导出报告为 PDF
+     */
+    async function exportToPDF() {
+        const button = event.target;
+        const originalHTML = button.innerHTML;
+        button.disabled = true;
+        button.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>生成中...';
+
+        try {
+            const { jsPDF } = window.jspdf;
+            const reportContent = document.getElementById('reportContent');
+
+            // 使用 html2canvas 将 HTML 转换为图片
+            const canvas = await html2canvas(reportContent, {
+                scale: 2,
+                useCORS: true,
+                logging: false,
+                backgroundColor: '#ffffff'
+            });
+
+            // 创建 PDF
+            const imgWidth = 210; // A4 宽度（mm）
+            const pageHeight = 297; // A4 高度（mm）
+            const imgHeight = (canvas.height * imgWidth) / canvas.width;
+            let heightLeft = imgHeight;
+            let position = 0;
+
+            const pdf = new jsPDF('p', 'mm', 'a4');
+            const imgData = canvas.toDataURL('image/png');
+
+            // 添加第一页
+            pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+            heightLeft -= pageHeight;
+
+            // 如果内容超过一页，添加更多页
+            while (heightLeft > 0) {
+                position = heightLeft - imgHeight;
+                pdf.addPage();
+                pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+                heightLeft -= pageHeight;
+            }
+
+            // 生成文件名
+            const analysis = {{ stats.latest_analysis | tojson | safe }};
+            const date = analysis.analysis_date.replace(/-/g, '');
+            const fileName = `健康分析报告_${date}.pdf`;
+
+            // 保存 PDF
+            pdf.save(fileName);
+
+            alert('PDF 导出成功！');
+        } catch (e) {
+            console.error('PDF export error:', e);
+            alert('PDF 导出失败: ' + e.message);
+        } finally {
+            button.disabled = false;
+            button.innerHTML = originalHTML;
+        }
+    }
+
+    // ========== Duplicate Data Management Functions ==========
+
+    /**
+     * 查找重复数据
+     */
+    async function findDuplicates() {
+        try {
+            const res = await fetch('/find_duplicates');
+            const result = await res.json();
+
+            if (result.status === 'success') {
+                const duplicates = result.duplicates;
+                if (duplicates.length === 0) {
+                    alert('太棒了！没有发现重复数据。');
+                } else {
+                    let message = `发现 ${result.total_groups} 组重复数据：\n\n`;
+                    duplicates.slice(0, 10).forEach((dup, index) => {
+                        message += `${index + 1}. ${dup.time} - ${dup.type} - ${dup.value} (${dup.count}条记录)\n`;
+                    });
+                    if (duplicates.length > 10) {
+                        message += `\n...以及其他 ${duplicates.length - 10} 组重复数据\n`;
+                    }
+                    message += '\n是否要清理这些重复数据？';
+
+                    if (confirm(message)) {
+                        deleteDuplicates();
+                    }
+                }
+            } else {
+                alert('查找失败: ' + result.message);
+            }
+        } catch (e) {
+            console.error('Find duplicates error:', e);
+            alert('查找失败: ' + e.message);
+        }
+    }
+
+    /**
+     * 确认删除重复数据
+     */
+    function confirmDeleteDuplicates() {
+        if (confirm('此操作将删除所有重复的记录，每组重复数据只保留第一条记录。\n\n确定要继续吗？')) {
+            deleteDuplicates();
+        }
+    }
+
+    /**
+     * 删除重复数据
+     */
+    async function deleteDuplicates() {
+        try {
+            const res = await fetch('/delete_duplicates', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+
+            const result = await res.json();
+
+            if (result.status === 'success') {
+                alert(`${result.message}\n页面即将刷新。`);
+                location.reload();
+            } else {
+                alert('删除失败: ' + result.message);
+            }
+        } catch (e) {
+            console.error('Delete duplicates error:', e);
+            alert('删除失败: ' + e.message);
+        }
+    }
+
+    // ========== User Switching Functions ==========
+    let currentUserId = null;
+
+    // Load current user on page load
+    document.addEventListener('DOMContentLoaded', async function() {
+        await loadCurrentUser();
+        await loadUserList();
+    });
+
+    // Load current user information
+    async function loadCurrentUser() {
+        try {
+            const res = await fetch('/get_current_user');
+            const user = await res.json();
+
+            currentUserId = user.id;
+            const displayName = user.display_name || user.username || '用户';
+            document.getElementById('currentUserName').textContent = displayName;
+
+            console.log('Current user loaded:', user);
+        } catch (e) {
+            console.error('Load current user error:', e);
+            document.getElementById('currentUserName').textContent = '加载失败';
+        }
+    }
+
+    // Load user list for switcher
+    async function loadUserList() {
+        try {
+            const res = await fetch('/get_users');
+            const users = await res.json();
+
+            const userListContainer = document.getElementById('userListContainer');
+            userListContainer.innerHTML = users.map(user => `
+                <li>
+                    <a class="dropdown-item ${user.id === currentUserId ? 'active bg-primary bg-opacity-10' : ''}"
+                       href="#"
+                       onclick="switchUser(${user.id}); return false;">
+                        <i class="bi bi-person${user.id === currentUserId ? '-fill text-primary' : ''} me-2"></i>
+                        ${user.display_name || user.username}
+                        ${user.id === currentUserId ? '<i class="bi bi-check-circle-fill ms-auto text-success"></i>' : ''}
+                    </a>
+                </li>
+            `).join('');
+
+            console.log('User list loaded:', users.length, 'users');
+        } catch (e) {
+            console.error('Load user list error:', e);
+        }
+    }
+
+    // Switch to a different user
+    async function switchUser(userId) {
+        if (userId === currentUserId) {
+            console.log('Already on this user, skipping switch');
+            return;
+        }
+
+        try {
+            const res = await fetch(`/switch_user/${userId}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            const result = await res.json();
+
+            if (result.status === 'success') {
+                console.log('Switched to user:', result.user);
+                location.reload();  // Refresh page to load new user's data
+            } else {
+                alert('切换失败: ' + result.message);
+            }
+        } catch (e) {
+            console.error('Switch user error:', e);
+            alert('切换失败: ' + e.message);
+        }
+    }
+
 </script>
+
+<!-- 分析选项模态框 -->
+<div class="modal fade" id="analysisOptionsModal" tabindex="-1" aria-labelledby="analysisOptionsModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header border-0">
+                <h5 class="modal-title" id="analysisOptionsModalLabel">
+                    <i class="bi bi-graph-up-arrow me-2"></i>选择分析数据范围
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-4">
+                <p class="text-muted small mb-4">
+                    <i class="bi bi-info-circle me-1"></i>
+                    基于不同时间范围的数据生成综合健康分析报告
+                </p>
+
+                <div class="row g-3">
+                    <!-- 今天 -->
+                    <div class="col-6">
+                        <div class="analysis-option-card" onclick="selectAnalysisOption(1)">
+                            <div class="icon-wrapper">
+                                <i class="bi bi-calendar-day"></i>
+                            </div>
+                            <div class="option-title">今天</div>
+                            <div class="option-desc">当日数据</div>
+                            <div class="option-badge">快速</div>
+                        </div>
+                    </div>
+
+                    <!-- 近7天 -->
+                    <div class="col-6">
+                        <div class="analysis-option-card recommended" onclick="selectAnalysisOption(7)">
+                            <div class="icon-wrapper">
+                                <i class="bi bi-calendar-week"></i>
+                            </div>
+                            <div class="option-title">近7天</div>
+                            <div class="option-desc">一周趋势</div>
+                            <div class="option-badge badge-primary">推荐</div>
+                        </div>
+                    </div>
+
+                    <!-- 近14天 -->
+                    <div class="col-6">
+                        <div class="analysis-option-card" onclick="selectAnalysisOption(14)">
+                            <div class="icon-wrapper">
+                                <i class="bi bi-calendar2-week"></i>
+                            </div>
+                            <div class="option-title">近14天</div>
+                            <div class="option-desc">两周对比</div>
+                            <div class="option-badge">详细</div>
+                        </div>
+                    </div>
+
+                    <!-- 近30天 -->
+                    <div class="col-6">
+                        <div class="analysis-option-card" onclick="selectAnalysisOption(30)">
+                            <div class="icon-wrapper">
+                                <i class="bi bi-calendar-month"></i>
+                            </div>
+                            <div class="option-title">近30天</div>
+                            <div class="option-desc">月度总结</div>
+                            <div class="option-badge">全面</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .analysis-option-card {
+        background: white;
+        border: 2px solid #e9ecef;
+        border-radius: 12px;
+        padding: 20px;
+        text-align: center;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        position: relative;
+        min-height: 160px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+    }
+
+    .analysis-option-card:hover {
+        border-color: #667eea;
+        transform: translateY(-4px);
+        box-shadow: 0 8px 20px rgba(102, 126, 234, 0.15);
+    }
+
+    .analysis-option-card.recommended {
+        border-color: #667eea;
+        background: linear-gradient(135deg, #f8f9fe 0%, #fff 100%);
+    }
+
+    .analysis-option-card .icon-wrapper {
+        width: 50px;
+        height: 50px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 auto 12px;
+    }
+
+    .analysis-option-card .icon-wrapper i {
+        font-size: 24px;
+        color: white;
+    }
+
+    .analysis-option-card .option-title {
+        font-size: 16px;
+        font-weight: 600;
+        color: #2d3748;
+        margin-bottom: 4px;
+    }
+
+    .analysis-option-card .option-desc {
+        font-size: 12px;
+        color: #718096;
+        margin-bottom: 8px;
+    }
+
+    .analysis-option-card .option-badge {
+        display: inline-block;
+        padding: 2px 10px;
+        border-radius: 12px;
+        font-size: 11px;
+        font-weight: 500;
+        background: #e2e8f0;
+        color: #4a5568;
+    }
+
+    .analysis-option-card .option-badge.badge-primary {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+    }
+
+    .analysis-option-card:active {
+        transform: translateY(-2px);
+    }
+
+    #analysisOptionsModal .modal-content {
+        border: none;
+        border-radius: 16px;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+    }
+
+    #analysisOptionsModal .modal-header {
+        padding: 24px 24px 16px;
+    }
+
+    #analysisOptionsModal .modal-title {
+        font-size: 18px;
+        font-weight: 600;
+        color: #2d3748;
+    }
+</style>
+
+<script>
+    /**
+     * 选择分析选项并触发分析
+     */
+    async function selectAnalysisOption(days) {
+        // 关闭模态框
+        const modal = bootstrap.Modal.getInstance(document.getElementById('analysisOptionsModal'));
+        modal.hide();
+
+        // 显示加载提示
+        showToast('正在生成分析报告...', 'info');
+
+        // 触发分析
+        await triggerManualAnalysis(days);
+    }
+
+    /**
+     * 显示 Toast 提示
+     */
+    function showToast(message, type = 'info') {
+        // 创建 toast 元素
+        const toastId = 'toast-' + Date.now();
+        const bgClass = type === 'success' ? 'bg-success' : type === 'error' ? 'bg-danger' : 'bg-info';
+
+        const toastHTML = `
+            <div id="${toastId}" class="toast align-items-center text-white ${bgClass} border-0" role="alert" aria-live="assertive" aria-atomic="true">
+                <div class="d-flex">
+                    <div class="toast-body">
+                        ${message}
+                    </div>
+                    <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+                </div>
+            </div>
+        `;
+
+        // 添加到页面
+        let toastContainer = document.getElementById('toastContainer');
+        if (!toastContainer) {
+            toastContainer = document.createElement('div');
+            toastContainer.id = 'toastContainer';
+            toastContainer.className = 'toast-container position-fixed top-0 end-0 p-3';
+            toastContainer.style.zIndex = '9999';
+            document.body.appendChild(toastContainer);
+        }
+
+        toastContainer.insertAdjacentHTML('beforeend', toastHTML);
+
+        // 显示 toast
+        const toastElement = document.getElementById(toastId);
+        const toast = new bootstrap.Toast(toastElement, { delay: 3000 });
+        toast.show();
+
+        // 自动移除
+        toastElement.addEventListener('hidden.bs.toast', () => {
+            toastElement.remove();
+        });
+
+        return toast;
+    }
+</script>
+
 </body>
 </html>
