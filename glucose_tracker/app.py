@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, jsonify, send_file, g, session
+from flask import Flask, render_template, request, redirect, url_for, jsonify, send_file, g, session, after_this_request
 import sqlite3
 import pandas as pd
 import datetime
@@ -11,6 +11,10 @@ import settings
 from google import genai
 import json
 import re
+import shutil
+import threading
+import glob as glob_mod
+import atexit
 from user_manager import UserManager
 
 app = Flask(__name__)
@@ -3817,6 +3821,89 @@ def delete_duplicates():
         db.rollback()
         return api_error(str(e), status_code=500, error_type="delete_error")
 
+# ========== Database Backup & Restore ==========
+
+@app.route('/backup_database', methods=['GET'])
+def backup_database():
+    """备份数据库 - 下载 .db 文件"""
+    try:
+        if not os.path.exists(DB_NAME):
+            return api_error("数据库文件不存在", status_code=404, error_type="not_found")
+
+        timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+        backup_filename = f'glucose_backup_{timestamp}.db'
+        backup_path = os.path.join(BASE_DIR, backup_filename)
+
+        shutil.copy2(DB_NAME, backup_path)
+
+        @after_this_request
+        def cleanup(response):
+            try:
+                if os.path.exists(backup_path):
+                    os.remove(backup_path)
+            except Exception:
+                pass
+            return response
+
+        return send_file(
+            backup_path,
+            as_attachment=True,
+            download_name=backup_filename,
+            mimetype='application/x-sqlite3'
+        )
+    except Exception as e:
+        traceback.print_exc()
+        return api_error(str(e), status_code=500, error_type="backup_error")
+
+@app.route('/restore_database', methods=['POST'])
+def restore_database():
+    """恢复数据库 - 上传 .db 文件覆盖当前数据库"""
+    try:
+        if 'file' not in request.files:
+            return api_error("未选择文件", status_code=400, error_type="validation_error")
+
+        file = request.files['file']
+        if file.filename == '':
+            return api_error("未选择文件", status_code=400, error_type="validation_error")
+
+        if not file.filename.endswith('.db'):
+            return api_error("仅支持 .db 格式的文件", status_code=400, error_type="validation_error")
+
+        # 保存到临时文件进行验证
+        temp_path = os.path.join(BASE_DIR, 'temp_restore.db')
+        file.save(temp_path)
+
+        if os.path.getsize(temp_path) == 0:
+            os.remove(temp_path)
+            return api_error("上传的文件为空", status_code=400, error_type="validation_error")
+
+        # 验证是否为有效的 glucose_tracker 数据库
+        try:
+            conn = sqlite3.connect(temp_path)
+            cursor = conn.cursor()
+            cursor.execute("SELECT count(*) FROM records")
+            cursor.close()
+            conn.close()
+        except Exception:
+            os.remove(temp_path)
+            return api_error("无效的数据库文件：缺少 records 表", status_code=400, error_type="validation_error")
+
+        # 备份当前数据库作为安全网
+        if os.path.exists(DB_NAME):
+            shutil.copy2(DB_NAME, DB_NAME + '.before_restore')
+
+        # 覆盖当前数据库
+        shutil.move(temp_path, DB_NAME)
+
+        return api_success(message='数据库恢复成功，请刷新页面')
+    except Exception as e:
+        traceback.print_exc()
+        # 清理临时文件
+        temp_path = os.path.join(BASE_DIR, 'temp_restore.db')
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+        return api_error(str(e), status_code=500, error_type="restore_error")
+
 # ========== User Management APIs ==========
 
 @app.route('/switch_user/<int:user_id>', methods=['POST'])
@@ -3862,5 +3949,57 @@ def get_current_user_api():
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
+# ========== Auto Daily Backup ==========
+
+AUTO_BACKUP_DIR = os.path.join(BASE_DIR, 'backups')
+AUTO_BACKUP_KEEP_DAYS = 30
+_auto_backup_timer = None
+
+def auto_backup():
+    """自动备份数据库，保留最近 AUTO_BACKUP_KEEP_DAYS 天的备份"""
+    global _auto_backup_timer
+    try:
+        if not os.path.exists(DB_NAME):
+            return
+
+        os.makedirs(AUTO_BACKUP_DIR, exist_ok=True)
+
+        today = datetime.date.today().strftime('%Y%m%d')
+        backup_filename = f'glucose_auto_{today}.db'
+        backup_path = os.path.join(AUTO_BACKUP_DIR, backup_filename)
+
+        # 今天已经备份过就跳过
+        if not os.path.exists(backup_path):
+            shutil.copy2(DB_NAME, backup_path)
+            print(f'[AutoBackup] 已备份: {backup_filename}')
+
+        # 清理过期备份
+        cutoff = datetime.date.today() - datetime.timedelta(days=AUTO_BACKUP_KEEP_DAYS)
+        for f in glob_mod.glob(os.path.join(AUTO_BACKUP_DIR, 'glucose_auto_*.db')):
+            basename = os.path.basename(f)
+            try:
+                date_str = basename.replace('glucose_auto_', '').replace('.db', '')
+                file_date = datetime.datetime.strptime(date_str, '%Y%m%d').date()
+                if file_date < cutoff:
+                    os.remove(f)
+                    print(f'[AutoBackup] 已清理过期备份: {basename}')
+            except (ValueError, OSError):
+                pass
+    except Exception as e:
+        print(f'[AutoBackup] 备份失败: {e}')
+    finally:
+        # 24 小时后再次执行
+        _auto_backup_timer = threading.Timer(86400, auto_backup)
+        _auto_backup_timer.daemon = True
+        _auto_backup_timer.start()
+
+def stop_auto_backup():
+    global _auto_backup_timer
+    if _auto_backup_timer:
+        _auto_backup_timer.cancel()
+
+atexit.register(stop_auto_backup)
+
 if __name__ == '__main__':
+    auto_backup()
     app.run(debug=True, port=5001)

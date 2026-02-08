@@ -1059,6 +1059,19 @@
                             <i class="bi bi-trash me-2"></i>清理重复数据
                         </a>
                     </li>
+                    <li><hr class="dropdown-divider"></li>
+                    <li><h6 class="dropdown-header"><i class="bi bi-hdd me-2"></i>备份与恢复</h6></li>
+                    <li>
+                        <a class="dropdown-item" href="#" onclick="backupDatabase()">
+                            <i class="bi bi-download me-2 text-success"></i>备份数据库
+                        </a>
+                    </li>
+                    <li>
+                        <a class="dropdown-item" href="#" onclick="restoreDatabase()">
+                            <i class="bi bi-upload me-2 text-warning"></i>恢复数据库
+                        </a>
+                    </li>
+                    <input type="file" id="restoreFileInput" accept=".db" style="display:none">
                 </ul>
             </div>
         </div>
@@ -7069,6 +7082,44 @@
             console.error('Delete duplicates error:', e);
             alert('删除失败: ' + e.message);
         }
+    }
+
+    // ========== Database Backup & Restore ==========
+
+    function backupDatabase() {
+        showToast('正在下载数据库备份...', 'info');
+        window.location = '/backup_database';
+    }
+
+    function restoreDatabase() {
+        const fileInput = document.getElementById('restoreFileInput');
+        fileInput.value = '';
+        fileInput.onchange = async function() {
+            if (!this.files || !this.files[0]) return;
+            const file = this.files[0];
+            if (!confirm(`确定要使用 "${file.name}" 恢复数据库吗？\n\n⚠️ 恢复将覆盖当前所有数据！`)) return;
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            try {
+                const res = await fetch('/restore_database', {
+                    method: 'POST',
+                    body: formData
+                });
+                const result = await res.json();
+                if (result.status === 'success') {
+                    alert(result.message);
+                    location.reload();
+                } else {
+                    alert('恢复失败: ' + result.message);
+                }
+            } catch (e) {
+                console.error('Restore error:', e);
+                alert('恢复失败: ' + e.message);
+            }
+        };
+        fileInput.click();
     }
 
     // ========== User Switching Functions ==========
