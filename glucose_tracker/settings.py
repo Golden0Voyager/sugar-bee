@@ -4,6 +4,47 @@ import os
 
 CONFIG_FILE = "user_config.json"
 
+# ========== 血糖值验证范围常量 ==========
+# 用于数据验证和预测值范围检查，单位：mmol/L
+GLUCOSE_RANGE = {
+    # 有效血糖值范围（超出此范围视为无效数据）
+    'valid': {'min': 2.0, 'max': 25.0},
+    # 空腹血糖预测范围
+    'fasting_prediction': {'min': 3.5, 'max': 10.0},
+    # 餐后血糖预测范围
+    'postmeal_prediction': {'min': 3.5, 'max': 15.0},
+    # 运动后血糖预测范围
+    'post_exercise_prediction': {'min': 3.5, 'max': 10.0},
+    # 通用预测范围
+    'general_prediction': {'min': 3.5, 'max': 12.0},
+}
+
+
+def is_valid_glucose(value):
+    """检查血糖值是否在有效范围内"""
+    if value is None:
+        return False
+    try:
+        v = float(value)
+        return GLUCOSE_RANGE['valid']['min'] <= v <= GLUCOSE_RANGE['valid']['max']
+    except (ValueError, TypeError):
+        return False
+
+
+def is_valid_prediction(value, prediction_type='general'):
+    """检查预测值是否在合理范围内"""
+    if value is None:
+        return False
+    try:
+        v = float(value)
+        range_key = f'{prediction_type}_prediction'
+        if range_key not in GLUCOSE_RANGE:
+            range_key = 'general_prediction'
+        r = GLUCOSE_RANGE[range_key]
+        return r['min'] <= v <= r['max']
+    except (ValueError, TypeError):
+        return False
+
 # 科学的血糖达标标准（基于《中国糖尿病防治指南（2024版）》）
 # 单位：mmol/L
 GLUCOSE_TARGETS = {
@@ -109,6 +150,8 @@ def get_glucose_target(glucose_type):
         return GLUCOSE_TARGETS['postmeal_1h']
     elif '餐后2小时' in glucose_type or '餐后2h' in glucose_type.lower() or '餐后' in glucose_type:
         return GLUCOSE_TARGETS['postmeal_2h']
+    elif '晚饭前' in glucose_type or '晚餐前' in glucose_type:
+        return GLUCOSE_TARGETS['premeal']
     elif '餐前' in glucose_type:
         return GLUCOSE_TARGETS['premeal']
     elif '睡前' in glucose_type:
@@ -173,7 +216,30 @@ def load_config():
     return {
         "name": "用户", "weight": 75, "height": 170, "birth_year": 1964, "gender": "male",
         "target": {"fasting_min": 3.9, "fasting_max": 7.0, "postmeal_max": 7.8, "premeal_max": 6.5},
-        "glucose_pattern": {"fasting_range": "6.0-7.2", "postmeal_range": "6.5-8.0"}
+        "glucose_pattern": {"fasting_range": "6.0-7.2", "postmeal_range": "6.5-8.0"},
+        "default_meals": {
+            "breakfast": {
+                "calories": 300,
+                "carbs_grams": 45,
+                "gi_value": 65,
+                "time": "09:00",
+                "enabled": True
+            },
+            "lunch": {
+                "calories": 500,
+                "carbs_grams": 75,
+                "gi_value": 60,
+                "time": "11:30",
+                "enabled": True
+            },
+            "dinner": {
+                "calories": 500,
+                "carbs_grams": 75,
+                "gi_value": 60,
+                "time": "18:00",
+                "enabled": True
+            }
+        }
     }
 
 def save_config(config):
@@ -191,6 +257,45 @@ def calculate_bmr():
     bmr = int(10 * config["weight"] + 6.25 * config["height"] - 5 * age + s)
     return bmr
 
+def calculate_bmi(weight_kg, height_cm=None):
+    """计算 BMI 值
+
+    Args:
+        weight_kg: 体重(kg)
+        height_cm: 身高(cm)，默认从用户配置获取
+
+    Returns:
+        float: BMI 值，保留1位小数；身高无效时返回 None
+    """
+    if height_cm is None:
+        config = load_config()
+        height_cm = config.get("height", 0)
+    if not height_cm or height_cm <= 0 or not weight_kg or weight_kg <= 0:
+        return None
+    height_m = height_cm / 100
+    return round(weight_kg / (height_m * height_m), 1)
+
+
+def get_bmi_category(bmi):
+    """根据中国标准返回 BMI 分类
+
+    中国成人标准：偏瘦<18.5, 正常18.5-24, 超重24-28, 肥胖>=28
+
+    Returns:
+        dict: {'label': str, 'color': str}
+    """
+    if bmi is None:
+        return {'label': '未知', 'color': '#9E9E9E'}
+    if bmi < 18.5:
+        return {'label': '偏瘦', 'color': '#42A5F5'}
+    elif bmi < 24:
+        return {'label': '正常', 'color': '#4CAF50'}
+    elif bmi < 28:
+        return {'label': '超重', 'color': '#FFA726'}
+    else:
+        return {'label': '肥胖', 'color': '#EF5350'}
+
+
 def get_ai_system_prompt():
     config = load_config()
     glucose_pattern = config.get('glucose_pattern', {
@@ -207,5 +312,5 @@ def get_ai_system_prompt():
 
 DAILY_ROUTINE = """
     【血糖测量时间点】
-    - 07:15 空腹 | 08:45 运动后餐前 | 11:00 早餐后2小时 | 14:30 午餐后2小时 | 20:00 晚餐后2小时 | 22:00 睡前
+    - 07:15 空腹 | 08:45 运动后 | 11:00 早餐后2小时 | 14:30 午餐后2小时 | 17:30 晚饭前 | 20:00 晚餐后2小时 | 22:00 睡前
 """ 

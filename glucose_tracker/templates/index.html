@@ -103,16 +103,17 @@
             background: rgba(0, 0, 0, 0.03);
         }
         .glucose-slot.slot-measured {
-            border-color: var(--md-success);
-            background: rgba(56, 142, 60, 0.05);
+            border: 2px solid var(--md-success);
+            background: rgba(76, 175, 80, 0.12);
+            box-shadow: 0 2px 8px rgba(76, 175, 80, 0.2);
         }
         .glucose-slot.slot-predicted {
             border: 2px dashed var(--md-info);
-            background: rgba(2, 136, 209, 0.05);
+            background: rgba(2, 136, 209, 0.08);
         }
         .glucose-slot.slot-pending {
             border: 2px dashed #dee2e6;
-            opacity: 0.7;
+            opacity: 0.6;
         }
         .glucose-slot.slot-active {
             border-color: var(--md-primary);
@@ -357,6 +358,10 @@
         .timeline-dot.dot-bloodpressure {
             background: #9C27B0;
             box-shadow: 0 0 0 3px rgba(156, 39, 176, 0.2);
+        }
+        .timeline-dot.dot-weight {
+            background: #00897B;
+            box-shadow: 0 0 0 3px rgba(0, 137, 123, 0.2);
         }
         .timeline-item h5 {
             font-size: 2rem;
@@ -718,65 +723,210 @@
             font-weight: 600;
         }
 
-        /* Unified User Dropdown Styles */
+        /* ========== 现代化下拉菜单系统 ========== */
+
+        /* 用户菜单按钮 - 胶囊风格 */
         #unifiedUserDropdown {
-            font-size: 0.95rem;
-            padding: 0.5rem 1rem;
-            border-width: 2px;
-            transition: all 0.2s ease;
+            background: white;
+            border: none;
+            border-radius: 50px;
+            padding: 6px 16px 6px 6px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08), 0 0 0 1px rgba(0,0,0,0.04);
+            font-size: 0.9rem;
+            font-weight: 500;
+            color: #333;
+            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
         }
         #unifiedUserDropdown:hover {
-            background-color: var(--md-primary);
-            color: white;
-            border-color: var(--md-primary);
+            background: white;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.12), 0 0 0 1px rgba(66,133,244,0.3);
+            transform: translateY(-1px);
+            color: var(--md-primary);
         }
-        #unifiedUserDropdown:hover .bg-primary {
-            background-color: white !important;
+        #unifiedUserDropdown:focus {
+            box-shadow: 0 4px 16px rgba(0,0,0,0.12), 0 0 0 2px rgba(66,133,244,0.4);
+            outline: none;
         }
-        #unifiedUserDropdown:hover .text-primary {
-            color: var(--md-primary) !important;
+        #unifiedUserDropdown .bi-chevron-down {
+            transition: transform 0.2s ease;
+            opacity: 0.5;
+        }
+        #unifiedUserDropdown[aria-expanded="true"] .bi-chevron-down {
+            transform: rotate(180deg);
+        }
+        #unifiedUserDropdown::after {
+            display: none; /* 隐藏默认的下拉箭头 */
         }
 
-        /* Dropdown menu enhancements */
+        /* 下拉菜单面板 */
         .dropdown-menu {
             border: none;
-            box-shadow: var(--md-shadow-3);
-            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.15), 0 0 0 1px rgba(0,0,0,0.05);
+            border-radius: 16px;
             overflow: hidden;
             max-height: 600px;
             overflow-y: auto;
+            padding: 8px 0;
+            animation: dropdownFadeIn 0.2s ease;
+        }
+        @keyframes dropdownFadeIn {
+            from { opacity: 0; transform: translateY(-8px); }
+            to { opacity: 1; transform: translateY(0); }
         }
         .dropdown-header {
-            font-size: 0.75rem;
-            font-weight: 600;
-            letter-spacing: 0.5px;
-            padding: 0.5rem 1rem;
-            margin-top: 0.25rem;
+            font-size: 0.7rem;
+            font-weight: 700;
+            letter-spacing: 0.8px;
+            text-transform: uppercase;
+            padding: 12px 16px 6px;
+            color: #888;
         }
         .dropdown-item {
-            padding: 0.65rem 1rem;
+            padding: 10px 16px;
+            margin: 2px 8px;
+            border-radius: 10px;
             transition: all 0.15s ease;
             display: flex;
             align-items: center;
+            font-size: 0.9rem;
         }
         .dropdown-item:hover {
-            background-color: var(--md-primary);
+            background: linear-gradient(135deg, var(--md-primary), #5e9eff);
             color: white;
-            padding-left: 1.25rem;
+            transform: translateX(4px);
+        }
+        .dropdown-item:hover i {
+            transform: scale(1.1);
         }
         .dropdown-item.active {
-            background-color: var(--md-primary);
-            background-opacity: 0.1;
+            background: rgba(66,133,244,0.1);
             color: var(--md-primary);
-            font-weight: 500;
+            font-weight: 600;
         }
         .dropdown-item i {
-            width: 20px;
+            width: 24px;
             text-align: center;
+            transition: transform 0.15s ease;
+        }
+        .dropdown-item.text-danger:hover {
+            background: linear-gradient(135deg, #dc3545, #e74c5e);
         }
         .dropdown-divider {
-            margin: 0.5rem 0;
-            opacity: 0.1;
+            margin: 8px 16px;
+            opacity: 0.08;
+            border-top-width: 2px;
+        }
+
+        /* 时间范围选择器 - 药丸按钮组 */
+        .time-range-pills {
+            display: inline-flex;
+            background: #f0f2f5;
+            border-radius: 25px;
+            padding: 4px;
+            gap: 2px;
+        }
+        .time-range-pills .pill-btn {
+            padding: 6px 14px;
+            border: none;
+            background: transparent;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 500;
+            color: #666;
+            cursor: pointer;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            white-space: nowrap;
+        }
+        .time-range-pills .pill-btn:hover {
+            color: var(--md-primary);
+            background: rgba(66,133,244,0.1);
+        }
+        .time-range-pills .pill-btn.active {
+            background: white;
+            color: var(--md-primary);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            font-weight: 600;
+        }
+
+        /* 表单下拉框美化 */
+        .form-select {
+            border: 2px solid #e8eaed;
+            border-radius: 12px;
+            padding: 10px 36px 10px 14px;
+            font-size: 0.9rem;
+            font-weight: 500;
+            color: #333;
+            background-color: #fafbfc;
+            background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23666' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M2 5l6 6 6-6'/%3e%3c/svg%3e");
+            background-size: 14px;
+            background-position: right 12px center;
+            transition: all 0.2s ease;
+            cursor: pointer;
+        }
+        .form-select:hover {
+            border-color: #c5cad0;
+            background-color: white;
+        }
+        .form-select:focus {
+            border-color: var(--md-primary);
+            background-color: white;
+            box-shadow: 0 0 0 4px rgba(66,133,244,0.15);
+            outline: none;
+        }
+        .form-select option {
+            padding: 10px;
+        }
+
+        /* 小尺寸下拉框 */
+        .form-select-sm {
+            padding: 6px 30px 6px 12px;
+            font-size: 0.82rem;
+            border-radius: 10px;
+            background-size: 12px;
+            background-position: right 10px center;
+        }
+
+        /* 表单输入框美化 */
+        .form-control {
+            border: 2px solid #e8eaed;
+            border-radius: 12px;
+            padding: 10px 14px;
+            font-size: 0.9rem;
+            background-color: #fafbfc;
+            transition: all 0.2s ease;
+        }
+        .form-control:hover {
+            border-color: #c5cad0;
+            background-color: white;
+        }
+        .form-control:focus {
+            border-color: var(--md-primary);
+            background-color: white;
+            box-shadow: 0 0 0 4px rgba(66,133,244,0.15);
+            outline: none;
+        }
+
+        /* 按钮美化 */
+        .btn-outline-primary {
+            border-width: 2px;
+            border-radius: 10px;
+            font-weight: 500;
+            transition: all 0.2s ease;
+        }
+        .btn-outline-primary:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(66,133,244,0.3);
+        }
+        .btn-primary {
+            border-radius: 10px;
+            font-weight: 500;
+            border: none;
+            box-shadow: 0 2px 8px rgba(66,133,244,0.3);
+            transition: all 0.2s ease;
+        }
+        .btn-primary:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 16px rgba(66,133,244,0.4);
         }
 
         /* User list container */
@@ -819,72 +969,89 @@
         <div class="d-flex align-items-center gap-3">
             <!-- Unified User Dropdown (Merged Switcher + Profile) -->
             <div class="dropdown">
-                <button class="btn btn-outline-primary dropdown-toggle d-flex align-items-center gap-2"
+                <button class="d-flex align-items-center gap-2"
                         type="button"
                         id="unifiedUserDropdown"
                         data-bs-toggle="dropdown"
                         aria-expanded="false">
                     {% if stats.user.avatar %}
-                    <img src="/static/avatars/{{ stats.user.avatar }}" class="rounded-circle" style="width: 32px; height: 32px; object-fit: cover;">
+                    <img src="/static/avatars/{{ stats.user.avatar }}" class="rounded-circle" style="width: 32px; height: 32px; object-fit: cover; border: 2px solid #fff; box-shadow: 0 2px 6px rgba(0,0,0,0.1);">
                     {% else %}
-                    <div class="bg-primary bg-opacity-10 rounded-circle d-flex align-items-center justify-content-center" style="width: 32px; height: 32px;">
-                        <i class="bi bi-person-circle text-primary"></i>
+                    <div class="rounded-circle d-flex align-items-center justify-content-center" style="width: 32px; height: 32px; min-width: 32px; background: linear-gradient(135deg, #4285f4, #5e9eff);">
+                        <i class="bi bi-person-fill text-white" style="font-size: 1rem;"></i>
                     </div>
                     {% endif %}
-                    <span id="currentUserName">{{ stats.user.name }}</span>
-                    <i class="bi bi-chevron-down small"></i>
+                    <span id="currentUserName" style="max-width: 100px; overflow: hidden; text-overflow: ellipsis;">{{ stats.user.name }}</span>
+                    <i class="bi bi-chevron-down" style="font-size: 0.7rem;"></i>
                 </button>
-                <ul class="dropdown-menu dropdown-menu-end shadow" style="min-width: 280px;" aria-labelledby="unifiedUserDropdown">
+                <ul class="dropdown-menu dropdown-menu-end" style="min-width: 300px;" aria-labelledby="unifiedUserDropdown">
                     <!-- Current User Info Card -->
-                    <li class="px-3 py-3 border-bottom bg-light bg-opacity-50">
+                    <li class="px-3 py-3" style="background: linear-gradient(135deg, #f8f9ff 0%, #fff 100%);">
                         <div class="d-flex align-items-center gap-3 mb-2">
                             {% if stats.user.avatar %}
-                            <img src="/static/avatars/{{ stats.user.avatar }}" class="rounded-circle" style="width: 48px; height: 48px; object-fit: cover;">
+                            <img src="/static/avatars/{{ stats.user.avatar }}" class="rounded-circle" style="width: 52px; height: 52px; object-fit: cover; border: 3px solid #fff; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
                             {% else %}
-                            <div class="bg-primary bg-opacity-10 rounded-circle d-flex align-items-center justify-content-center" style="width: 48px; height: 48px;">
-                                <i class="bi bi-person-circle text-primary fs-4"></i>
+                            <div class="rounded-circle d-flex align-items-center justify-content-center" style="width: 52px; height: 52px; background: linear-gradient(135deg, #4285f4, #5e9eff); box-shadow: 0 4px 12px rgba(66,133,244,0.3);">
+                                <i class="bi bi-person-fill text-white" style="font-size: 1.5rem;"></i>
                             </div>
                             {% endif %}
                             <div class="flex-grow-1">
-                                <div class="fw-bold mb-1">{{ stats.user.name }}</div>
-                                <div class="small text-muted">{{ stats.user.gender == 'male' and '男' or '女' }} · {{ 2025 - stats.user.birth_year }}岁</div>
+                                <div class="fw-bold" style="font-size: 1.05rem;">{{ stats.user.name }}</div>
+                                <div class="small text-muted" style="opacity: 0.8;">{{ stats.user.gender == 'male' and '男' or '女' }} · {{ 2025 - stats.user.birth_year }}岁</div>
                             </div>
                         </div>
-                        <div class="small text-muted">身高 {{ stats.user.height }}cm · 体重 {{ stats.user.weight }}kg</div>
+                        <div class="d-flex gap-3 mt-2 pt-2" style="border-top: 1px solid rgba(0,0,0,0.06);">
+                            <div class="text-center flex-fill">
+                                <div class="fw-bold text-primary" style="font-size: 1.1rem;">{{ stats.user.height }}</div>
+                                <div class="text-muted" style="font-size: 0.7rem;">身高cm</div>
+                            </div>
+                            <div class="text-center flex-fill" style="border-left: 1px solid rgba(0,0,0,0.06);">
+                                <div class="fw-bold text-primary" style="font-size: 1.1rem;">{{ stats.user.weight }}</div>
+                                <div class="text-muted" style="font-size: 0.7rem;">体重kg</div>
+                            </div>
+                            <div class="text-center flex-fill" style="border-left: 1px solid rgba(0,0,0,0.06);">
+                                {% if stats.latest_bmi %}
+                                <div class="fw-bold" style="font-size: 1.1rem; color: {{ stats.bmi_category.color }};">{{ "%.1f"|format(stats.latest_bmi) }}</div>
+                                <div class="text-muted" style="font-size: 0.7rem;">BMI·{{ stats.bmi_category.label }}</div>
+                                {% else %}
+                                <div class="fw-bold" style="font-size: 1.1rem; color: {{ stats.bmi_category.color }};">{{ "%.1f"|format(stats.user.weight / (stats.user.height / 100) ** 2) if stats.user.height and stats.user.weight else '-' }}</div>
+                                <div class="text-muted" style="font-size: 0.7rem;">BMI</div>
+                                {% endif %}
+                            </div>
+                        </div>
                     </li>
 
                     <!-- User Switcher Section -->
-                    <li><hr class="dropdown-divider my-2"></li>
-                    <li><h6 class="dropdown-header text-primary"><i class="bi bi-people me-2"></i>切换用户</h6></li>
+                    <li><h6 class="dropdown-header"><i class="bi bi-people-fill me-2"></i>切换用户</h6></li>
                     <div id="userListContainer">
                         <!-- 动态加载用户列表 -->
                     </div>
 
                     <!-- User Management Section -->
-                    <li><hr class="dropdown-divider my-2"></li>
-                    <li><h6 class="dropdown-header text-primary"><i class="bi bi-person-gear me-2"></i>个人管理</h6></li>
+                    <li><hr class="dropdown-divider"></li>
+                    <li><h6 class="dropdown-header"><i class="bi bi-person-gear me-2"></i>个人管理</h6></li>
                     <li>
                         <a class="dropdown-item" href="#" onclick="openAvatarModal()" data-bs-dismiss="dropdown">
-                            <i class="bi bi-camera me-2"></i>更换头像
+                            <i class="bi bi-camera me-2 text-primary"></i>更换头像
                         </a>
                     </li>
                     <li>
                         <a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#userSettingsModal">
-                            <i class="bi bi-gear me-2"></i>个人设置
+                            <i class="bi bi-gear me-2 text-primary"></i>个人设置
                         </a>
                     </li>
                     <li>
                         <a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#medicationPlanModal">
-                            <i class="bi bi-capsule me-2"></i>药物管理
+                            <i class="bi bi-capsule me-2 text-primary"></i>药物管理
                         </a>
                     </li>
 
                     <!-- Data Management Section -->
-                    <li><hr class="dropdown-divider my-2"></li>
-                    <li><h6 class="dropdown-header text-primary"><i class="bi bi-database me-2"></i>数据管理</h6></li>
+                    <li><hr class="dropdown-divider"></li>
+                    <li><h6 class="dropdown-header"><i class="bi bi-database me-2"></i>数据管理</h6></li>
                     <li>
                         <a class="dropdown-item" href="#" onclick="findDuplicates()">
-                            <i class="bi bi-search me-2"></i>查找重复数据
+                            <i class="bi bi-search me-2 text-primary"></i>查找重复数据
                         </a>
                     </li>
                     <li>
@@ -1010,6 +1177,7 @@
                                             <select id="recordType" class="form-select rounded-3" onchange="toggleRecordFields()">
                                                 <option value="glucose">血糖测量</option>
                                                 <option value="bloodpressure">血压测量</option>
+                                                <option value="weight">体重记录</option>
                                                 <option value="meal">餐食记录</option>
                                                 <option value="exercise">运动记录</option>
                                                 <option value="medication">药物方案</option>
@@ -1036,9 +1204,10 @@
                                                     <datalist id="glucoseTypeOptions">
                                                         <option value="空腹">
                                                         <option value="餐前">
-                                                        <option value="运动后餐前">
+                                                        <option value="运动后">
                                                         <option value="餐后1小时">
                                                         <option value="餐后2小时">
+                                                        <option value="晚饭前">
                                                         <option value="睡前">
                                                         <option value="运动后">
                                                     </datalist>
@@ -1069,6 +1238,20 @@
                                                         <option value="血压测量">
                                                         <option value="餐后血压">
                                                     </datalist>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <!-- 体重字段 -->
+                                        <div id="weightFields" class="col-12 d-none">
+                                            <div class="row g-3">
+                                                <div class="col-md-6">
+                                                    <label class="form-label">体重 (kg) <span class="text-danger">*</span></label>
+                                                    <input type="number" step="0.1" id="weight_value" class="form-control rounded-3" placeholder="如：75.0" oninput="calcBMIPreview()">
+                                                </div>
+                                                <div class="col-md-6">
+                                                    <label class="form-label">BMI <small class="text-muted">(自动计算)</small></label>
+                                                    <input type="text" id="weight_bmi" class="form-control rounded-3 bg-light" readonly>
                                                 </div>
                                             </div>
                                         </div>
@@ -1243,6 +1426,8 @@
                             ☕
                             {% elif slot.key == 'post_lunch' %}
                             🌞
+                            {% elif slot.key == 'pre_dinner' %}
+                            🍽️
                             {% elif slot.key == 'post_dinner' %}
                             🌙
                             {% elif slot.key == 'bedtime' %}
@@ -1258,7 +1443,9 @@
                                     {{ "%.1f"|format(slot.value) }}
                                 </span>
                                 {% if slot.status == 'predicted' %}
-                                <small class="text-info">*</small>
+                                <small class="text-info" title="AI预测值">✦</small>
+                                {% elif slot.status == 'measured' %}
+                                <small class="text-success" title="实测值">✓</small>
                                 {% endif %}
                             {% else %}
                                 <span class="text-muted">--</span>
@@ -1285,14 +1472,14 @@
                 </div>
                 <div class="d-flex justify-content-between mt-1">
                     <small class="text-muted">
-                        <span style="color: #4CAF50;">●</span> 实际测量 {{ stats.today_completion.measured }}
+                        <span style="color: #4CAF50;">✓</span> 实测 {{ stats.today_completion.measured }}
                         {% if stats.today_completion.predicted > 0 %}
-                        <span style="color: #26C6DA;" class="ms-2">●</span> AI预测 {{ stats.today_completion.predicted }}
+                        <span style="color: #26C6DA;" class="ms-2">✦</span> 预测 {{ stats.today_completion.predicted }}
                         {% endif %}
                     </small>
                     {% if stats.today_completion.total - stats.today_completion.measured - stats.today_completion.predicted > 0 %}
                     <small class="text-muted">
-                        待测量 {{ stats.today_completion.total - stats.today_completion.measured - stats.today_completion.predicted }}
+                        待测 {{ stats.today_completion.total - stats.today_completion.measured - stats.today_completion.predicted }}
                     </small>
                     {% endif %}
                 </div>
@@ -1301,7 +1488,7 @@
             <!-- 今日快捷信息 -->
             <div class="row g-2">
                 <!-- 运动 -->
-                <div class="col-md-4 col-12">
+                <div class="col-md-3 col-6">
                     <div class="p-2 rounded h-100" style="background: var(--bs-light); min-height: 120px;">
                         <div class="d-flex align-items-center gap-1 mb-2">
                             <span style="font-size: 1rem;">🏃</span>
@@ -1317,6 +1504,9 @@
                             {% if stats.today_exercise.heart_rate %}
                             <div>💓 均心率 {{ stats.today_exercise.heart_rate }}bpm</div>
                             {% endif %}
+                            {% if stats.today_exercise.cadence %}
+                            <div>👟 步频 {{ stats.today_exercise.cadence }}spm</div>
+                            {% endif %}
                         </div>
                         {% else %}
                         <div class="text-muted small">暂无运动记录</div>
@@ -1324,7 +1514,7 @@
                     </div>
                 </div>
                 <!-- 血压 -->
-                <div class="col-md-4 col-12">
+                <div class="col-md-3 col-6">
                     <div class="p-2 rounded h-100" style="background: var(--bs-light); min-height: 120px;">
                         <div class="d-flex align-items-center gap-1 mb-2">
                             <span style="font-size: 1rem;">❤️</span>
@@ -1343,8 +1533,30 @@
                         {% endif %}
                     </div>
                 </div>
+                <!-- 体重 -->
+                <div class="col-md-3 col-6">
+                    <div class="p-2 rounded h-100" style="background: var(--bs-light); min-height: 120px;">
+                        <div class="d-flex align-items-center gap-1 mb-2">
+                            <span style="font-size: 1rem;">⚖️</span>
+                            <span class="fw-bold" style="color: #00897B;">体重</span>
+                        </div>
+                        {% if stats.today_weight %}
+                        <div style="font-size: 0.75rem;" class="text-muted">
+                            <div class="fw-semibold text-dark mb-1">{{ "%.1f"|format(stats.today_weight.weight) }} kg</div>
+                            {% if stats.today_weight.bmi %}
+                            <div>📊 BMI {{ "%.1f"|format(stats.today_weight.bmi) }}
+                                <span style="color: {{ stats.today_weight.bmi_category.color }};">{{ stats.today_weight.bmi_category.label }}</span>
+                            </div>
+                            {% endif %}
+                            <div>🕐 {{ stats.today_weight.time }}</div>
+                        </div>
+                        {% else %}
+                        <div class="text-muted small">暂无体重记录</div>
+                        {% endif %}
+                    </div>
+                </div>
                 <!-- 用药 -->
-                <div class="col-md-4 col-12">
+                <div class="col-md-3 col-6">
                     <div class="p-2 rounded h-100" style="background: var(--bs-light); min-height: 120px;">
                         <div class="d-flex align-items-center gap-1 mb-2">
                             <span style="font-size: 1rem;">💊</span>
@@ -1509,6 +1721,12 @@
                         <span class="d-none d-sm-inline">用药</span>
                     </button>
                 </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link py-2" id="weight-tab" data-bs-toggle="pill" data-bs-target="#weight-stats" type="button" role="tab">
+                        <i class="bi bi-speedometer me-1" style="color: #00897B;"></i>
+                        <span class="d-none d-sm-inline">体重</span>
+                    </button>
+                </li>
             </ul>
 
             <!-- 标签页内容 -->
@@ -1670,6 +1888,66 @@
                     </div>
                     {% endif %}
                 </div>
+
+                <!-- 体重统计 -->
+                <div class="tab-pane fade" id="weight-stats" role="tabpanel">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <h6 class="mb-0 fw-bold" style="color: #00897B;"><i class="bi bi-speedometer me-2"></i>体重管理</h6>
+                        {% if stats.latest_bmi %}
+                        <span class="badge" style="background: {{ stats.bmi_category.color }}20; color: {{ stats.bmi_category.color }};">BMI {{ stats.bmi_category.label }}</span>
+                        {% endif %}
+                    </div>
+                    {% if stats.latest_weight %}
+                    <div class="row g-2">
+                        <div class="col-6 col-md-3">
+                            <div class="text-center p-2 bg-light rounded">
+                                <small class="text-muted d-block">最新体重</small>
+                                <div class="fs-5 fw-bold" style="color: #00897B;">
+                                    {{ "%.1f"|format(stats.latest_weight) }}
+                                </div>
+                                <small class="text-muted">kg</small>
+                            </div>
+                        </div>
+                        <div class="col-6 col-md-3">
+                            <div class="text-center p-2 bg-light rounded">
+                                <small class="text-muted d-block">BMI</small>
+                                <div class="fs-5 fw-bold" style="color: {{ stats.bmi_category.color }};">
+                                    {{ "%.1f"|format(stats.latest_bmi) if stats.latest_bmi else '-' }}
+                                </div>
+                                <small style="color: {{ stats.bmi_category.color }};">{{ stats.bmi_category.label }}</small>
+                            </div>
+                        </div>
+                        <div class="col-6 col-md-3">
+                            <div class="text-center p-2 bg-light rounded">
+                                <small class="text-muted d-block">7天均值</small>
+                                <div class="fs-5 fw-bold text-primary">
+                                    {{ "%.1f"|format(stats.avg_weight_7d) if stats.avg_weight_7d else '-' }}
+                                </div>
+                                <small class="text-muted">kg</small>
+                            </div>
+                        </div>
+                        <div class="col-6 col-md-3">
+                            <div class="text-center p-2 bg-light rounded">
+                                <small class="text-muted d-block">30天变化</small>
+                                <div class="fs-5 fw-bold {% if stats.weight_change_30d and stats.weight_change_30d < 0 %}text-success{% elif stats.weight_change_30d and stats.weight_change_30d > 0 %}text-danger{% endif %}">
+                                    {% if stats.weight_change_30d is not none %}
+                                    {{ "%+.1f"|format(stats.weight_change_30d) }}
+                                    {% else %}
+                                    -
+                                    {% endif %}
+                                </div>
+                                <small class="text-muted">kg</small>
+                            </div>
+                        </div>
+                    </div>
+                    {% else %}
+                    <div class="text-center text-muted py-4">
+                        <i class="bi bi-info-circle d-block fs-3 mb-2"></i>
+                        <div>暂无体重记录</div>
+                        <small>通过手动录入或AI识别添加体重数据</small>
+                    </div>
+                    {% endif %}
+                </div>
             </div>
         </div>
     </div>
@@ -1704,8 +1982,16 @@
             <div class="d-flex justify-content-between align-items-start mb-3">
                 <div class="d-flex align-items-center gap-3">
                     <h3 class="mb-0"><i class="bi bi-graph-up me-2" style="color: var(--md-primary);"></i>血糖趋势</h3>
-                    <!-- 时间范围选择器 -->
-                    <select id="timeRangeSelector" class="form-select form-select-sm" style="width: auto;" onchange="changeTimeRange(this.value)">
+                    <!-- 时间范围选择器 - 药丸按钮组 -->
+                    <div class="time-range-pills" id="timeRangePills">
+                        <button class="pill-btn" data-days="7">7天</button>
+                        <button class="pill-btn active" data-days="14">14天</button>
+                        <button class="pill-btn" data-days="30">30天</button>
+                        <button class="pill-btn" data-days="90">90天</button>
+                        <button class="pill-btn" data-days="all">全部</button>
+                    </div>
+                    <!-- 隐藏的select保持兼容性 -->
+                    <select id="timeRangeSelector" class="d-none" onchange="changeTimeRange(this.value)">
                         <option value="7">最近7天</option>
                         <option value="14" selected>最近14天</option>
                         <option value="30">最近30天</option>
@@ -1809,6 +2095,30 @@
                 </div>
             </div>
             <canvas id="bloodPressureChart" height="60"></canvas>
+        </div>
+    </div>
+
+    <!-- Weight/BMI Chart Section - Material Design -->
+    <div class="card mb-4" id="weightChartCard">
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-start mb-3">
+                <h3 class="mb-0"><i class="bi bi-speedometer me-2" style="color: #00897B;"></i>体重/BMI趋势</h3>
+                <div class="d-flex gap-3 align-items-center small">
+                    <div class="d-flex align-items-center gap-1">
+                        <span style="display: inline-block; width: 16px; height: 3px; background: #00897B;"></span>
+                        <span class="text-muted">体重(kg)</span>
+                    </div>
+                    <div class="d-flex align-items-center gap-1">
+                        <span style="display: inline-block; width: 16px; height: 3px; background: #FF7043;"></span>
+                        <span class="text-muted">BMI</span>
+                    </div>
+                    <div class="d-flex align-items-center gap-1">
+                        <span style="display: inline-block; width: 16px; height: 2px; background: #EF5350; border-top: 2px dashed #EF5350;"></span>
+                        <span class="text-muted">超重线(24)</span>
+                    </div>
+                </div>
+            </div>
+            <canvas id="weightChart" height="60"></canvas>
         </div>
     </div>
 
@@ -1920,6 +2230,7 @@
                         <select id="recordType" class="form-select rounded-3" onchange="toggleRecordFields()" style="font-size: 1.1rem; padding: 12px;">
                             <option value="glucose">血糖测量</option>
                             <option value="bloodpressure">血压测量</option>
+                            <option value="weight">体重记录</option>
                             <option value="meal">餐食记录</option>
                             <option value="exercise">运动记录</option>
                             <option value="medication">药物方案</option>
@@ -1946,9 +2257,10 @@
                                 <datalist id="glucoseTypeOptions">
                                     <option value="空腹">
                                     <option value="餐前">
-                                    <option value="运动后餐前">
+                                    <option value="运动后">
                                     <option value="餐后1小时">
                                     <option value="餐后2小时">
+                                    <option value="晚饭前">
                                     <option value="睡前">
                                     <option value="运动后">
                                 </datalist>
@@ -1979,6 +2291,20 @@
                                     <option value="血压测量">
                                     <option value="餐后血压">
                                 </datalist>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 体重字段 -->
+                    <div id="weightFields" class="col-12 d-none">
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label" style="font-size: 1rem;">体重 (kg) <span class="text-danger">*</span></label>
+                                <input type="number" step="0.1" id="weight_value" class="form-control rounded-3" placeholder="如：75.0" style="font-size: 1.1rem; padding: 12px;" oninput="calcBMIPreview()">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label" style="font-size: 1rem;">BMI <small class="text-muted">(自动计算)</small></label>
+                                <input type="text" id="weight_bmi" class="form-control rounded-3 bg-light" readonly style="font-size: 1.1rem; padding: 12px;">
                             </div>
                         </div>
                     </div>
@@ -2144,9 +2470,10 @@
                         <datalist id="editTypeOptions">
                             <option value="空腹">
                             <option value="餐前">
-                            <option value="运动后餐前">
+                            <option value="运动后">
                             <option value="餐后1小时">
                             <option value="餐后2小时">
+                            <option value="晚饭前">
                             <option value="睡前">
                             <option value="跑步">
                         </datalist>
@@ -2360,6 +2687,94 @@
     const BADGE_SYSTEM = {{ stats.badge_system | tojson }};
 
     /**
+     * HTML 转义函数，防止 XSS 攻击
+     * @param {string} str - 要转义的字符串
+     * @returns {string} 转义后的安全字符串
+     */
+    function escapeHtml(str) {
+        if (str === null || str === undefined) return '';
+        const div = document.createElement('div');
+        div.textContent = String(str);
+        return div.innerHTML;
+    }
+
+    /**
+     * 统一的 API 调用辅助函数
+     * 处理标准化的响应格式，自动处理错误和 loading 状态
+     * @param {string} url - API URL
+     * @param {object} options - fetch options
+     * @param {object} callbacks - 可选的回调函数 {onSuccess, onError, showLoading}
+     * @returns {Promise<object>} 响应数据或 null（错误时）
+     */
+    async function apiCall(url, options = {}, callbacks = {}) {
+        const { onSuccess, onError, showLoading = true } = callbacks;
+
+        try {
+            if (showLoading) toggleLoading(true);
+
+            const defaultOptions = {
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            };
+
+            const res = await fetch(url, { ...defaultOptions, ...options });
+
+            // 尝试解析 JSON 响应
+            let data;
+            try {
+                data = await res.json();
+            } catch (jsonError) {
+                // 非 JSON 响应（如 500 错误页面）
+                const text = await res.text();
+                throw new Error(`HTTP ${res.status}: ${text.substring(0, 200)}`);
+            }
+
+            // 检查 HTTP 状态码和响应状态
+            if (!res.ok || data.status === 'error') {
+                const errorMsg = data.message || `请求失败 (${res.status})`;
+                const error = new Error(errorMsg);
+                error.data = data;
+                error.httpStatus = res.status;
+                error.errorType = data.error_type;
+                error.details = data.details;
+
+                // 特殊处理 429 配额错误
+                if (res.status === 429 || data.error_type === 'quota_exceeded') {
+                    const retryAfter = data.details?.retry_after || data.retry_after || 60;
+                    error.message = `AI 服务配额已用尽，请等待 ${retryAfter} 秒后重试`;
+                    error.retryAfter = retryAfter;
+                }
+
+                throw error;
+            }
+
+            // 成功回调
+            if (onSuccess) {
+                onSuccess(data.data, data.message);
+            }
+
+            return data;
+
+        } catch (error) {
+            console.error('API Error:', error);
+
+            // 错误回调或默认弹窗
+            if (onError) {
+                onError(error);
+            } else {
+                alert(error.message || '请求失败，请稍后重试');
+            }
+
+            return null;
+
+        } finally {
+            if (showLoading) toggleLoading(false);
+        }
+    }
+
+    /**
      * 根据血糖类型获取对应的达标标准
      * @param {string} glucoseType - 血糖类型（如 '空腹', '餐后2小时' 等）
      * @returns {object} 达标标准 {min, max, optimal_max, name}
@@ -2432,9 +2847,10 @@
         // 类型映射
         const typeMap = {
             'fasting': '空腹',
-            'post_exercise': '运动后餐前',
+            'post_exercise': '运动后',
             'post_breakfast': '早餐后2小时',
             'post_lunch': '午餐后2小时',
+            'pre_dinner': '晚饭前',
             'post_dinner': '晚餐后2小时',
             'bedtime': '睡前'
         };
@@ -2508,12 +2924,12 @@
         }
     }
 
-    // 时间范围切换函数
+    // 时间范围切换函数（前端筛选，无需刷新页面）
     function changeTimeRange(range) {
         // 保存用户选择到localStorage
         localStorage.setItem('glucoseTimeRange', range);
 
-        // 构建新的URL并重新加载页面
+        // 更新URL参数（不刷新页面，仅用于书签/分享）
         const url = new URL(window.location.href);
         if (range === 'all') {
             url.searchParams.set('all', 'true');
@@ -2522,13 +2938,17 @@
             url.searchParams.set('days', range);
             url.searchParams.delete('all');
         }
+        history.replaceState(null, '', url.toString());
 
         // 显示加载提示
         const selector = document.getElementById('timeRangeSelector');
         selector.disabled = true;
 
-        // 重新加载页面
-        window.location.href = url.toString();
+        // 前端重新渲染趋势图（不刷新页面）
+        setTimeout(() => {
+            initGlucoseChart(range === 'all' ? null : parseInt(range));
+            selector.disabled = false;
+        }, 50);
     }
 
     // ========== 预测状态卡片功能 ==========
@@ -2542,7 +2962,7 @@
             const response = await fetch('/prediction_status');
             const data = await response.json();
 
-            renderPredictionList(data.predictions);
+            renderPredictionList(data.slots);
             renderAccuracyStats(data.accuracy_by_type);
 
         } catch (error) {
@@ -2557,20 +2977,16 @@
     }
 
     /**
-     * 渲染预测列表
+     * 渲染时间槽列表（预测+实测+待测）
      */
-    function renderPredictionList(predictions) {
+    function renderPredictionList(slots) {
         const container = document.getElementById('predictionList');
 
-        if (!predictions || predictions.length === 0) {
+        if (!slots || slots.length === 0) {
             container.innerHTML = `
                 <div class="text-center text-muted py-3">
                     <i class="bi bi-info-circle d-block fs-4 mb-1"></i>
-                    <small>今日暂无预测数据</small>
-                    <br>
-                    <small class="text-primary" style="cursor: pointer;" onclick="triggerManualPrediction()">
-                        点击生成预测 →
-                    </small>
+                    <small>暂无数据</small>
                 </div>
             `;
             return;
@@ -2578,35 +2994,67 @@
 
         let html = '<div class="list-group list-group-flush">';
 
-        predictions.forEach((pred, index) => {
-            const time = pred.timestamp.split(' ')[1].substring(0, 5);
-            const statusIcon = pred.verified ? '✓' : '⏳';
-            const statusColor = pred.verified ? 'success' : 'warning';
-            const statusText = pred.verified ? '已验证' : '待测量';
+        slots.forEach((slot, index) => {
+            const time = slot.time;
 
-            // 计算预测值的达标状态
-            const predResult = checkGlucoseCompliance(pred.predicted_value, pred.type);
-            const predBadge = predResult.badge;
+            // 状态配置
+            const statusConfig = {
+                'pending': { icon: '○', color: 'secondary', text: '待测量', bgClass: 'bg-light' },
+                'predicted': { icon: '◐', color: 'warning', text: '待验证', bgClass: 'bg-warning-subtle' },
+                'measured': { icon: '●', color: 'primary', text: '已测量', bgClass: 'bg-primary-subtle' },
+                'verified': { icon: '✓', color: 'success', text: '已验证', bgClass: 'bg-success-subtle' }
+            };
 
-            // 误差显示
-            let errorHtml = '';
-            if (pred.verified && pred.error !== null) {
-                const errorColor = Math.abs(pred.error) < 0.5 ? 'success' : (Math.abs(pred.error) < 1.0 ? 'warning' : 'danger');
-                const errorSign = pred.error > 0 ? '+' : '';
-                errorHtml = `<span class="badge bg-${errorColor}-subtle text-${errorColor} ms-2">误差 ${errorSign}${pred.error}</span>`;
+            const config = statusConfig[slot.status] || statusConfig['pending'];
+
+            // 获取显示值和颜色
+            let valueHtml = '';
+            let displayValue = slot.value || slot.predicted_value || slot.real_value;
+
+            if (slot.status === 'verified') {
+                // 已验证：显示 预测值 → 实测值 + 误差
+                const predResult = checkGlucoseCompliance(slot.real_value, slot.name);
+                const errorColor = slot.error !== null ? (Math.abs(slot.error) < 0.5 ? 'success' : (Math.abs(slot.error) < 1.0 ? 'warning' : 'danger')) : 'secondary';
+                const errorSign = slot.error > 0 ? '+' : '';
+                valueHtml = `
+                    <span class="text-muted small">${slot.predicted_value}</span>
+                    <i class="bi bi-arrow-right text-muted small"></i>
+                    <span class="fw-bold" style="color: ${predResult.badge.color};">${slot.real_value}</span>
+                    ${slot.error !== null ? `<span class="badge bg-${errorColor}-subtle text-${errorColor} ms-2">误差 ${errorSign}${slot.error}</span>` : ''}
+                `;
+            } else if (slot.status === 'measured') {
+                // 已测量：显示实测值
+                const result = checkGlucoseCompliance(slot.real_value, slot.name);
+                valueHtml = `
+                    <span class="fw-bold" style="color: ${result.badge.color};">${slot.real_value}</span>
+                    <span class="badge bg-${config.color}-subtle text-${config.color}">${config.icon} ${config.text}</span>
+                `;
+            } else if (slot.status === 'predicted') {
+                // 已预测：显示预测值
+                const predResult = checkGlucoseCompliance(slot.predicted_value, slot.name);
+                valueHtml = `
+                    <span class="fw-bold" style="color: ${predResult.badge.color};">${slot.predicted_value}</span>
+                    <span class="badge bg-${config.color}-subtle text-${config.color}">${config.icon} ${config.text}</span>
+                `;
+            } else {
+                // 待测量
+                valueHtml = `
+                    <span class="text-muted">--</span>
+                    <span class="badge bg-${config.color}-subtle text-${config.color}">${config.icon} ${config.text}</span>
+                `;
             }
 
             // 处理预测依据（从notes中提取）
-            const hasNotes = pred.notes && pred.notes.trim().length > 0;
-            const cleanNotes = hasNotes ? pred.notes.replace('AI预测: ', '').replace('AI预测:', '') : '';
-            const collapseId = `predBasis${index}`;
+            const hasNotes = slot.notes && slot.notes.trim().length > 0 && (slot.status === 'predicted' || slot.status === 'verified');
+            const cleanNotes = hasNotes ? slot.notes.replace('AI预测: ', '').replace('AI预测:', '').replace('AI预测 |', '').trim() : '';
+            const collapseId = `slotBasis${index}`;
 
             html += `
                 <div class="list-group-item px-0 py-2 border-0 border-bottom">
                     <div class="d-flex justify-content-between align-items-center">
                         <div class="d-flex align-items-center gap-2">
                             <span class="badge bg-light text-dark">${time}</span>
-                            <span class="fw-medium">${pred.type}</span>
+                            <span class="fw-medium">${slot.name}</span>
                             ${hasNotes ? `
                                 <button class="btn btn-link btn-sm p-0 text-muted"
                                         data-bs-toggle="collapse"
@@ -2618,15 +3066,7 @@
                             ` : ''}
                         </div>
                         <div class="d-flex align-items-center gap-2">
-                            ${pred.verified ? `
-                                <span class="text-muted small">${pred.predicted_value}</span>
-                                <i class="bi bi-arrow-right text-muted small"></i>
-                                <span class="fw-bold" style="color: ${predBadge.color};">${pred.real_value}</span>
-                                ${errorHtml}
-                            ` : `
-                                <span class="fw-bold" style="color: ${predBadge.color};">${pred.predicted_value}</span>
-                                <span class="badge bg-${statusColor}-subtle text-${statusColor}">${statusIcon} ${statusText}</span>
-                            `}
+                            ${valueHtml}
                         </div>
                     </div>
                     ${hasNotes ? `
@@ -3024,23 +3464,6 @@
     }
 
     document.addEventListener('DOMContentLoaded', function() {
-        // 恢复用户上次选择的时间范围
-        const savedRange = localStorage.getItem('glucoseTimeRange');
-        const urlParams = new URLSearchParams(window.location.search);
-        const currentRange = urlParams.get('all') === 'true' ? 'all' : (urlParams.get('days') || '14');
-
-        const selector = document.getElementById('timeRangeSelector');
-        if (selector) {
-            // 如果URL中有参数，使用URL参数；否则使用保存的值
-            selector.value = currentRange;
-
-            // 如果没有URL参数但有保存的值，且保存的值与当前不同，则跳转
-            if (!urlParams.has('days') && !urlParams.has('all') && savedRange && savedRange !== '14') {
-                changeTimeRange(savedRange);
-                return;
-            }
-        }
-
         // Initialize dayModal after DOM is ready
         dayModal = new bootstrap.Modal(document.getElementById('dayDetailsModal'));
 
@@ -3055,11 +3478,51 @@
             });
         });
 
-        // Initialize Chart.js for glucose trend
-        initGlucoseChart();
+        // 获取保存的时间范围（优先级：URL参数 > localStorage > 默认14天）
+        const urlParams = new URLSearchParams(window.location.search);
+        const savedRange = localStorage.getItem('glucoseTimeRange');
+        let initialRange = urlParams.get('all') === 'true' ? 'all' : (urlParams.get('days') || savedRange || '14');
+
+        // 更新选择器显示
+        const selector = document.getElementById('timeRangeSelector');
+        if (selector) {
+            selector.value = initialRange;
+        }
+
+        // 初始化药丸按钮组
+        const pillsContainer = document.getElementById('timeRangePills');
+        if (pillsContainer) {
+            // 设置初始激活状态
+            pillsContainer.querySelectorAll('.pill-btn').forEach(btn => {
+                const days = btn.dataset.days;
+                if (days === initialRange || (days === 'all' && initialRange === 'all')) {
+                    btn.classList.add('active');
+                } else {
+                    btn.classList.remove('active');
+                }
+
+                // 添加点击事件
+                btn.addEventListener('click', function() {
+                    // 更新激活状态
+                    pillsContainer.querySelectorAll('.pill-btn').forEach(b => b.classList.remove('active'));
+                    this.classList.add('active');
+
+                    // 触发时间范围变更
+                    const range = this.dataset.days;
+                    if (selector) selector.value = range;
+                    changeTimeRange(range);
+                });
+            });
+        }
+
+        // Initialize Chart.js for glucose trend (使用保存的时间范围)
+        initGlucoseChart(initialRange === 'all' ? null : parseInt(initialRange));
 
         // Initialize Blood Pressure Chart
         initBloodPressureChart();
+
+        // Initialize Weight/BMI Chart
+        initWeightChart();
 
         // 加载预测状态卡片
         loadPredictionStatus();
@@ -3126,13 +3589,28 @@
         calendar.render();
     });
 
-    // Initialize glucose trend chart
-    function initGlucoseChart() {
-        // Extract all glucose records from timeline data
+    // Initialize glucose trend chart (支持按天数筛选)
+    function initGlucoseChart(days = 14) {
+        // 销毁旧图表
+        if (glucoseChart) {
+            glucoseChart.destroy();
+            glucoseChart = null;
+        }
+
+        // 计算截止日期
+        const cutoffDate = days ? new Date(Date.now() - days * 24 * 60 * 60 * 1000) : null;
+
+        // Extract all glucose records from timeline data (按天数筛选)
         const allRecords = [];
         const predictedRecords = [];
 
         timelineData.forEach(day => {
+            // 按天数筛选
+            if (cutoffDate) {
+                const dayDate = new Date(day.date);
+                if (dayDate < cutoffDate) return;
+            }
+
             day.data.entries.forEach(entry => {
                 if (entry.value > 0) {
                     if (entry.is_predicted) {
@@ -3169,7 +3647,7 @@
         const datasets = {
             '空腹': { label: 'FPG (空腹)', data: [], predictedData: [], borderColor: '#1A73E8', backgroundColor: '#1A73E8' },  // Google Blue
             '餐前': { label: '餐前', data: [], predictedData: [], borderColor: '#00ACC1', backgroundColor: '#00ACC1' },  // Cyan 600
-            '运动后餐前': { label: '运动后餐前', data: [], predictedData: [], borderColor: '#00897B', backgroundColor: '#00897B' },  // Teal 600
+            '运动后': { label: '运动后', data: [], predictedData: [], borderColor: '#00897B', backgroundColor: '#00897B' },  // Teal 600
             '餐后1小时': { label: 'PPG-1h', data: [], predictedData: [], borderColor: '#FB8C00', backgroundColor: '#FB8C00' },  // Orange 600
             '餐后2小时': { label: 'PPG-2h', data: [], predictedData: [], borderColor: '#F4511E', backgroundColor: '#F4511E' },  // Deep Orange 600
             '睡前': { label: '睡前', data: [], predictedData: [], borderColor: '#8E24AA', backgroundColor: '#8E24AA' },  // Purple 600
@@ -3228,7 +3706,7 @@
             let key = record.type;
             // 标准化类型名称
             if (key.includes('空腹')) key = '空腹';
-            else if (key.includes('运动后餐前')) key = '运动后餐前';
+            else if (key.includes('运动后')) key = '运动后';
             else if (key.includes('餐前')) key = '餐前';
             else if (key.includes('餐后2小时') || key.includes('早餐后2小时') || key.includes('午餐后2小时') || key.includes('晚餐后2小时')) key = '餐后2小时';
             else if (key.includes('餐后1小时') || key.includes('早餐后1小时') || key.includes('午餐后1小时') || key.includes('晚餐后1小时')) key = '餐后1小时';
@@ -3861,6 +4339,186 @@
         });
     }
 
+    // Initialize weight/BMI trend chart
+    function initWeightChart() {
+        // Extract weight records from timeline data
+        const weightRecords = [];
+        const timelineData = {{ timeline | tojson }};
+
+        timelineData.forEach(day => {
+            day.data.entries.forEach(entry => {
+                if (entry.weight && entry.weight > 0) {
+                    weightRecords.push({
+                        timestamp: entry.timestamp,
+                        weight: entry.weight,
+                        bmi: entry.bmi
+                    });
+                }
+            });
+        });
+
+        if (weightRecords.length === 0) {
+            document.getElementById('weightChartCard').style.display = 'none';
+            return;
+        }
+
+        // Sort by timestamp
+        weightRecords.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+
+        const ctx = document.getElementById('weightChart').getContext('2d');
+
+        const weightData = [];
+        const bmiData = [];
+
+        weightRecords.forEach(record => {
+            weightData.push({ x: record.timestamp, y: record.weight });
+            if (record.bmi) {
+                bmiData.push({ x: record.timestamp, y: record.bmi });
+            }
+        });
+
+        // BMI point colors by category
+        function getBMIColor(bmi) {
+            if (bmi < 18.5) return '#42A5F5';
+            if (bmi < 24) return '#4CAF50';
+            if (bmi < 28) return '#FFA726';
+            return '#EF5350';
+        }
+
+        const datasets = [
+            {
+                label: '体重 (kg)',
+                data: weightData,
+                borderColor: '#00897B',
+                backgroundColor: '#00897B',
+                borderWidth: 3,
+                tension: 0.3,
+                pointRadius: 5,
+                pointHoverRadius: 8,
+                pointBackgroundColor: '#00897B',
+                pointBorderColor: '#fff',
+                pointBorderWidth: 2,
+                fill: false,
+                yAxisID: 'y'
+            }
+        ];
+
+        if (bmiData.length > 0) {
+            datasets.push({
+                label: 'BMI',
+                data: bmiData,
+                borderColor: '#FF7043',
+                backgroundColor: '#FF7043',
+                borderWidth: 2,
+                tension: 0.3,
+                pointRadius: bmiData.map(p => 4),
+                pointHoverRadius: 7,
+                pointBackgroundColor: bmiData.map(p => getBMIColor(p.y)),
+                pointBorderColor: '#fff',
+                pointBorderWidth: 2,
+                borderDash: [5, 3],
+                fill: false,
+                yAxisID: 'y1'
+            });
+        }
+
+        // Calculate axis ranges
+        const allWeights = weightRecords.map(r => r.weight);
+        const weightMin = Math.floor(Math.min(...allWeights) - 2);
+        const weightMax = Math.ceil(Math.max(...allWeights) + 2);
+
+        new Chart(ctx, {
+            type: 'line',
+            data: { datasets },
+            options: {
+                responsive: true,
+                interaction: {
+                    mode: 'index',
+                    intersect: false
+                },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            title: (items) => {
+                                if (items[0]) {
+                                    const d = new Date(items[0].raw.x);
+                                    return d.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+                                }
+                                return '';
+                            }
+                        }
+                    },
+                    annotation: {
+                        annotations: {
+                            overweightLine: {
+                                type: 'line',
+                                yMin: 24,
+                                yMax: 24,
+                                yScaleID: 'y1',
+                                borderColor: '#EF5350',
+                                borderWidth: 1.5,
+                                borderDash: [6, 4],
+                                label: {
+                                    display: true,
+                                    content: '超重 BMI=24',
+                                    position: 'end',
+                                    backgroundColor: 'rgba(239, 83, 80, 0.1)',
+                                    color: '#EF5350',
+                                    font: { size: 10 }
+                                }
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        type: 'time',
+                        time: { unit: 'day', displayFormats: { day: 'MM/dd' } },
+                        ticks: { font: { size: 11 }, maxRotation: 0, autoSkip: true, maxTicksLimit: 10 },
+                        grid: { display: false }
+                    },
+                    y: {
+                        position: 'left',
+                        beginAtZero: false,
+                        min: weightMin,
+                        max: weightMax,
+                        title: {
+                            display: true,
+                            text: '体重 (kg)',
+                            font: { size: 11, weight: 'bold' },
+                            color: '#00897B'
+                        },
+                        ticks: {
+                            stepSize: 1,
+                            font: { size: 10 },
+                            color: '#00897B'
+                        },
+                        grid: { color: 'rgba(0,0,0,0.05)' }
+                    },
+                    y1: bmiData.length > 0 ? {
+                        position: 'right',
+                        beginAtZero: false,
+                        min: 15,
+                        max: 35,
+                        title: {
+                            display: true,
+                            text: 'BMI',
+                            font: { size: 11, weight: 'bold' },
+                            color: '#FF7043'
+                        },
+                        ticks: {
+                            stepSize: 2,
+                            font: { size: 10 },
+                            color: '#FF7043'
+                        },
+                        grid: { drawOnChartArea: false }
+                    } : undefined
+                }
+            }
+        });
+    }
+
     // 生成AI预测控制按钮（统一开关）
     function generatePredictionToggles(datasetIndexMap, datasets) {
         const togglesContainer = document.getElementById('predictionToggles');
@@ -3954,7 +4612,7 @@
 
         if (value < 3.9) return red;
 
-        if (key === '空腹' || key === '餐前' || key === '睡前' || key === '运动后餐前') {
+        if (key === '空腹' || key === '餐前' || key === '睡前' || key === '运动后') {
             if (value < 6.1) return green;
             if (value <= 7.0) return yellow;
             return red;
@@ -4206,7 +4864,8 @@
         // Timeline entries - 显示真实记录 + 未验证的预测，排除已验证的预测
         entries.filter(r => !r.is_predicted || !r.is_verified).forEach(r => {
             let dotClass = 'dot-food';
-            if (r.value > 0) dotClass = 'dot-glucose';
+            if (r.weight && r.weight > 0) dotClass = 'dot-weight';
+            else if (r.value > 0) dotClass = 'dot-glucose';
             else if (r.systolic_pressure && r.diastolic_pressure) dotClass = 'dot-bloodpressure';
             else if (r.distance) dotClass = 'dot-run';
             else if (r.type === '加餐') dotClass = 'dot-snack';
@@ -4220,6 +4879,25 @@
                     </div>
                     <div class="flex-grow-1">
             `;
+
+            // Weight
+            if (r.weight && r.weight > 0) {
+                let bmiText = r.bmi ? ` · BMI ${r.bmi}` : '';
+                let bmiCategory = '';
+                if (r.bmi) {
+                    if (r.bmi < 18.5) bmiCategory = ' (偏瘦)';
+                    else if (r.bmi < 24) bmiCategory = ' (正常)';
+                    else if (r.bmi < 28) bmiCategory = ' (超重)';
+                    else bmiCategory = ' (肥胖)';
+                }
+                html += `
+                    <div class="d-flex align-items-center mb-1">
+                        <h5 class="mb-0 fw-bold me-2" style="color: #00897B;">⚖️ ${r.weight} <small class="text-muted fw-normal fs-6">kg</small></h5>
+                        <span class="badge me-2" style="background: #00897B20; color: #00897B;">${r.type}</span>
+                        ${r.bmi ? `<small class="text-muted">${bmiText}${bmiCategory}</small>` : ''}
+                    </div>
+                `;
+            }
 
             // Glucose
             if (r.value > 0) {
@@ -4370,7 +5048,8 @@
         // 2. Render Timeline Items - 显示真实记录 + 未验证的预测，排除已验证的预测
         entries.filter(r => !r.is_predicted || !r.is_verified).forEach(r => {
             let dotClass = 'dot-food';
-            if (r.value > 0) dotClass = 'dot-glucose';
+            if (r.weight && r.weight > 0) dotClass = 'dot-weight';
+            else if (r.value > 0) dotClass = 'dot-glucose';
             else if (r.systolic_pressure && r.diastolic_pressure) dotClass = 'dot-bloodpressure';
             else if (r.distance) dotClass = 'dot-run';
             else if (r.type === '加餐') dotClass = 'dot-snack';
@@ -4384,6 +5063,25 @@
                     </div>
                     <div class="flex-grow-1">
             `;
+
+            // Weight
+            if (r.weight && r.weight > 0) {
+                let bmiText = r.bmi ? ` · BMI ${r.bmi}` : '';
+                let bmiCategory = '';
+                if (r.bmi) {
+                    if (r.bmi < 18.5) bmiCategory = ' (偏瘦)';
+                    else if (r.bmi < 24) bmiCategory = ' (正常)';
+                    else if (r.bmi < 28) bmiCategory = ' (超重)';
+                    else bmiCategory = ' (肥胖)';
+                }
+                itemHtml += `
+                    <div class="d-flex align-items-center mb-1">
+                        <h5 class="mb-0 fw-bold me-2" style="color: #00897B;">⚖️ ${r.weight} <small class="text-muted fw-normal fs-6">kg</small></h5>
+                        <span class="badge me-2" style="background: #00897B20; color: #00897B;">${r.type}</span>
+                        ${r.bmi ? `<small class="text-muted">${bmiText}${bmiCategory}</small>` : ''}
+                    </div>
+                `;
+            }
 
             // Glucose
             if (r.value > 0) {
@@ -4524,12 +5222,15 @@
         document.getElementById('mealFields').classList.add('d-none');
         document.getElementById('exerciseFields').classList.add('d-none');
         document.getElementById('medicationFields').classList.add('d-none');
+        document.querySelectorAll('#weightFields').forEach(el => el.classList.add('d-none'));
 
         // Show selected field
         if (type === 'glucose') {
             document.getElementById('glucoseFields').classList.remove('d-none');
         } else if (type === 'bloodpressure') {
             document.getElementById('bloodPressureFields').classList.remove('d-none');
+        } else if (type === 'weight') {
+            document.querySelectorAll('#weightFields').forEach(el => el.classList.remove('d-none'));
         } else if (type === 'meal') {
             document.getElementById('mealFields').classList.remove('d-none');
         } else if (type === 'exercise') {
@@ -4542,6 +5243,29 @@
         }
     }
 
+    // BMI 实时预览计算
+    function calcBMIPreview() {
+        const weightInputs = document.querySelectorAll('#weight_value');
+        const bmiInputs = document.querySelectorAll('#weight_bmi');
+        const userHeight = {{ stats.user.height or 170 }};
+
+        weightInputs.forEach((input, idx) => {
+            const w = parseFloat(input.value);
+            if (w > 0 && userHeight > 0) {
+                const h = userHeight / 100;
+                const bmi = (w / (h * h)).toFixed(1);
+                let category = '';
+                if (bmi < 18.5) category = ' (偏瘦)';
+                else if (bmi < 24) category = ' (正常)';
+                else if (bmi < 28) category = ' (超重)';
+                else category = ' (肥胖)';
+                if (bmiInputs[idx]) bmiInputs[idx].value = bmi + category;
+            } else {
+                if (bmiInputs[idx]) bmiInputs[idx].value = '';
+            }
+        });
+    }
+
     // 手动录入表单提交
     document.getElementById('manualInputForm')?.addEventListener('submit', async function(e) {
         e.preventDefault();
@@ -4550,32 +5274,23 @@
         const timestamp = document.getElementById('manual_timestamp').value.replace('T', ' ') + ':00';
         const notes = document.getElementById('manual_notes').value;
 
+        let recordData = null;
+        let hasGlucoseData = false;
+
         if (type === 'glucose') {
-            // 提交血糖记录
-            const data = {
+            // 构建血糖记录
+            recordData = {
                 value: parseFloat(document.getElementById('glucose_value').value),
                 unit: document.getElementById('glucose_unit').value,
                 type: document.getElementById('glucose_type').value,
-                timestamp: timestamp,
-                notes: notes
+                datetime: timestamp,  // batch_add 使用 datetime 字段
+                notes: notes,
+                is_predicted: false
             };
-
-            try {
-                const res = await fetch('/add', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify(data)
-                });
-                if (res.ok) {
-                    alert('血糖记录保存成功！');
-                    window.location.reload();
-                }
-            } catch (e) {
-                alert('保存失败: ' + e);
-            }
+            hasGlucoseData = true;
 
         } else if (type === 'bloodpressure') {
-            // 提交血压记录
+            // 构建血压记录
             const systolic = parseInt(document.getElementById('bp_systolic').value);
             const diastolic = parseInt(document.getElementById('bp_diastolic').value);
 
@@ -4584,83 +5299,63 @@
                 return;
             }
 
-            const data = {
+            recordData = {
                 value: 0,
                 type: document.getElementById('bp_type').value || '血压测量',
-                timestamp: timestamp,
+                datetime: timestamp,
                 notes: notes,
                 systolic_pressure: systolic,
                 diastolic_pressure: diastolic,
-                pulse_rate: parseInt(document.getElementById('bp_pulse').value) || null
+                pulse_rate: parseInt(document.getElementById('bp_pulse').value) || null,
+                is_predicted: false
             };
 
-            try {
-                const res = await fetch('/add', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify(data)
-                });
-                if (res.ok) {
-                    alert('血压记录保存成功！');
-                    window.location.reload();
-                }
-            } catch (e) {
-                alert('保存失败: ' + e);
+        } else if (type === 'weight') {
+            // 构建体重记录
+            const weightVal = parseFloat(document.querySelectorAll('#weight_value')[0]?.value || document.getElementById('weight_value').value);
+
+            if (!weightVal || weightVal <= 0) {
+                alert('请输入有效的体重值');
+                return;
             }
+
+            // BMI 由后端自动计算
+            recordData = {
+                value: 0,
+                type: '体重记录',
+                datetime: timestamp,
+                notes: notes,
+                weight: weightVal,
+                is_predicted: false
+            };
 
         } else if (type === 'meal') {
-            // 提交餐食记录
-            const data = {
+            // 构建餐食记录
+            recordData = {
                 value: 0,
                 type: document.getElementById('meal_type').value,
-                timestamp: timestamp,
+                datetime: timestamp,
                 notes: document.getElementById('meal_notes').value || notes,
-                calories: parseInt(document.getElementById('meal_calories').value) || 0
+                calories: parseInt(document.getElementById('meal_calories').value) || 0,
+                is_predicted: false
             };
 
-            try {
-                const res = await fetch('/add', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify(data)
-                });
-                if (res.ok) {
-                    alert('餐食记录保存成功！');
-                    window.location.reload();
-                }
-            } catch (e) {
-                alert('保存失败: ' + e);
-            }
-
         } else if (type === 'exercise') {
-            // 提交运动记录
-            const data = {
+            // 构建运动记录
+            recordData = {
                 value: 0,
                 type: document.getElementById('exercise_type').value,
-                timestamp: timestamp,
+                datetime: timestamp,
                 notes: notes,
                 distance: parseFloat(document.getElementById('exercise_distance').value) || null,
                 duration: document.getElementById('exercise_duration').value || null,
                 heart_rate: parseInt(document.getElementById('exercise_heart_rate').value) || null,
-                calories: parseInt(document.getElementById('exercise_calories').value) || 0
+                calories: parseInt(document.getElementById('exercise_calories').value) || 0,
+                is_predicted: false
             };
 
-            try {
-                const res = await fetch('/add', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify(data)
-                });
-                if (res.ok) {
-                    alert('运动记录保存成功！');
-                    window.location.reload();
-                }
-            } catch (e) {
-                alert('保存失败: ' + e);
-            }
-
         } else if (type === 'medication') {
-            // 提交药物方案
+            // 药物方案使用专门的端点
             const data = {
                 medication_name: document.getElementById('med_name_manual').value,
                 dosage: document.getElementById('med_dosage_manual').value,
@@ -4671,21 +5366,46 @@
                 notes: notes
             };
 
-            try {
-                const res = await fetch('/add_medication_plan', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify(data)
-                });
-                const result = await res.json();
-                if (result.status === 'success') {
-                    alert('药物方案保存成功！');
-                    window.location.reload();
-                } else {
-                    alert('保存失败: ' + result.message);
+            const result = await apiCall('/add_medication_plan', {
+                method: 'POST',
+                body: JSON.stringify(data)
+            }, {
+                showLoading: false,
+                onError: (error) => {
+                    alert('保存失败: ' + error.message);
                 }
-            } catch (e) {
-                alert('保存失败: ' + e);
+            });
+
+            if (result) {
+                alert('药物方案保存成功！');
+                window.location.reload();
+            }
+            return;
+        }
+
+        // 统一使用 batch_add 端点（包装成数组）
+        if (recordData) {
+            const result = await apiCall('/batch_add', {
+                method: 'POST',
+                body: JSON.stringify({records: [recordData]})
+            }, {
+                showLoading: false,
+                onError: (error) => {
+                    alert('保存失败: ' + error.message);
+                }
+            });
+
+            if (result) {
+                // 关闭手动输入面板
+                toggleManualInput();
+
+                // 如果是血糖记录，询问是否更新预测
+                if (hasGlucoseData) {
+                    showPredictionUpdateDialog();
+                } else {
+                    // 非血糖记录直接刷新（运动记录会自动触发后端预测更新）
+                    window.location.reload();
+                }
             }
         }
     });
@@ -4756,10 +5476,13 @@
         document.getElementById('imagePreviewList').innerHTML = '';
     }
 
+    let _isAnalyzing = false;
     async function analyzeText() {
+        if (_isAnalyzing) return;
         const text = document.getElementById('aiInput').value;
         if (!text && selectedImagesBase64.length === 0) return;
 
+        _isAnalyzing = true;
         toggleLoading(true);
 
         try {
@@ -4782,6 +5505,7 @@
             alert('识别出错: ' + e);
         } finally {
             toggleLoading(false);
+            _isAnalyzing = false;
         }
     }
 
@@ -4791,6 +5515,7 @@
 
         const glucoseRecords = [];
         const bloodPressureRecords = [];
+        const weightRecords = [];
         const mealRecords = [];
         const exerciseRecords = [];
         const medicationRecords = [];
@@ -4803,6 +5528,8 @@
                 medicationRecords.push(item);
             } else if (item.systolic_pressure && item.diastolic_pressure) {
                 bloodPressureRecords.push(item);
+            } else if (item.weight && item.weight > 0) {
+                weightRecords.push(item);
             } else if (exerciseTypes.includes(item.type) || item.distance) {
                 exerciseRecords.push(item);
             } else if (mealTypes.includes(item.type) || (item.value == 0 && item.calories > 0)) {
@@ -4887,6 +5614,24 @@
             });
         }
 
+        // 渲染体重记录
+        if (weightRecords.length > 0) {
+            container.innerHTML += `<div class="fw-bold mb-2 mt-3" style="color: #00897B;"><i class="bi bi-speedometer"></i> 体重记录</div>`;
+            weightRecords.forEach(item => {
+                container.innerHTML += `
+                    <div class="list-group-item mb-1" style="border-left: 3px solid #00897B;">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <strong style="color: #00897B; font-size: 1.2rem;">⚖️ ${item.weight} kg</strong>
+                            </div>
+                            <small class="text-muted">${item.datetime}</small>
+                        </div>
+                        ${item.notes ? `<p class="mb-0 small text-secondary mt-1">${item.notes}</p>` : ''}
+                    </div>
+                `;
+            });
+        }
+
         if (mealRecords.length > 0) {
             container.innerHTML += `<div class="fw-bold mb-2 mt-3" style="color: #e91e8c;"><i class="bi bi-cup-hot-fill"></i> 餐食记录</div>`;
             mealRecords.forEach(item => {
@@ -4894,13 +5639,13 @@
                 container.innerHTML += `
                     <div class="list-group-item mb-1" style="border-left: 3px solid ${item.type === '加餐' ? '#e91e8c' : '#fd7e14'};">
                         <div class="d-flex justify-content-between align-items-center">
-                            <span class="badge" style="background: ${item.type === '加餐' ? '#e91e8c' : '#fd7e14'};">${item.type}</span>
-                            <small class="text-muted">${item.datetime}</small>
+                            <span class="badge" style="background: ${item.type === '加餐' ? '#e91e8c' : '#fd7e14'};">${escapeHtml(item.type)}</span>
+                            <small class="text-muted">${escapeHtml(item.datetime)}</small>
                         </div>
-                        <p class="mb-1">${item.notes || '未识别食物'}</p>
+                        <p class="mb-1">${escapeHtml(item.notes) || '未识别食物'}</p>
                         <div class="small text-muted">
-                            ${item.calories ? `<span>🔥 ${item.calories} kcal</span>` : ''}
-                            ${item.diet_analysis ? `<span class="ms-2">🥗 ${item.diet_analysis}</span>` : ''}
+                            ${item.calories ? `<span>🔥 ${escapeHtml(item.calories)} kcal</span>` : ''}
+                            ${item.diet_analysis ? `<span class="ms-2">🥗 ${escapeHtml(item.diet_analysis)}</span>` : ''}
                         </div>
                     </div>
                 `;
@@ -4945,14 +5690,14 @@
                 container.innerHTML += `
                     <div class="list-group-item mb-1" style="border-left: 3px solid #6610f2;">
                         <div class="d-flex justify-content-between align-items-center">
-                            <strong>${item.medication_name}</strong>
-                            ${item.medication_dosage ? `<span class="badge bg-secondary">${item.medication_dosage}</span>` : ''}
+                            <strong>${escapeHtml(item.medication_name)}</strong>
+                            ${item.medication_dosage ? `<span class="badge bg-secondary">${escapeHtml(item.medication_dosage)}</span>` : ''}
                         </div>
                         <div class="small text-muted mt-1">
-                            ${item.medication_timing ? `服用时机: ${item.medication_timing}` : ''}
-                            · ${item.datetime}
+                            ${item.medication_timing ? `服用时机: ${escapeHtml(item.medication_timing)}` : ''}
+                            · ${escapeHtml(item.datetime)}
                         </div>
-                        ${item.notes ? `<p class="mb-0 small text-secondary mt-1">${item.notes}</p>` : ''}
+                        ${item.notes ? `<p class="mb-0 small text-secondary mt-1">${escapeHtml(item.notes)}</p>` : ''}
                         ${actionHtml}
                     </div>
                 `;
@@ -5005,19 +5750,261 @@
         }
     }
 
-    async function confirmBatchAdd() {
+    let _isSaving = false;
+    async function confirmBatchAdd(conflictResolution = 'ask') {
+        if (_isSaving) return;
+        _isSaving = true;
+
+        // 禁用所有确认保存按钮
+        document.querySelectorAll('[onclick*="confirmBatchAdd"]').forEach(btn => {
+            btn.disabled = true;
+            btn.dataset.origText = btn.innerHTML;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>保存中...';
+        });
+
         try {
-            const res = await fetch('/batch_add', {
+            const response = await fetch('/batch_add', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({records: parsedData})
+                body: JSON.stringify({
+                    records: parsedData,
+                    conflict_resolution: conflictResolution
+                })
             });
-            const result = await res.json();
-            if (result.status === 'success') {
-                window.location.reload();
+
+            const result = await response.json();
+
+            // 处理冲突情况
+            if (result.status === 'conflict') {
+                showConflictDialog(result.conflicts, result.total_records);
+                return;
             }
-        } catch (e) {
-            alert('保存失败');
+
+            if (result.status === 'error') {
+                alert('保存失败: ' + result.message);
+                return;
+            }
+
+            // 保存成功
+            if (result.status === 'success') {
+                // 检查是否有血糖数据录入（非餐食、非运动、非药物）
+                const hasGlucoseData = parsedData.some(r =>
+                    r.value > 0 && !r.medication_name && !r.distance
+                );
+
+                if (hasGlucoseData) {
+                    showPredictionUpdateDialog();
+                } else {
+                    window.location.reload();
+                }
+            }
+        } finally {
+            _isSaving = false;
+            document.querySelectorAll('[onclick*="confirmBatchAdd"]').forEach(btn => {
+                btn.disabled = false;
+                if (btn.dataset.origText) btn.innerHTML = btn.dataset.origText;
+            });
+        }
+    }
+
+    // 显示冲突确认对话框
+    function showConflictDialog(conflicts, totalRecords) {
+        // 构建冲突列表HTML
+        let conflictListHtml = '';
+        conflicts.forEach((conflict, idx) => {
+            const existing = conflict.existing_record;
+            const newRec = conflict.new_record;
+            conflictListHtml += `
+                <div class="border rounded p-3 mb-2" style="background: #fff8e6;">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <span class="badge bg-warning text-dark mb-1">${newRec.type}</span>
+                            <div class="small text-muted">${newRec.datetime}</div>
+                        </div>
+                    </div>
+                    <div class="mt-2 d-flex gap-3">
+                        <div class="flex-fill p-2 rounded" style="background: #ffebee;">
+                            <div class="small text-muted">已有记录</div>
+                            <div class="fw-bold text-danger">${existing.value} mmol/L</div>
+                            ${existing.notes ? `<div class="small text-muted text-truncate" style="max-width: 150px;">${existing.notes}</div>` : ''}
+                        </div>
+                        <div class="d-flex align-items-center">
+                            <i class="bi bi-arrow-right text-muted"></i>
+                        </div>
+                        <div class="flex-fill p-2 rounded" style="background: #e8f5e9;">
+                            <div class="small text-muted">新记录</div>
+                            <div class="fw-bold text-success">${newRec.value} mmol/L</div>
+                            ${newRec.notes ? `<div class="small text-muted text-truncate" style="max-width: 150px;">${newRec.notes}</div>` : ''}
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+
+        const dialogHtml = `
+            <div class="modal fade" id="conflictModal" tabindex="-1" data-bs-backdrop="static">
+                <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+                    <div class="modal-content">
+                        <div class="modal-header bg-warning">
+                            <h5 class="modal-title">
+                                <i class="bi bi-exclamation-triangle me-2"></i>发现重复数据
+                            </h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                        </div>
+                        <div class="modal-body">
+                            <p class="mb-3">
+                                共 <strong>${totalRecords}</strong> 条数据中，有 <strong class="text-warning">${conflicts.length}</strong> 条与已有记录时间冲突：
+                            </p>
+                            <div style="max-height: 300px; overflow-y: auto;">
+                                ${conflictListHtml}
+                            </div>
+                        </div>
+                        <div class="modal-footer flex-column gap-2">
+                            <div class="d-flex gap-2 w-100">
+                                <button type="button" class="btn btn-outline-secondary flex-fill" onclick="resolveConflict('skip')">
+                                    <i class="bi bi-skip-forward me-1"></i>跳过冲突
+                                    <div class="small">保留已有数据</div>
+                                </button>
+                                <button type="button" class="btn btn-warning flex-fill" onclick="resolveConflict('overwrite')">
+                                    <i class="bi bi-arrow-repeat me-1"></i>覆盖更新
+                                    <div class="small">用新数据替换</div>
+                                </button>
+                            </div>
+                            <button type="button" class="btn btn-outline-danger btn-sm" data-bs-dismiss="modal">
+                                <i class="bi bi-x-lg me-1"></i>取消保存
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        // 移除已存在的对话框
+        const existingModal = document.getElementById('conflictModal');
+        if (existingModal) existingModal.remove();
+
+        // 插入新对话框
+        document.body.insertAdjacentHTML('beforeend', dialogHtml);
+        const modal = new bootstrap.Modal(document.getElementById('conflictModal'));
+        modal.show();
+    }
+
+    // 处理冲突选择
+    function resolveConflict(resolution) {
+        // 关闭冲突对话框
+        const modal = bootstrap.Modal.getInstance(document.getElementById('conflictModal'));
+        if (modal) modal.hide();
+
+        // 重新提交，带上冲突处理方式
+        confirmBatchAdd(resolution);
+    }
+
+    // 显示预测更新确认弹窗
+    function showPredictionUpdateDialog() {
+        // 创建弹窗HTML
+        const dialogHtml = `
+            <div class="modal fade" id="predictionUpdateModal" tabindex="-1" data-bs-backdrop="static">
+                <div class="modal-dialog modal-dialog-centered">
+                    <div class="modal-content">
+                        <div class="modal-header bg-primary text-white">
+                            <h5 class="modal-title">
+                                <i class="bi bi-lightning-charge me-2"></i>更新预测
+                            </h5>
+                        </div>
+                        <div class="modal-body text-center py-4">
+                            <i class="bi bi-cpu text-primary" style="font-size: 3rem;"></i>
+                            <p class="mt-3 mb-0">
+                                数据已保存成功！<br>
+                                是否基于新数据<strong>重新预测</strong>剩余时间点的血糖？
+                            </p>
+                            <small class="text-muted">这将调用AI模型更新今日预测值</small>
+                        </div>
+                        <div class="modal-footer justify-content-center">
+                            <button type="button" class="btn btn-outline-secondary" onclick="skipPredictionUpdate()">
+                                <i class="bi bi-x-lg me-1"></i>保持原预测
+                            </button>
+                            <button type="button" class="btn btn-primary" onclick="triggerPredictionUpdate()">
+                                <i class="bi bi-arrow-repeat me-1"></i>重新预测
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        // 移除可能存在的旧弹窗
+        const existingModal = document.getElementById('predictionUpdateModal');
+        if (existingModal) {
+            existingModal.remove();
+        }
+
+        // 添加弹窗到页面
+        document.body.insertAdjacentHTML('beforeend', dialogHtml);
+
+        // 显示弹窗
+        const modal = new bootstrap.Modal(document.getElementById('predictionUpdateModal'));
+        modal.show();
+    }
+
+    // 跳过预测更新
+    function skipPredictionUpdate() {
+        const modal = bootstrap.Modal.getInstance(document.getElementById('predictionUpdateModal'));
+        modal.hide();
+        window.location.reload();
+    }
+
+    // 触发预测更新
+    async function triggerPredictionUpdate() {
+        const modal = bootstrap.Modal.getInstance(document.getElementById('predictionUpdateModal'));
+        const modalBody = document.querySelector('#predictionUpdateModal .modal-body');
+        const modalFooter = document.querySelector('#predictionUpdateModal .modal-footer');
+
+        // 显示加载状态
+        modalBody.innerHTML = `
+            <div class="spinner-border text-primary" role="status" style="width: 3rem; height: 3rem;">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <p class="mt-3 mb-0">正在调用AI模型更新预测...</p>
+            <small class="text-muted">请稍候</small>
+        `;
+        modalFooter.innerHTML = '';
+
+        const result = await apiCall('/trigger_prediction', {
+            method: 'POST',
+            body: JSON.stringify({
+                type: 'remaining',
+                force_update: true
+            })
+        }, {
+            showLoading: false,
+            onError: (error) => {
+                // 显示错误状态
+                modalBody.innerHTML = `
+                    <i class="bi bi-exclamation-triangle text-warning" style="font-size: 3rem;"></i>
+                    <p class="mt-3 mb-0">预测更新失败</p>
+                    <small class="text-muted">${escapeHtml(error.message) || '请稍后重试'}</small>
+                `;
+                modalFooter.innerHTML = `
+                    <button type="button" class="btn btn-outline-secondary" onclick="window.location.reload()">
+                        <i class="bi bi-x-lg me-1"></i>关闭
+                    </button>
+                `;
+            }
+        });
+
+        if (result) {
+            // 显示成功状态
+            const updatedCount = result.data?.results?.filter(r => r.status === 'updated' || r.status === 'success').length || 0;
+            modalBody.innerHTML = `
+                <i class="bi bi-check-circle text-success" style="font-size: 3rem;"></i>
+                <p class="mt-3 mb-0">预测更新完成！</p>
+                <small class="text-muted">已更新 ${updatedCount} 个时间点</small>
+            `;
+            modalFooter.innerHTML = `
+                <button type="button" class="btn btn-success" onclick="window.location.reload()">
+                    <i class="bi bi-check-lg me-1"></i>完成
+                </button>
+            `;
         }
     }
 
@@ -5189,19 +6176,17 @@
     async function deleteRecord(id) {
         if (!confirm('确定删除这条记录？')) return;
 
-        try {
-            const res = await fetch(`/delete/${id}`, {
-                method: 'POST',
-                headers: {'X-Requested-With': 'XMLHttpRequest'}
-            });
-            const result = await res.json();
-            if (result.status === 'success') {
-                window.location.reload();
-            } else {
-                alert('删除失败: ' + result.message);
+        const result = await apiCall(`/delete/${id}`, {
+            method: 'POST'
+        }, {
+            showLoading: false,
+            onError: (error) => {
+                alert('删除失败: ' + error.message);
             }
-        } catch (e) {
-            alert('删除失败: ' + e);
+        });
+
+        if (result) {
+            window.location.reload();
         }
     }
 
@@ -5209,26 +6194,204 @@
         if (!input.files || !input.files[0]) return;
 
         const file = input.files[0];
-        const formData = new FormData();
-        formData.append('file', file);
+
+        // 显示导入配置对话框
+        showImportConfigDialog(file);
+        input.value = '';
+    }
+
+    // 显示导入配置对话框
+    function showImportConfigDialog(file) {
+        // 创建或获取模态框
+        let modal = document.getElementById('importConfigModal');
+        if (!modal) {
+            const modalHtml = `
+                <div class="modal fade" id="importConfigModal" tabindex="-1" data-bs-backdrop="static">
+                    <div class="modal-dialog modal-lg modal-dialog-centered">
+                        <div class="modal-content">
+                            <div class="modal-header bg-primary text-white">
+                                <h5 class="modal-title">
+                                    <i class="bi bi-file-earmark-spreadsheet me-2"></i>CSV 导入配置
+                                </h5>
+                                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                            </div>
+                            <div class="modal-body">
+                                <div class="mb-3">
+                                    <span class="badge bg-secondary" id="importFileName"></span>
+                                </div>
+
+                                <!-- 导入模式选择 -->
+                                <div class="row mb-3">
+                                    <div class="col-md-6">
+                                        <label class="form-label fw-bold">导入模式</label>
+                                        <select class="form-select" id="importMode">
+                                            <option value="normal">普通模式 (手动测量数据)</option>
+                                            <option value="cgm">CGM 模式 (动态血糖仪数据)</option>
+                                        </select>
+                                        <small class="text-muted">CGM模式会将数据标记为"CGM"类型</small>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label fw-bold">数据单位</label>
+                                        <select class="form-select" id="importUnit">
+                                            <option value="mmol/L">mmol/L (国内常用)</option>
+                                            <option value="mg/dL">mg/dL (需转换)</option>
+                                        </select>
+                                        <small class="text-muted">mg/dL 数据将自动转换为 mmol/L</small>
+                                    </div>
+                                </div>
+
+                                <!-- 数据预览 -->
+                                <div class="mb-3">
+                                    <label class="form-label fw-bold">数据预览</label>
+                                    <div id="importPreview" class="border rounded p-2" style="max-height: 300px; overflow-y: auto;">
+                                        <div class="text-center text-muted py-3">
+                                            <div class="spinner-border spinner-border-sm me-2"></div>
+                                            正在加载预览...
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- 列名检测提示 -->
+                                <div id="importColumnTips" class="alert alert-info mb-0 d-none">
+                                    <i class="bi bi-info-circle me-2"></i>
+                                    <span id="importColumnTipsText"></span>
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
+                                    <i class="bi bi-x-lg me-1"></i>取消
+                                </button>
+                                <button type="button" class="btn btn-primary" id="confirmImportBtn" onclick="confirmImport()">
+                                    <i class="bi bi-upload me-1"></i>开始导入
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            document.body.insertAdjacentHTML('beforeend', modalHtml);
+            modal = document.getElementById('importConfigModal');
+        }
+
+        // 存储文件引用
+        window.importFile = file;
+        document.getElementById('importFileName').textContent = file.name;
+
+        // 显示模态框
+        const bsModal = new bootstrap.Modal(modal);
+        bsModal.show();
+
+        // 加载预览
+        loadImportPreview(file);
+    }
+
+    // 加载导入预览
+    async function loadImportPreview(file) {
+        const previewDiv = document.getElementById('importPreview');
+        const tipDiv = document.getElementById('importColumnTips');
+        const tipText = document.getElementById('importColumnTipsText');
 
         try {
+            const formData = new FormData();
+            formData.append('file', file);
+
+            const res = await fetch('/preview_import', {
+                method: 'POST',
+                body: formData
+            });
+            const result = await res.json();
+
+            if (result.status === 'success') {
+                // 显示列名检测提示
+                const columns = result.columns;
+                const hasTimestamp = columns.some(c => ['timestamp', '时间', '测量时间', 'datetime', '日期时间', 'Date Time', 'Time'].includes(c));
+                const hasValue = columns.some(c => ['value', '血糖值', '数值', '血糖', 'Glucose', 'CGM值', 'mg/dL', 'mmol/L'].includes(c));
+
+                if (hasTimestamp && hasValue) {
+                    tipDiv.classList.remove('d-none');
+                    tipDiv.className = 'alert alert-success mb-0';
+                    tipText.textContent = `检测到 ${columns.length} 列数据，已识别时间列和血糖值列，可以导入`;
+                } else {
+                    tipDiv.classList.remove('d-none');
+                    tipDiv.className = 'alert alert-warning mb-0';
+                    tipText.textContent = `检测到列: ${columns.join(', ')}。请确保包含时间列和血糖值列`;
+                }
+
+                // 构建表格预览
+                let tableHtml = '<table class="table table-sm table-striped mb-0" style="font-size: 0.85rem;">';
+                tableHtml += '<thead><tr>';
+                columns.forEach(col => {
+                    tableHtml += `<th class="text-nowrap">${escapeHtml(col)}</th>`;
+                });
+                tableHtml += '</tr></thead><tbody>';
+
+                result.rows.forEach(row => {
+                    tableHtml += '<tr>';
+                    columns.forEach(col => {
+                        const val = row[col];
+                        tableHtml += `<td class="text-nowrap">${val !== null && val !== undefined ? escapeHtml(val) : ''}</td>`;
+                    });
+                    tableHtml += '</tr>';
+                });
+                tableHtml += '</tbody></table>';
+
+                previewDiv.innerHTML = tableHtml;
+            } else {
+                previewDiv.innerHTML = `<div class="text-danger">${escapeHtml(result.message)}</div>`;
+            }
+        } catch (e) {
+            previewDiv.innerHTML = `<div class="text-danger">预览加载失败: ${escapeHtml(e.message || e)}</div>`;
+        }
+    }
+
+    // 确认导入
+    async function confirmImport() {
+        const file = window.importFile;
+        if (!file) {
+            alert('请先选择文件');
+            return;
+        }
+
+        const mode = document.getElementById('importMode').value;
+        const unit = document.getElementById('importUnit').value;
+        const btn = document.getElementById('confirmImportBtn');
+
+        // 显示加载状态
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>导入中...';
+
+        try {
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('mode', mode);
+            formData.append('unit', unit);
+
             const res = await fetch('/import', {
                 method: 'POST',
                 body: formData
             });
             const result = await res.json();
+
             if (result.status === 'success') {
-                alert(result.message);
+                // 关闭模态框
+                const modal = bootstrap.Modal.getInstance(document.getElementById('importConfigModal'));
+                modal.hide();
+
+                // 显示成功信息
+                alert(`导入完成！\n成功: ${result.imported} 条\n跳过: ${result.skipped} 条`);
                 window.location.reload();
             } else {
                 alert('导入失败: ' + result.message);
+                btn.disabled = false;
+                btn.innerHTML = '<i class="bi bi-upload me-1"></i>开始导入';
             }
         } catch (e) {
             alert('导入失败: ' + e);
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-upload me-1"></i>开始导入';
         }
 
-        input.value = '';
+        window.importFile = null;
     }
 
     // ========== 用户设置功能 ==========
@@ -5264,21 +6427,22 @@
                 return;
             }
 
-            const res = await fetch('/settings', {
+            const result = await apiCall('/settings', {
                 method: 'POST',
-                headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify(data)
+            }, {
+                showLoading: false,
+                onError: (error) => {
+                    alert('保存失败: ' + error.message);
+                }
             });
 
-            const result = await res.json();
-            if (result.status === 'success') {
+            if (result) {
                 alert('个人信息更新成功！');
                 // 关闭模态框
                 bootstrap.Modal.getInstance(document.getElementById('userSettingsModal')).hide();
                 // 刷新页面以显示新数据
                 window.location.reload();
-            } else {
-                alert('保存失败: ' + result.message);
             }
         } catch (e) {
             alert('保存失败: ' + e);
@@ -5591,32 +6755,28 @@
      * 手动触发健康分析
      */
     async function triggerManualAnalysis(days = 7) {
-        try {
-            const res = await fetch('/analyze_health', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ days: days })
-            });
-
-            const result = await res.json();
-
-            if (result.status === 'success') {
-                showToast(`✅ 基于近${days}天的健康分析生成成功！`, 'success');
-                // 延迟刷新，让用户看到成功提示
-                setTimeout(() => {
-                    location.reload();
-                }, 1500);
-            } else {
+        const result = await apiCall('/analyze_health', {
+            method: 'POST',
+            body: JSON.stringify({ days: days })
+        }, {
+            showLoading: false,
+            onError: (error) => {
                 // 检查是否是配额错误
-                if (result.error_type === 'quota_exceeded' && result.retry_after > 0) {
-                    showQuotaExhaustedModal(result.retry_after, days);
+                if (error.errorType === 'quota_exceeded') {
+                    const retryAfter = error.details?.retry_after || error.retryAfter || 60;
+                    showQuotaExhaustedModal(retryAfter, days);
                 } else {
-                    showToast('❌ 生成失败: ' + (result.message || '未知错误'), 'error');
+                    showToast('❌ 生成失败: ' + error.message, 'error');
                 }
             }
-        } catch (e) {
-            console.error('Health analysis error:', e);
-            showToast('❌ 生成失败: ' + e.message, 'error');
+        });
+
+        if (result) {
+            showToast(`✅ 基于近${days}天的健康分析生成成功！`, 'success');
+            // 延迟刷新，让用户看到成功提示
+            setTimeout(() => {
+                location.reload();
+            }, 1500);
         }
     }
 
@@ -5851,11 +7011,12 @@
             const result = await res.json();
 
             if (result.status === 'success') {
-                const duplicates = result.duplicates;
+                const dupData = result.data || result;
+                const duplicates = dupData.duplicates || [];
                 if (duplicates.length === 0) {
                     alert('太棒了！没有发现重复数据。');
                 } else {
-                    let message = `发现 ${result.total_groups} 组重复数据：\n\n`;
+                    let message = `发现 ${dupData.total_groups || duplicates.length} 组重复数据：\n\n`;
                     duplicates.slice(0, 10).forEach((dup, index) => {
                         message += `${index + 1}. ${dup.time} - ${dup.type} - ${dup.value} (${dup.count}条记录)\n`;
                     });
@@ -5968,22 +7129,19 @@
             return;
         }
 
-        try {
-            const res = await fetch(`/switch_user/${userId}`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' }
-            });
-            const result = await res.json();
-
-            if (result.status === 'success') {
-                console.log('Switched to user:', result.user);
-                location.reload();  // Refresh page to load new user's data
-            } else {
-                alert('切换失败: ' + result.message);
+        const result = await apiCall(`/switch_user/${userId}`, {
+            method: 'POST'
+        }, {
+            showLoading: false,
+            onError: (error) => {
+                console.error('Switch user error:', error);
+                alert('切换失败: ' + error.message);
             }
-        } catch (e) {
-            console.error('Switch user error:', e);
-            alert('切换失败: ' + e.message);
+        });
+
+        if (result) {
+            console.log('Switched to user:', result.data?.user);
+            location.reload();  // Refresh page to load new user's data
         }
     }
 

@@ -9,11 +9,11 @@ def check_timestamps():
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
     
-    # Query for records with type '运动后餐前'
+    # Query for records with type '运动后'
     c.execute("""
         SELECT id, timestamp, value, type, notes, created_at 
         FROM records 
-        WHERE type = '运动后餐前' 
+        WHERE type = '运动后' 
         ORDER BY timestamp DESC
     """)
     

@@ -55,10 +55,10 @@ def parse_glucose_input(text, history_context=None, images_data=None, mime_type=
 
     **示例输出**（3张午餐照片：米饭、西兰花、鸡胸肉）：
     [
-        {{"value": 0, "type": "午餐", "notes": "一碗白米饭（约150g）", "calories": 200, "datetime": "2024-12-31 11:30:00", "is_predicted": false}},
-        {{"value": 0, "type": "午餐", "notes": "清炒西兰花（约100g）", "calories": 50, "datetime": "2024-12-31 11:30:00", "is_predicted": false}},
-        {{"value": 0, "type": "午餐", "notes": "鸡胸肉（约100g）", "calories": 165, "datetime": "2024-12-31 11:30:00", "is_predicted": false}},
-        {{"value": 7.8, "predicted_value": 7.8, "type": "餐后2小时", "notes": "基于午餐总热量415kcal的预测", "datetime": "2024-12-31 13:30:00", "is_predicted": true}}
+        {{"value": 0, "type": "午餐", "notes": "一碗白米饭（约150g）", "calories": 200, "carbs_grams": 45, "gi_value": 73, "datetime": "2024-12-31 11:30:00", "is_predicted": false}},
+        {{"value": 0, "type": "午餐", "notes": "清炒西兰花（约100g）", "calories": 50, "carbs_grams": 5, "gi_value": 25, "datetime": "2024-12-31 11:30:00", "is_predicted": false}},
+        {{"value": 0, "type": "午餐", "notes": "鸡胸肉（约100g）", "calories": 165, "carbs_grams": 0, "gi_value": 0, "datetime": "2024-12-31 11:30:00", "is_predicted": false}},
+        {{"value": 7.8, "predicted_value": 7.8, "type": "餐后2小时", "notes": "基于午餐总热量415kcal、总碳水50g的预测", "datetime": "2024-12-31 13:30:00", "is_predicted": true}}
     ]
     """
 
@@ -89,15 +89,21 @@ def parse_glucose_input(text, history_context=None, images_data=None, mime_type=
          - 纠正信息："不是午餐，是早餐" → 按早餐处理
 
        - **情况 A：运动/健康App截图**
-         - 提取：距离(km)、时长、心率、配速、步频。
+         - 提取：距离(km)、时长、心率、配速、步频、消耗卡路里。
          - **时间**：务必提取截图中的运动开始时间。
          - 类型设为 "跑步" 或 "运动"。
+         - **重要**：运动记录只记录运动数据本身，不要生成运动后血糖预测！血糖预测由系统统一处理。
        - **情况 B：食物/餐饮照片** → **必须生成2条记录！**
          - **记录1：餐食记录**
            - value = 0
            - 类型根据时间或文字说明设为："晨跑前"/"早餐"/"午餐"/"晚餐"
            - notes = 食物名称和份量
            - calories = 估算热量(kcal)
+           - carbs_grams = 估算碳水化合物含量(g)
+           - gi_value = 食物的升糖指数(0-100)，需要根据食物类型估算：
+             - 低GI (<55): 全麦面包、糙米、豆类、大部分蔬菜、苹果
+             - 中GI (55-70): 白米饭、土豆、玉米、香蕉
+             - 高GI (>70): 白面包、糯米、西瓜、油条、稀饭
            - diet_analysis = 升糖指数(GI)及营养评价
            - is_predicted = false
          - **记录2：血糖记录**
@@ -137,6 +143,18 @@ def parse_glucose_input(text, history_context=None, images_data=None, mime_type=
       - "中午13:10测的124/68" → type="血压测量", systolic_pressure=124, diastolic_pressure=68, datetime=今天13:10
       - "餐后血压130/75，脉搏82" → type="餐后血压", systolic_pressure=130, diastolic_pressure=75, pulse_rate=82
 
+    **体重识别规则**:
+    - 识别关键词：体重/称了/称重/秤/重了/kg/公斤
+    - 提取信息：
+      - weight: 体重值（单位kg，合理范围30-200kg）
+      - type: "体重记录"
+      - value: 0（体重记录的血糖值为0）
+    - BMI由系统自动计算，不需要AI填写
+    - 示例：
+      - "体重75kg" → type="体重记录", weight=75.0
+      - "今天称了74.5" → type="体重记录", weight=74.5
+      - "早上称重73.8公斤" → type="体重记录", weight=73.8
+
     **血糖预测规则（用于计算 predicted_value）**:
     - 预测值必须基于用户历史数据（空腹均值、餐后均值）合理推算
     - **累积效应**：如果用户在短时间内多次进食，预测值应适当上调
@@ -151,27 +169,29 @@ def parse_glucose_input(text, history_context=None, images_data=None, mime_type=
        - 例如："吃了二甲双胍后，喝了一杯酸奶，运动后血糖6.2"应拆分为：
          - 记录1：medication_name="二甲双胍", medication_is_new_plan=false
          - 记录2：type="晨跑前", value=0, notes="一杯酸奶"
-         - 记录3：type="运动后餐前", value=6.2
+         - 记录3：type="运动后", value=6.2
 
        - **时间推断规则**（参考用户作息时间表）：
          - "空腹" / "早空腹" -> 07:15
          - "晨跑前" / "运动前吃的" -> 07:00（餐食记录）
-         - "运动后餐前" / "运动后" / "早餐前" -> 08:45
+         - "运动后" / "运动后" / "早餐前" -> 08:45
          - "早餐" -> 09:00（餐食记录）
          - "早餐后" / "早餐后2小时" -> 11:00
          - "午餐" -> 11:30（餐食记录）
          - "午餐后" -> 13:30
+         - "晚饭前" / "晚餐前" -> 17:30
          - "晚餐" -> 18:00（餐食记录）
          - "晚餐后" -> 20:00
          - "睡前" -> 22:00
 
     3. **记录类型分类（必须严格使用以下标准类型，不要创造新类型）**:
-       - 血糖测量：'空腹', '餐前', '运动后餐前', '餐后1小时', '餐后2小时', '睡前', '运动后'
+       - 血糖测量：'空腹', '餐前', '运动后', '餐后1小时', '餐后2小时', '晚饭前', '睡前', '运动后'
          **重要**:
          - 早餐后/午餐后/晚餐后测量 → 统一使用 '餐后2小时'（默认）或 '餐后1小时'
-         - 早饭前/午饭前/晚饭前 → 统一使用 '餐前'
-         - 不要使用 "早餐后2小时"、"晚饭前" 等变体
+         - 早饭前/午饭前 → 统一使用 '餐前'
+         - 晚饭前/晚餐前 → 使用 '晚饭前'（17:30 时间点）
        - 血压测量：'空腹血压', '血压测量', '餐后血压'
+       - 体重记录：'体重记录'（value=0, weight字段存体重值）
        - 餐食记录：'早餐', '午餐', '晚餐', '加餐'（value=0）
        - 运动记录：'跑步', '运动'（value=0）
        - 药物记录：medication_name 不为空
@@ -191,6 +211,8 @@ def parse_glucose_input(text, history_context=None, images_data=None, mime_type=
             "datetime": "YYYY-MM-DD HH:MM:SS",
             "notes": "string",
             "calories": int,
+            "carbs_grams": float (碳水化合物含量，单位g，仅餐食记录需要),
+            "gi_value": float (升糖指数0-100，仅餐食记录需要),
             "diet_analysis": "string",
             "is_predicted": boolean,
             "distance": float,
@@ -204,7 +226,8 @@ def parse_glucose_input(text, history_context=None, images_data=None, mime_type=
             "medication_name": "string (药物名称，可选)",
             "medication_dosage": "string (剂量，可选)",
             "medication_timing": "string (服用时机，可选)",
-            "medication_is_new_plan": boolean (是否为新的长期用药方案)
+            "medication_is_new_plan": boolean (是否为新的长期用药方案),
+            "weight": float (体重值kg，仅体重记录需要)
         }}
     ]
     你必须只返回一个JSON数组，不要包含任何 markdown 格式化。

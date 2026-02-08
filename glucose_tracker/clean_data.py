@@ -9,8 +9,8 @@ def clean_premeal_data():
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
     
-    # 1. Select all '运动后餐前' records
-    c.execute("SELECT id, timestamp FROM records WHERE type = '运动后餐前'")
+    # 1. Select all '运动后' records
+    c.execute("SELECT id, timestamp FROM records WHERE type = '运动后'")
     rows = c.fetchall()
     
     print(f"Found {len(rows)} records to clean.")

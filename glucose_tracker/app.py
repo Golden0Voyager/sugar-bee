@@ -34,6 +34,54 @@ from dotenv import load_dotenv
 load_dotenv()
 api_key = os.getenv("GEMINI_API_KEY")
 
+
+# ========== 标准化 API 响应辅助函数 ==========
+def api_success(data=None, message=None):
+    """
+    生成成功的 API 响应
+
+    Args:
+        data: 响应数据
+        message: 可选的消息
+
+    Returns:
+        tuple: (JSON响应, HTTP状态码)
+    """
+    response = {
+        'status': 'success',
+        'timestamp': datetime.datetime.now().isoformat()
+    }
+    if data is not None:
+        response['data'] = data
+    if message:
+        response['message'] = message
+    return jsonify(response), 200
+
+
+def api_error(message, status_code=400, error_type=None, details=None):
+    """
+    生成错误的 API 响应
+
+    Args:
+        message: 错误消息
+        status_code: HTTP 状态码 (默认 400)
+        error_type: 错误类型标识
+        details: 错误详情
+
+    Returns:
+        tuple: (JSON响应, HTTP状态码)
+    """
+    response = {
+        'status': 'error',
+        'message': message,
+        'timestamp': datetime.datetime.now().isoformat()
+    }
+    if error_type:
+        response['error_type'] = error_type
+    if details:
+        response['details'] = details
+    return jsonify(response), status_code
+
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
@@ -93,6 +141,13 @@ def init_db():
             except sqlite3.OperationalError:
                 pass
 
+        # Migration: Add weight/BMI columns
+        for col in ['weight REAL', 'bmi REAL']:
+            try:
+                c.execute(f"ALTER TABLE records ADD COLUMN {col}")
+            except sqlite3.OperationalError:
+                pass
+
         # Migration: Add prediction verification fields
         try:
             c.execute("ALTER TABLE records ADD COLUMN verified_by_real_id INTEGER")
@@ -101,6 +156,17 @@ def init_db():
 
         try:
             c.execute("ALTER TABLE records ADD COLUMN prediction_error REAL")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+
+        # Migration: Add nutrition fields for enhanced glucose prediction
+        try:
+            c.execute("ALTER TABLE records ADD COLUMN carbs_grams REAL")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+
+        try:
+            c.execute("ALTER TABLE records ADD COLUMN gi_value REAL")
         except sqlite3.OperationalError:
             pass  # Column already exists
 
@@ -170,7 +236,7 @@ def init_db():
 init_db()
 
 
-def link_prediction_to_real_record(db, real_record_id, user_id, record_date, record_type, real_value):
+def link_prediction_to_real_record(db, real_record_id, user_id, record_date, record_type, real_value, record_timestamp=None):
     """
     关联预测记录到真实记录，计算预测误差
 
@@ -181,18 +247,28 @@ def link_prediction_to_real_record(db, real_record_id, user_id, record_date, rec
         record_date: 记录日期 (YYYY-MM-DD)
         record_type: 记录类型 (如 '空腹', '餐后2小时' 等)
         real_value: 真实血糖值
+        record_timestamp: 记录时间戳（用于更精确匹配餐后时间点）
 
     Returns:
         dict: 关联的预测信息 {'predicted_value': float, 'error': float} 或 None
     """
     # 血糖值合理范围验证 (mmol/L)
-    VALID_GLUCOSE_RANGE = (2.0, 25.0)
-    if not (VALID_GLUCOSE_RANGE[0] <= real_value <= VALID_GLUCOSE_RANGE[1]):
+    if not settings.is_valid_glucose(real_value):
         print(f"WARNING: Invalid glucose value {real_value}, skipping prediction link")
         return None
 
     try:
         c = db.cursor()
+
+        # 提取小时用于餐后时间点匹配
+        record_hour = None
+        if record_timestamp:
+            try:
+                if ' ' in record_timestamp:
+                    time_part = record_timestamp.split(' ')[1]
+                    record_hour = int(time_part.split(':')[0])
+            except (ValueError, IndexError):
+                pass
 
         # 改进的类型匹配逻辑，避免误匹配
         # 精确匹配血糖类型，排除血压等其他类型
@@ -201,8 +277,31 @@ def link_prediction_to_real_record(db, real_record_id, user_id, record_date, rec
             type_condition = "type IN ('空腹', '早空腹') OR (type LIKE '%空腹%' AND type NOT LIKE '%血压%')"
         elif '餐后1小时' in record_type:
             type_condition = "type LIKE '%餐后1小时%'"
+        elif '早餐后' in record_type:
+            # 精确匹配早餐后
+            type_condition = "type LIKE '%早餐后%'"
+        elif '午餐后' in record_type:
+            # 精确匹配午餐后
+            type_condition = "type LIKE '%午餐后%'"
+        elif '晚餐后' in record_type:
+            # 精确匹配晚餐后
+            type_condition = "type LIKE '%晚餐后%'"
         elif '餐后2小时' in record_type or '餐后' in record_type:
-            type_condition = "type LIKE '%餐后%' AND type NOT LIKE '%1小时%'"
+            # 通用餐后：根据时间点匹配对应的餐后类型
+            if record_hour is not None:
+                if 10 <= record_hour < 13:
+                    # 10:00-12:59 → 早餐后
+                    type_condition = "(type LIKE '%早餐后%' OR (type LIKE '%餐后%' AND type NOT LIKE '%午餐%' AND type NOT LIKE '%晚餐%' AND type NOT LIKE '%1小时%'))"
+                elif 13 <= record_hour < 17:
+                    # 13:00-16:59 → 午餐后
+                    type_condition = "(type LIKE '%午餐后%' OR type = '餐后2小时')"
+                elif 17 <= record_hour < 23:
+                    # 17:00-22:59 → 晚餐后
+                    type_condition = "(type LIKE '%晚餐后%')"
+                else:
+                    type_condition = "type LIKE '%餐后%' AND type NOT LIKE '%1小时%'"
+            else:
+                type_condition = "type LIKE '%餐后%' AND type NOT LIKE '%1小时%'"
         elif '餐前' in record_type:
             type_condition = "type LIKE '%餐前%'"
         elif '睡前' in record_type:
@@ -212,23 +311,38 @@ def link_prediction_to_real_record(db, real_record_id, user_id, record_date, rec
             type_condition = f"type LIKE '%{record_type}%' AND type NOT LIKE '%血压%'"
 
         # 查找同一天同一类型的未验证预测记录
-        # 同时排除血压记录（value > 0 且 systolic_pressure IS NULL）
-        c.execute(f"""
-            SELECT id, value FROM records
-            WHERE user_id = ?
-            AND DATE(timestamp) = ?
-            AND ({type_condition})
-            AND is_predicted = 1
-            AND verified_by_real_id IS NULL
-            AND value > 0
-            AND systolic_pressure IS NULL
-            ORDER BY timestamp ASC
-            LIMIT 1
-        """, (user_id, record_date))
+        # 按时间戳与真实记录时间的接近程度排序（如果有时间戳）
+        if record_timestamp:
+            c.execute(f"""
+                SELECT id, value, timestamp FROM records
+                WHERE user_id = ?
+                AND DATE(timestamp) = ?
+                AND ({type_condition})
+                AND is_predicted = 1
+                AND verified_by_real_id IS NULL
+                AND value > 0
+                AND systolic_pressure IS NULL
+                ORDER BY ABS(strftime('%s', timestamp) - strftime('%s', ?))
+                LIMIT 1
+            """, (user_id, record_date, record_timestamp))
+        else:
+            c.execute(f"""
+                SELECT id, value FROM records
+                WHERE user_id = ?
+                AND DATE(timestamp) = ?
+                AND ({type_condition})
+                AND is_predicted = 1
+                AND verified_by_real_id IS NULL
+                AND value > 0
+                AND systolic_pressure IS NULL
+                ORDER BY timestamp ASC
+                LIMIT 1
+            """, (user_id, record_date))
 
         prediction = c.fetchone()
         if prediction:
-            pred_id, pred_value = prediction
+            pred_id = prediction[0]
+            pred_value = prediction[1]
             error = real_value - pred_value
 
             # 更新预测记录
@@ -295,7 +409,7 @@ def predict_morning_fpg(db, user_id=1):
 
         # 4.2 前一天的饮食与运动卡路里
         c.execute("""
-            SELECT type, calories FROM records
+            SELECT type, calories, timestamp, carbs_grams, gi_value FROM records
             WHERE user_id = ?
             AND DATE(timestamp) = ?
             AND calories > 0
@@ -304,6 +418,71 @@ def predict_morning_fpg(db, user_id=1):
 
         cal_in = sum(row[1] for row in yesterday_calories if row[0] not in ['跑步', '运动'])
         cal_out_exercise = sum(row[1] for row in yesterday_calories if row[0] in ['跑步', '运动'])
+
+        # 加载默认餐食配置
+        user_config = settings.load_config()
+        default_meals = user_config.get('default_meals', {})
+
+        # 检查前一天是否缺失餐食，并补足默认卡路里
+        has_breakfast = has_lunch = has_dinner = False
+        total_carbs = 0
+        gi_values = []
+
+        for row in yesterday_calories:
+            record_type = row[0] or ''
+            timestamp = row[2] or ''
+            carbs = row[3] or 0
+            gi = row[4]
+
+            # 累计营养数据
+            if record_type not in ['跑步', '运动']:
+                total_carbs += carbs
+                if gi is not None:
+                    gi_values.append(gi)
+
+            # 提取小时判断餐食类型
+            hour = 0
+            if timestamp and ' ' in timestamp:
+                time_part = timestamp.split(' ')[1]
+                if ':' in time_part:
+                    hour = int(time_part.split(':')[0])
+
+            # 判断是哪一餐
+            if '早餐' in record_type or '晨跑前' in record_type or (6 <= hour < 10):
+                has_breakfast = True
+            elif '午餐' in record_type or (11 <= hour < 14):
+                has_lunch = True
+            elif '晚餐' in record_type or (17 <= hour < 21):
+                has_dinner = True
+
+        # 补足缺失餐食的默认卡路里和营养数据
+        default_cal = 0
+        if not has_breakfast and default_meals.get('breakfast', {}).get('enabled', True):
+            breakfast_config = default_meals.get('breakfast', {})
+            default_cal += breakfast_config.get('calories', 300)
+            total_carbs += breakfast_config.get('carbs_grams', 45)
+            if breakfast_config.get('gi_value'):
+                gi_values.append(breakfast_config.get('gi_value'))
+        if not has_lunch and default_meals.get('lunch', {}).get('enabled', True):
+            lunch_config = default_meals.get('lunch', {})
+            default_cal += lunch_config.get('calories', 500)
+            total_carbs += lunch_config.get('carbs_grams', 75)
+            if lunch_config.get('gi_value'):
+                gi_values.append(lunch_config.get('gi_value'))
+        if not has_dinner and default_meals.get('dinner', {}).get('enabled', True):
+            dinner_config = default_meals.get('dinner', {})
+            default_cal += dinner_config.get('calories', 500)
+            total_carbs += dinner_config.get('carbs_grams', 75)
+            if dinner_config.get('gi_value'):
+                gi_values.append(dinner_config.get('gi_value'))
+
+        cal_in += default_cal
+
+        # 计算营养统计
+        avg_gi = sum(gi_values) / len(gi_values) if gi_values else None
+        high_gi_count = len([gi for gi in gi_values if gi >= 70])
+        high_gi_ratio = (high_gi_count / len(gi_values) * 100) if gi_values else 0
+
         user_bmr = settings.calculate_bmr()
         net_calories = cal_in - (user_bmr + cal_out_exercise)
 
@@ -368,11 +547,25 @@ def predict_morning_fpg(db, user_id=1):
         # 能量平衡
         energy_summary = f"""
 前一天能量平衡（{yesterday_str}）：
-- 饮食摄入: {cal_in} kcal
+- 饮食摄入: {cal_in} kcal{f' (含默认补足 {default_cal} kcal)' if default_cal > 0 else ''}
 - 运动消耗: {cal_out_exercise} kcal
 - 基础代谢: {user_bmr} kcal
 - 净能量: {net_calories:+d} kcal ({'能量盈余，脂糖累积' if net_calories > 0 else '能量缺口，减糖减脂'})
         """
+
+        # 营养详情
+        if total_carbs > 0 or gi_values:
+            avg_gi_str = f'{avg_gi:.0f}' if avg_gi else '未知'
+            high_gi_str = f'{high_gi_ratio:.0f}' if high_gi_ratio is not None else '0'
+            nutrition_summary = f"""
+前一天营养详情：
+- 总碳水: {total_carbs:.0f}g
+- 平均GI值: {avg_gi_str}
+- 高GI食物占比: {high_gi_str}%
+注：高碳水+高GI通常导致次日晨起血糖偏高，低GI饮食有助于稳定血糖
+            """
+        else:
+            nutrition_summary = "前一天无详细营养数据"
 
         # 用药情况
         if medications:
@@ -403,6 +596,8 @@ def predict_morning_fpg(db, user_id=1):
 
 {energy_summary}
 
+{nutrition_summary}
+
 {med_summary}
 
 **预测任务**：
@@ -410,8 +605,9 @@ def predict_morning_fpg(db, user_id=1):
 - 预测值应基于：
   1. 前一天血糖波动情况（特别是晚间血糖）
   2. 前一天能量平衡（能量盈余通常导致晨起血糖偏高）
-  3. 近期空腹血糖趋势
-  4. 当前用药控制效果
+  3. 前一天营养结构（高碳水+高GI通常导致晨起血糖偏高）
+  4. 近期空腹血糖趋势
+  5. 当前用药控制效果
 - 预测值应在合理范围内（3.5-10.0 mmol/L）
 - 给出简短的预测依据说明（1-2句话）
 
@@ -442,12 +638,22 @@ def predict_morning_fpg(db, user_id=1):
         predicted_value = result.get('predicted_value')
         reasoning = result.get('reasoning', 'AI预测')
 
-        if not predicted_value or not (3.5 <= predicted_value <= 10.0):
+        if not settings.is_valid_prediction(predicted_value, 'fasting'):
             print(f"ERROR: Invalid predicted value: {predicted_value}")
             return
 
-        # 8. 存储预测记录
+        # 8. 存储预测记录（先删除已存在的同类型预测，防止重复）
         prediction_timestamp = f"{today_str} 07:15:00"
+
+        # 删除今天已存在的空腹预测记录（防止并发请求导致的重复）
+        c.execute("""
+            DELETE FROM records
+            WHERE user_id = ?
+            AND DATE(timestamp) = ?
+            AND (type IN ('空腹', '早空腹') OR (type LIKE '%空腹%' AND type NOT LIKE '%血压%'))
+            AND is_predicted = 1
+        """, (user_id, today_str))
+
         c.execute("""
             INSERT INTO records
             (user_id, value, unit, type, notes, timestamp, calories, diet_analysis, is_predicted)
@@ -463,24 +669,25 @@ def predict_morning_fpg(db, user_id=1):
         traceback.print_exc()
 
 
-def predict_post_exercise_glucose(db, user_id=1, target_date=None):
+def predict_post_exercise_glucose(db, user_id=1, target_date=None, force_update=False):
     """
-    预测运动后餐前血糖值
+    预测运动后血糖值
 
     基于当天数据：
     - 早空腹血糖（真实值）
     - 运动数据（距离、时长、心率、消耗卡路里）
-    - 历史运动后餐前血糖与空腹血糖的差值
+    - 历史运动后血糖与空腹血糖的差值
 
     触发条件：
     - 指定日期有运动记录
     - 指定日期有空腹血糖记录（真实值）
-    - 指定日期还没有运动后餐前血糖记录（无论真实还是预测）
+    - 指定日期还没有运动后血糖记录（无论真实还是预测），或 force_update=True
 
     Args:
         db: 数据库连接
         user_id: 用户ID
         target_date: 目标日期（YYYY-MM-DD格式），默认为今天
+        force_update: 是否强制更新已有的预测记录（用于上传运动数据后重新预测）
     """
     if not api_key:
         return None  # No API key, skip prediction
@@ -491,17 +698,29 @@ def predict_post_exercise_glucose(db, user_id=1, target_date=None):
 
         c = db.cursor()
 
-        # 1. 检查指定日期是否已有运动后餐前血糖记录（真实或预测）
+        # 1. 检查指定日期是否已有运动后血糖记录（真实或预测）
         c.execute("""
-            SELECT id FROM records
+            SELECT id, is_predicted FROM records
             WHERE user_id = ?
             AND DATE(timestamp) = ?
-            AND type = '运动后餐前'
+            AND type = '运动后'
             AND value > 0
         """, (user_id, target_date,))
         existing = c.fetchone()
+
+        existing_id = None
         if existing:
-            return None  # 已有记录，跳过
+            existing_id = existing[0]
+            is_predicted = existing[1]
+
+            # 如果是真实记录（非预测），不更新
+            if not is_predicted:
+                print(f"已有真实运动后血糖记录，跳过预测")
+                return None
+
+            # 如果是预测记录但不强制更新，跳过
+            if not force_update:
+                return None  # 已有预测记录，跳过
 
         # 2. 获取指定日期的空腹血糖（真实值）
         c.execute("""
@@ -526,7 +745,7 @@ def predict_post_exercise_glucose(db, user_id=1, target_date=None):
             FROM records
             WHERE user_id = ?
             AND DATE(timestamp) = ?
-            AND (type IN ('跑步', '运动') OR distance IS NOT NULL)
+            AND (type IN ('跑步', '运动') OR distance > 0)
             ORDER BY timestamp DESC
             LIMIT 1
         """, (user_id, target_date,))
@@ -540,7 +759,7 @@ def predict_post_exercise_glucose(db, user_id=1, target_date=None):
         exercise_calories = exercise_record[3] or 0
         exercise_time = exercise_record[4]
 
-        # 4. 获取历史运动后餐前血糖与空腹血糖的差值（目标日期之前30天）
+        # 4. 获取历史运动后血糖与空腹血糖的差值（目标日期之前30天）
         c.execute("""
             SELECT
                 r1.value as post_exercise_value,
@@ -552,7 +771,7 @@ def predict_post_exercise_glucose(db, user_id=1, target_date=None):
                 AND r2.is_predicted = 0
                 AND r2.value > 0
             WHERE r1.user_id = ?
-            AND r1.type = '运动后餐前'
+            AND r1.type = '运动后'
             AND r1.is_predicted = 0
             AND r1.value > 0
             AND DATE(r1.timestamp) < ?
@@ -572,7 +791,7 @@ def predict_post_exercise_glucose(db, user_id=1, target_date=None):
         user_profile = settings.get_ai_system_prompt()
 
         prompt = f"""
-你是一个专业的糖尿病健康管理顾问。请基于用户的运动数据和空腹血糖，预测运动后餐前血糖值。
+你是一个专业的糖尿病健康管理顾问。请基于用户的运动数据和空腹血糖，预测运动后血糖值。
 
 {user_profile}
 
@@ -589,12 +808,12 @@ def predict_post_exercise_glucose(db, user_id=1, target_date=None):
 - 运动时间: {exercise_time}
 
 ### 历史参考
-- 历史运动后餐前与空腹血糖平均差值: {avg_diff:.2f} mmol/L
+- 历史运动后与空腹血糖平均差值: {avg_diff:.2f} mmol/L
 - 历史数据点数: {len(historical_data)}
 
 ## 预测任务
 
-请预测 {target_date} 运动后餐前血糖值（约 08:45）。
+请预测 {target_date} 运动后血糖值（约 08:45）。
 
 **预测依据**：
 1. 运动强度和时长对血糖的消耗影响
@@ -602,7 +821,7 @@ def predict_post_exercise_glucose(db, user_id=1, target_date=None):
 3. 历史差值规律
 4. 运动后血糖通常比空腹低，但不会低于正常范围
 
-**预测范围**：3.5-8.0 mmol/L（运动后餐前的合理范围）
+**预测范围**：3.5-8.0 mmol/L（运动后的合理范围）
 
 请返回以下JSON格式（不要包含 markdown 格式）：
 {{
@@ -631,21 +850,33 @@ def predict_post_exercise_glucose(db, user_id=1, target_date=None):
         predicted_value = result.get('predicted_value')
         reasoning = result.get('reasoning', 'AI预测')
 
-        if not predicted_value or not (3.5 <= predicted_value <= 8.0):
+        if not settings.is_valid_prediction(predicted_value, 'post_exercise'):
             print(f"ERROR: Invalid predicted value: {predicted_value} for {target_date}")
             return None
 
-        # 8. 存储预测记录（运动结束后约30分钟）
+        # 8. 存储或更新预测记录（运动结束后约30分钟）
         prediction_timestamp = f"{target_date} 08:45:00"
-        c.execute("""
-            INSERT INTO records
-            (user_id, value, unit, type, notes, timestamp, calories, diet_analysis, is_predicted)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (user_id, predicted_value, 'mmol/L', '运动后餐前', f'AI预测: {reasoning}',
-              prediction_timestamp, 0, '', 1))
-        db.commit()
 
-        print(f"✓ Post-Exercise Glucose Prediction generated: {predicted_value} mmol/L for {target_date} 08:45")
+        if existing_id:
+            # 更新已有的预测记录
+            c.execute("""
+                UPDATE records
+                SET value = ?, notes = ?, timestamp = ?
+                WHERE id = ?
+            """, (predicted_value, f'AI预测: {reasoning}', prediction_timestamp, existing_id))
+            db.commit()
+            print(f"✓ Post-Exercise Glucose Prediction UPDATED: {predicted_value} mmol/L for {target_date} 08:45")
+        else:
+            # 插入新记录
+            c.execute("""
+                INSERT INTO records
+                (user_id, value, unit, type, notes, timestamp, calories, diet_analysis, is_predicted)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (user_id, predicted_value, 'mmol/L', '运动后', f'AI预测: {reasoning}',
+                  prediction_timestamp, 0, '', 1))
+            db.commit()
+            print(f"✓ Post-Exercise Glucose Prediction generated: {predicted_value} mmol/L for {target_date} 08:45")
+
         return predicted_value
 
     except Exception as e:
@@ -662,9 +893,9 @@ def predict_post_exercise_glucose(db, user_id=1, target_date=None):
 
 def backfill_post_exercise_predictions(db, user_id=1, days=30):
     """
-    批量补全历史运动后餐前血糖预测
+    批量补全历史运动后血糖预测
 
-    查找指定天数内有空腹血糖+运动记录但没有运动后餐前血糖的日期，
+    查找指定天数内有空腹血糖+运动记录但没有运动后血糖的日期，
     并生成预测值。
 
     Args:
@@ -681,7 +912,7 @@ def backfill_post_exercise_predictions(db, user_id=1, days=30):
     try:
         c = db.cursor()
 
-        # 找出有空腹血糖+运动记录但没有运动后餐前血糖的日期
+        # 找出有空腹血糖+运动记录但没有运动后血糖的日期
         c.execute("""
             SELECT DISTINCT DATE(r1.timestamp) as date
             FROM records r1
@@ -700,7 +931,7 @@ def backfill_post_exercise_predictions(db, user_id=1, days=30):
                 SELECT 1 FROM records r3
                 WHERE r3.user_id = r1.user_id
                 AND DATE(r3.timestamp) = DATE(r1.timestamp)
-                AND r3.type = '运动后餐前'
+                AND r3.type = '运动后'
                 AND r3.value > 0
             )
             ORDER BY date DESC
@@ -738,7 +969,7 @@ def backfill_post_exercise_predictions(db, user_id=1, days=30):
         return {'success': 0, 'skipped': 0, 'dates': [], 'error': str(e)}
 
 
-def predict_remaining_glucose_slots(db, user_id=1, target_date=None):
+def predict_remaining_glucose_slots(db, user_id=1, target_date=None, force_update=False):
     """
     基于当日已有数据，向后预测剩余时间点的血糖值
 
@@ -751,6 +982,7 @@ def predict_remaining_glucose_slots(db, user_id=1, target_date=None):
         db: 数据库连接
         user_id: 用户ID
         target_date: 目标日期（默认今天）
+        force_update: 是否强制更新已有的预测记录（用于用户录入新数据后更新剩余预测）
 
     Returns:
         list: 生成的预测记录列表
@@ -770,6 +1002,7 @@ def predict_remaining_glucose_slots(db, user_id=1, target_date=None):
         predictable_slots = [
             {'key': 'post_breakfast', 'name': '早餐后2h', 'time': '11:00', 'type': '早餐后2小时'},
             {'key': 'post_lunch', 'name': '午餐后2h', 'time': '14:30', 'type': '午餐后2小时'},
+            {'key': 'pre_dinner', 'name': '晚饭前', 'time': '17:30', 'type': '晚饭前'},
             {'key': 'post_dinner', 'name': '晚餐后2h', 'time': '20:00', 'type': '晚餐后2小时'},
             {'key': 'bedtime', 'name': '睡前', 'time': '22:00', 'type': '睡前'}
         ]
@@ -812,7 +1045,7 @@ def predict_remaining_glucose_slots(db, user_id=1, target_date=None):
             FROM records
             WHERE user_id = ?
             AND DATE(timestamp) = ?
-            AND notes LIKE '%早餐%' OR notes LIKE '%午餐%' OR notes LIKE '%晚餐%'
+            AND (notes LIKE '%早餐%' OR notes LIKE '%午餐%' OR notes LIKE '%晚餐%')
         """, (user_id, target_date))
         meals = c.fetchall()
 
@@ -845,23 +1078,24 @@ def predict_remaining_glucose_slots(db, user_id=1, target_date=None):
         for slot in predictable_slots:
             slot_time = slot['time']
 
-            # 跳过已过去的时间点
-            if slot_time <= current_time:
-                # 检查该时间点是否已有记录
-                c.execute("""
-                    SELECT id FROM records
-                    WHERE user_id = ?
-                    AND DATE(timestamp) = ?
-                    AND (type LIKE ? OR timestamp LIKE ?)
-                """, (user_id, target_date, f"%{slot['name'][:2]}%", f"%{slot_time}%"))
-                if c.fetchone():
-                    continue  # 已有记录，跳过
+            # 检查该时间点是否已有实测记录（真实数据不覆盖）
+            c.execute("""
+                SELECT id FROM records
+                WHERE user_id = ?
+                AND DATE(timestamp) = ?
+                AND type = ?
+                AND is_predicted = 0
+                AND value > 0
+            """, (user_id, target_date, slot['type']))
+            if c.fetchone():
+                continue  # 已有实测记录，跳过
 
-            # 跳过当前时间之前的槽位（除非没有记录）
+            # 跳过当前时间之前的槽位（基准时间之前的不预测）
             if slot_time <= base_time:
                 continue
 
             # 检查是否已有该时间点的预测
+            existing_prediction_id = None
             c.execute("""
                 SELECT id FROM records
                 WHERE user_id = ?
@@ -869,8 +1103,11 @@ def predict_remaining_glucose_slots(db, user_id=1, target_date=None):
                 AND type = ?
                 AND is_predicted = 1
             """, (user_id, target_date, slot['type']))
-            if c.fetchone():
-                continue  # 预测已存在
+            existing = c.fetchone()
+            if existing:
+                if not force_update:
+                    continue  # 预测已存在且不强制更新，跳过
+                existing_prediction_id = existing[0]
 
             # 计算时间差（小时）
             base_h, base_m = map(int, base_time.split(':'))
@@ -908,14 +1145,25 @@ def predict_remaining_glucose_slots(db, user_id=1, target_date=None):
             # 限制在合理范围
             predicted_value = max(3.5, min(15.0, round(predicted_value, 1)))
 
-            # 生成预测记录
+            # 生成或更新预测记录
             timestamp = f"{target_date} {slot_time}:00"
             notes = f"AI预测 | 基于{base_type}({base_glucose}) | 运动消耗{exercise_calories}kcal"
 
-            c.execute("""
-                INSERT INTO records (user_id, value, type, timestamp, is_predicted, notes, created_at)
-                VALUES (?, ?, ?, ?, 1, ?, datetime('now'))
-            """, (user_id, predicted_value, slot['type'], timestamp, notes))
+            if existing_prediction_id:
+                # 更新已有预测
+                c.execute("""
+                    UPDATE records
+                    SET value = ?, notes = ?, verified_by_real_id = NULL, prediction_error = NULL
+                    WHERE id = ?
+                """, (predicted_value, notes, existing_prediction_id))
+                print(f"✓ Updated prediction for {slot['type']}: {predicted_value}")
+            else:
+                # 插入新预测
+                c.execute("""
+                    INSERT INTO records (user_id, value, type, timestamp, is_predicted, notes, created_at)
+                    VALUES (?, ?, ?, ?, 1, ?, datetime('now'))
+                """, (user_id, predicted_value, slot['type'], timestamp, notes))
+                print(f"✓ Created prediction for {slot['type']}: {predicted_value}")
 
             predictions.append({
                 'type': slot['type'],
@@ -1097,6 +1345,17 @@ def generate_health_analysis(db, user_id=1, is_auto=False, days=7):
         """, (user_id,))
         medications = c.fetchall()
 
+        # 6. 收集指定天数内的体重数据
+        c.execute("""
+            SELECT weight, bmi, timestamp FROM records
+            WHERE user_id = ?
+            AND weight IS NOT NULL
+            AND weight > 0
+            AND timestamp > datetime('now', ? || ' days')
+            ORDER BY timestamp DESC
+        """, (user_id, f'-{days}',))
+        weight_records = c.fetchall()
+
         # 6. 构建分析数据摘要
         # 血糖摘要
         if glucose_records:
@@ -1232,6 +1491,24 @@ def generate_health_analysis(db, user_id=1, is_auto=False, days=7):
         else:
             med_summary = "当前无用药"
 
+        # 体重/BMI 摘要
+        if weight_records:
+            weights = [r[0] for r in weight_records]
+            bmis = [r[1] for r in weight_records if r[1]]
+            latest_w = weights[0]
+            latest_b = bmis[0] if bmis else None
+            bmi_cat = settings.get_bmi_category(latest_b)
+            weight_change = weights[-1] - weights[0] if len(weights) > 1 else 0
+            weight_summary = f"""
+近{days}天体重数据（共{len(weight_records)}次记录）：
+- 最新体重: {latest_w:.1f} kg
+- 最新BMI: {f'{latest_b:.1f} ({bmi_cat["label"]})' if latest_b else '未知'}
+- 平均体重: {sum(weights)/len(weights):.1f} kg
+- 体重变化: {weight_change:+.1f} kg
+            """
+        else:
+            weight_summary = f"近{days}天无体重记录"
+
         # 用户健康档案
         user_profile = settings.get_ai_system_prompt()
 
@@ -1258,16 +1535,20 @@ def generate_health_analysis(db, user_id=1, is_auto=False, days=7):
 ### 用药情况
 {med_summary}
 
+### 体重/BMI数据
+{weight_summary}
+
 ## 分析任务
 
 请从以下维度进行综合分析：
 
-1. **健康评分**（0-100分）：基于血糖控制、血压水平、运动频率、能量平衡的综合评分
+1. **健康评分**（0-100分）：基于血糖控制、血压水平、运动频率、能量平衡、体重管理的综合评分
 2. **血糖控制评估**：达标率、波动性、趋势分析
 3. **血压健康状况**：是否在正常范围、异常预警
 4. **运动与能量平衡**：运动量是否充足、能量平衡情况
-5. **用药依从性**：用药效果评估
-6. **个性化建议**：
+5. **体重/BMI评估**：BMI分类、体重变化趋势、体重管理建议
+6. **用药依从性**：用药效果评估
+7. **个性化建议**：
    - 饮食建议（具体到食物种类和份量）
    - 运动建议（强度、频率、时间）
    - 用药建议（如有需要）
@@ -1344,7 +1625,6 @@ def generate_health_analysis(db, user_id=1, is_auto=False, days=7):
         # 特殊处理 429 配额错误
         if '429' in error_str or 'RESOURCE_EXHAUSTED' in error_str:
             # 尝试提取重试时间
-            import re
             retry_match = re.search(r'retry in (\d+)', error_str.lower())
             retry_seconds = int(retry_match.group(1)) if retry_match else 60
 
@@ -1407,11 +1687,11 @@ def index():
         # 自动生成早晨空腹血糖预测（如果符合条件）
         predict_morning_fpg(db, current_user_id)
 
-        # 自动生成运动后餐前血糖预测（如果符合条件）
+        # 自动生成运动后血糖预测（如果符合条件）
         predict_post_exercise_glucose(db, current_user_id)
 
-        # 获取分页参数，默认显示最近 14 天
-        days = request.args.get('days', 14, type=int)
+        # 获取分页参数，默认显示最近 365 天（确保日历视图能看到全年数据）
+        days = request.args.get('days', 365, type=int)
         page = request.args.get('page', 1, type=int)
         show_all = request.args.get('all', False, type=bool)
 
@@ -1752,6 +2032,69 @@ def index():
         weekday_name = today.strftime('%A')  # Monday, Tuesday, etc.
         day_of_month = today.day
 
+        # === 体重/BMI 统计 ===
+        # 最新体重记录
+        c.execute("""
+            SELECT weight, bmi, timestamp FROM records
+            WHERE user_id = ?
+            AND weight IS NOT NULL
+            AND weight > 0
+            ORDER BY timestamp DESC
+            LIMIT 1
+        """, (current_user_id,))
+        latest_weight_row = c.fetchone()
+        latest_weight = latest_weight_row[0] if latest_weight_row else None
+        latest_bmi = latest_weight_row[1] if latest_weight_row else None
+        latest_weight_date = latest_weight_row[2] if latest_weight_row else None
+
+        # 7天平均体重
+        c.execute("""
+            SELECT AVG(weight) FROM records
+            WHERE user_id = ?
+            AND weight IS NOT NULL
+            AND weight > 0
+            AND timestamp > datetime('now', '-7 days')
+        """, (current_user_id,))
+        avg_weight_7d = c.fetchone()[0]
+
+        # 30天体重变化（最近 vs 30天前）
+        c.execute("""
+            SELECT weight FROM records
+            WHERE user_id = ?
+            AND weight IS NOT NULL
+            AND weight > 0
+            AND timestamp <= datetime('now', '-25 days')
+            ORDER BY timestamp DESC
+            LIMIT 1
+        """, (current_user_id,))
+        old_weight_row = c.fetchone()
+        weight_change_30d = None
+        if old_weight_row and latest_weight:
+            weight_change_30d = round(latest_weight - old_weight_row[0], 1)
+
+        # BMI 分类
+        bmi_category = settings.get_bmi_category(latest_bmi)
+
+        # 今日体重数据
+        c.execute("""
+            SELECT weight, bmi, timestamp FROM records
+            WHERE user_id = ?
+            AND DATE(timestamp) = ?
+            AND weight IS NOT NULL
+            AND weight > 0
+            ORDER BY timestamp DESC
+            LIMIT 1
+        """, (current_user_id, today_str))
+        today_weight_row = c.fetchone()
+        today_weight = None
+        if today_weight_row:
+            today_weight = {
+                'weight': today_weight_row[0],
+                'bmi': today_weight_row[1],
+                'bmi_category': settings.get_bmi_category(today_weight_row[1]),
+                'time': today_weight_row[2].split(' ')[1][:5] if ' ' in today_weight_row[2] else ''
+            }
+
         c.execute("""
             SELECT medication_name, dosage, times_per_day, timing_notes, frequency, frequency_detail
             FROM medication_plans
@@ -1826,9 +2169,10 @@ def index():
         # 定义今日血糖测量时间点
         today_schedule = [
             {'key': 'fasting', 'name': '空腹', 'time': '07:15', 'icon': 'sunrise'},
-            {'key': 'post_exercise', 'name': '运动后餐前', 'time': '08:45', 'icon': 'bicycle'},
+            {'key': 'post_exercise', 'name': '运动后', 'time': '08:45', 'icon': 'bicycle'},
             {'key': 'post_breakfast', 'name': '早餐后2h', 'time': '11:00', 'icon': 'cup-hot'},
             {'key': 'post_lunch', 'name': '午餐后2h', 'time': '14:30', 'icon': 'sun'},
+            {'key': 'pre_dinner', 'name': '晚饭前', 'time': '17:30', 'icon': 'clock'},
             {'key': 'post_dinner', 'name': '晚餐后2h', 'time': '20:00', 'icon': 'moon-stars'},
             {'key': 'bedtime', 'name': '睡前', 'time': '22:00', 'icon': 'moon'}
         ]
@@ -1868,17 +2212,26 @@ def index():
                 record_time = record['timestamp'].split(' ')[1][:5] if ' ' in record['timestamp'] else ''
                 is_pred = record['is_predicted']
 
-                # 匹配逻辑
+                # 提取小时数用于时间范围匹配
+                record_hour = -1
+                if record_time and ':' in record_time:
+                    try:
+                        record_hour = int(record_time.split(':')[0])
+                    except (ValueError, IndexError):
+                        record_hour = -1
+
                 matched = False
                 if slot['key'] == 'fasting' and '空腹' in record_type:
                     matched = True
-                elif slot['key'] == 'post_exercise' and '运动后餐前' in record_type:
+                elif slot['key'] == 'post_exercise' and '运动后' in record_type:
                     matched = True
-                elif slot['key'] == 'post_breakfast' and ('早餐后' in record_type or ('餐后' in record_type and '11' in record_time)):
+                elif slot['key'] == 'post_breakfast' and ('早餐后' in record_type or ('餐后' in record_type and 10 <= record_hour < 13)):
                     matched = True
-                elif slot['key'] == 'post_lunch' and ('午餐后' in record_type or ('餐后' in record_type and '14' in record_time)):
+                elif slot['key'] == 'post_lunch' and ('午餐后' in record_type or ('餐后' in record_type and 13 <= record_hour < 17)):
                     matched = True
-                elif slot['key'] == 'post_dinner' and ('晚餐后' in record_type or ('餐后' in record_type and '20' in record_time)):
+                elif slot['key'] == 'pre_dinner' and ('晚饭前' in record_type or '晚餐前' in record_type or ('餐前' in record_type and 16 <= record_hour < 19)):
+                    matched = True
+                elif slot['key'] == 'post_dinner' and ('晚餐后' in record_type or ('餐后' in record_type and 19 <= record_hour < 23)):
                     matched = True
                 elif slot['key'] == 'bedtime' and '睡前' in record_type:
                     matched = True
@@ -1912,7 +2265,7 @@ def index():
 
         # 今日运动数据 - 支持多种运动类型
         c.execute("""
-            SELECT type, distance, calories, duration, heart_rate, pace, timestamp
+            SELECT type, distance, calories, duration, heart_rate, pace, cadence, timestamp
             FROM records
             WHERE user_id = ?
             AND DATE(timestamp) = ?
@@ -1931,6 +2284,7 @@ def index():
                 'duration': today_exercise_row['duration'],
                 'heart_rate': today_exercise_row['heart_rate'],
                 'pace': today_exercise_row['pace'],
+                'cadence': today_exercise_row['cadence'],
                 'time': today_exercise_row['timestamp'].split(' ')[1][:5] if ' ' in today_exercise_row['timestamp'] else ''
             }
 
@@ -2020,7 +2374,7 @@ def index():
             if latest_analysis.get('recommendations'):
                 try:
                     latest_analysis['recommendations'] = json.loads(latest_analysis['recommendations'])
-                except:
+                except (json.JSONDecodeError, TypeError, ValueError):
                     latest_analysis['recommendations'] = []
 
         stats = {
@@ -2067,6 +2421,15 @@ def index():
             # === 用药情况 ===
             'active_medications': active_medications,
 
+            # === 体重/BMI ===
+            'latest_weight': round(latest_weight, 1) if latest_weight else None,
+            'latest_bmi': round(latest_bmi, 1) if latest_bmi else None,
+            'latest_weight_date': latest_weight_date,
+            'avg_weight_7d': round(avg_weight_7d, 1) if avg_weight_7d else None,
+            'weight_change_30d': weight_change_30d,
+            'bmi_category': bmi_category,
+            'today_weight': today_weight,
+
             # === 健康分析 ===
             'latest_analysis': latest_analysis
         }
@@ -2086,32 +2449,32 @@ def update_settings():
         new_config = request.json
         # 简单验证逻辑
         if not new_config.get('weight') or not new_config.get('height'):
-            return jsonify({"status": "error", "message": "Invalid data"}), 400
-        
+            return api_error("Invalid data: weight and height are required", error_type="validation_error")
+
         settings.save_config(new_config)
-        return jsonify({"status": "success"})
+        return api_success(message="Settings updated successfully")
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+        return api_error(str(e), status_code=500, error_type="settings_error")
 
 @app.route('/upload_avatar', methods=['POST'])
 def upload_avatar():
     if 'avatar' not in request.files:
-        return jsonify({"status": "error", "message": "No file part"}), 400
+        return api_error("No file part", error_type="upload_error")
     file = request.files['avatar']
     if file.filename == '':
-        return jsonify({"status": "error", "message": "No selected file"}), 400
+        return api_error("No selected file", error_type="upload_error")
     if file and allowed_file(file.filename):
         filename = f"avatar_{int(datetime.datetime.now().timestamp())}.png"
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         file.save(filepath)
-        
+
         # Update user config
         config = settings.load_config()
         config['avatar'] = filename
         settings.save_config(config)
-        
-        return jsonify({"status": "success", "avatar_url": url_for('static', filename=f'avatars/{filename}')})
-    return jsonify({"status": "error", "message": "Invalid file type"}), 400
+
+        return api_success(data={"avatar_url": url_for('static', filename=f'avatars/{filename}')})
+    return api_error("Invalid file type", error_type="upload_error")
 
 @app.route('/add', methods=['POST'])
 def add_record():
@@ -2133,6 +2496,10 @@ def add_record():
             systolic_pressure = data.get('systolic_pressure')
             diastolic_pressure = data.get('diastolic_pressure')
             pulse_rate = data.get('pulse_rate')
+            carbs_grams = data.get('carbs_grams')
+            gi_value = data.get('gi_value')
+            weight = data.get('weight')
+            bmi = data.get('bmi')
         else:
             value = request.form.get('value')
             unit = request.form.get('unit')
@@ -2154,6 +2521,26 @@ def add_record():
             systolic_pressure = request.form.get('systolic_pressure')
             diastolic_pressure = request.form.get('diastolic_pressure')
             pulse_rate = request.form.get('pulse_rate')
+            carbs_grams = request.form.get('carbs_grams')
+            gi_value = request.form.get('gi_value')
+            weight = request.form.get('weight')
+            bmi = request.form.get('bmi')
+
+        # Auto-calculate BMI if weight is provided but BMI is not
+        if weight and not bmi:
+            try:
+                bmi = settings.calculate_bmi(float(weight))
+            except (ValueError, TypeError):
+                pass
+
+        # If weight record, update user config weight
+        if weight:
+            try:
+                config = settings.load_config()
+                config['weight'] = float(weight)
+                settings.save_config(config)
+            except (ValueError, TypeError):
+                pass
 
         # Handle empty timestamp (default to now)
         if not timestamp:
@@ -2172,10 +2559,12 @@ def add_record():
 
         c.execute("""INSERT INTO records
                      (user_id, value, unit, type, notes, timestamp, calories, diet_analysis, is_predicted,
-                      distance, duration, heart_rate, systolic_pressure, diastolic_pressure, pulse_rate)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                      distance, duration, heart_rate, systolic_pressure, diastolic_pressure, pulse_rate,
+                      carbs_grams, gi_value, weight, bmi)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                   (current_user_id, value, unit, r_type, notes, timestamp, calories, diet_analysis, is_predicted,
-                   distance, duration, heart_rate, systolic_pressure, diastolic_pressure, pulse_rate))
+                   distance, duration, heart_rate, systolic_pressure, diastolic_pressure, pulse_rate,
+                   carbs_grams, gi_value, weight, bmi))
 
         # 如果是真实血糖记录，尝试关联当天的预测记录
         real_record_id = c.lastrowid
@@ -2183,16 +2572,18 @@ def add_record():
             numeric_value = float(value) if value else 0
             if not is_predicted and numeric_value > 0 and r_type:
                 record_date = timestamp.split(' ')[0] if ' ' in timestamp else timestamp[:10]
-                link_prediction_to_real_record(db, real_record_id, current_user_id, record_date, r_type, numeric_value)
+                link_prediction_to_real_record(db, real_record_id, current_user_id, record_date, r_type, numeric_value, timestamp)
         except (ValueError, TypeError) as e:
             print(f"Warning: Could not link prediction for record {real_record_id}: {e}")
 
         db.commit()
 
         if request.is_json:
-            return jsonify({"status": "success"})
+            return api_success(data={"id": real_record_id}, message="Record added successfully")
         return redirect(url_for('index'))
     except Exception as e:
+        if request.is_json:
+            return api_error(str(e), status_code=500, error_type="add_record_error")
         return f"Error adding record: {e}", 500
 
 def get_user_stats(db, user_id=1):
@@ -2258,6 +2649,35 @@ def parse_ai():
         history_context = get_user_stats(db, current_user_id)
 
         results = parse_glucose_input(text, history_context, images_data, mime_type)
+
+        # 用数据库中已有的预测值替换 AI 实时生成的预测值
+        # 这样用户可以看到"之前预测的 vs 实际测量的"对比
+        c = db.cursor()
+        for record in results:
+            if record.get('value') and record.get('value') > 0 and record.get('datetime'):
+                timestamp = record.get('datetime')
+                record_type = record.get('type', '')
+
+                # 查询数据库中该时间点是否有预测记录
+                c.execute("""
+                    SELECT value, notes FROM records
+                    WHERE user_id = ?
+                    AND strftime('%Y-%m-%d %H:%M', timestamp) = strftime('%Y-%m-%d %H:%M', ?)
+                    AND is_predicted = 1
+                    AND value > 0
+                    AND systolic_pressure IS NULL
+                    ORDER BY created_at DESC
+                    LIMIT 1
+                """, (current_user_id, timestamp))
+                existing_prediction = c.fetchone()
+
+                if existing_prediction:
+                    # 使用数据库中的预测值替换 AI 生成的预测值
+                    record['predicted_value'] = existing_prediction[0]
+                    record['prediction_source'] = 'database'  # 标记来源
+                else:
+                    record['prediction_source'] = 'ai_realtime'  # AI实时预测
+
         return jsonify(results)
     except Exception as e:
         traceback.print_exc()
@@ -2268,7 +2688,11 @@ def batch_add():
     try:
         data = request.json.get('records')
         if not data:
-            return jsonify({"status": "error", "message": "No data provided"}), 400
+            return api_error("No data provided")
+
+        # 冲突处理参数
+        # conflict_resolution: 'ask'(默认,检测到冲突时返回让用户选择), 'skip'(跳过冲突), 'overwrite'(覆盖已有)
+        conflict_resolution = request.json.get('conflict_resolution', 'ask')
 
         db = get_db()
         c = db.cursor()
@@ -2276,41 +2700,143 @@ def batch_add():
         # Get current user ID
         current_user_id = user_manager.get_current_user_id()
 
-        # 第一遍：插入所有记录，记录每条记录的信息
-        inserted_records = []
+        # ========== 第一阶段：冲突检测 ==========
+        conflicts = []
+        for idx, r in enumerate(data):
+            if 'value' not in r or 'type' not in r:
+                continue
 
-        for r in data:
+            is_pred = r.get('is_predicted', False)
+            timestamp = r.get('datetime')
+            record_type = r['type']
+            record_value = r.get('value', 0)
+
+            # 只检测实测记录的冲突（预测记录自动覆盖）
+            if timestamp and not is_pred and record_value > 0:
+                # 检查是否已存在相同时间点的记录
+                c.execute("""SELECT id, value, type, timestamp, notes
+                           FROM records
+                           WHERE user_id = ?
+                           AND strftime('%Y-%m-%d %H:%M', timestamp) = strftime('%Y-%m-%d %H:%M', ?)
+                           AND is_predicted = 0
+                           AND value > 0
+                           AND systolic_pressure IS NULL""",
+                         (current_user_id, timestamp))
+                existing = c.fetchone()
+
+                if existing:
+                    conflicts.append({
+                        'index': idx,
+                        'new_record': {
+                            'datetime': timestamp,
+                            'type': record_type,
+                            'value': record_value,
+                            'notes': r.get('notes', '')
+                        },
+                        'existing_record': {
+                            'id': existing[0],
+                            'value': existing[1],
+                            'type': existing[2],
+                            'datetime': existing[3],
+                            'notes': existing[4]
+                        }
+                    })
+
+        # 如果有冲突且用户选择 'ask'，返回冲突信息让前端处理
+        if conflicts and conflict_resolution == 'ask':
+            return jsonify({
+                'status': 'conflict',
+                'message': f'发现 {len(conflicts)} 条数据与已有记录冲突',
+                'conflicts': conflicts,
+                'total_records': len(data)
+            }), 200
+
+        # ========== 第二阶段：插入记录 ==========
+        inserted_records = []
+        skipped_count = 0
+
+        for idx, r in enumerate(data):
             if 'value' not in r or 'type' not in r:
                 continue
 
             cal = r.get('calories', 0)
             da = r.get('diet_analysis', '')
             is_pred = 1 if r.get('is_predicted', False) else 0
+            timestamp = r.get('datetime')
+            record_type = r['type']
 
-            # 如果是预测记录，先删除同一天同一类型同一时间的其他预测记录，避免重复
-            if is_pred and r.get('datetime'):
-                timestamp = r.get('datetime')
-                record_type = r['type']
+            # 冲突处理
+            if timestamp:
+                if is_pred:
+                    # 预测记录：始终覆盖已存在的同类型预测记录
+                    c.execute("""DELETE FROM records
+                               WHERE user_id = ?
+                               AND strftime('%Y-%m-%d %H:%M', timestamp) = strftime('%Y-%m-%d %H:%M', ?)
+                               AND type = ?
+                               AND is_predicted = 1""",
+                             (current_user_id, timestamp, record_type))
+                else:
+                    # 实测记录：根据 conflict_resolution 处理
+                    c.execute("""SELECT id FROM records
+                               WHERE user_id = ?
+                               AND strftime('%Y-%m-%d %H:%M', timestamp) = strftime('%Y-%m-%d %H:%M', ?)
+                               AND is_predicted = 0
+                               AND value > 0
+                               AND systolic_pressure IS NULL""",
+                             (current_user_id, timestamp))
+                    existing = c.fetchone()
 
-                c.execute("""DELETE FROM records
-                           WHERE user_id = ?
-                           AND strftime('%Y-%m-%d %H:%M', timestamp) = strftime('%Y-%m-%d %H:%M', ?)
-                           AND type = ?
-                           AND is_predicted = 1""",
-                         (current_user_id, timestamp, record_type))
+                    if existing:
+                        if conflict_resolution == 'skip':
+                            print(f"跳过冲突记录: {timestamp} {record_type}")
+                            skipped_count += 1
+                            continue
+                        elif conflict_resolution == 'overwrite':
+                            # 删除已有记录
+                            c.execute("DELETE FROM records WHERE id = ?", (existing[0],))
+                            print(f"覆盖已有记录 ID {existing[0]}: {timestamp} {record_type}")
+
+            # 处理血压字段：将0值转换为None
+            systolic = r.get('systolic_pressure')
+            diastolic = r.get('diastolic_pressure')
+            pulse = r.get('pulse_rate')
+            if systolic == 0:
+                systolic = None
+            if diastolic == 0:
+                diastolic = None
+            if pulse == 0:
+                pulse = None
+
+            # 处理体重/BMI字段
+            weight = r.get('weight')
+            bmi = r.get('bmi')
+            if weight and not bmi:
+                try:
+                    bmi = settings.calculate_bmi(float(weight))
+                except (ValueError, TypeError):
+                    pass
+            # 体重记录同步更新用户配置
+            if weight:
+                try:
+                    config = settings.load_config()
+                    config['weight'] = float(weight)
+                    settings.save_config(config)
+                except (ValueError, TypeError):
+                    pass
 
             c.execute("""INSERT INTO records
                       (user_id, value, unit, type, notes, timestamp, calories, diet_analysis, is_predicted,
                        distance, duration, heart_rate, pace, cadence,
-                       systolic_pressure, diastolic_pressure, pulse_rate)
-                      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                       systolic_pressure, diastolic_pressure, pulse_rate,
+                       carbs_grams, gi_value, weight, bmi)
+                      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                       (current_user_id, r['value'], r.get('unit', 'mmol/L'), r['type'], r.get('notes', ''),
                        r.get('datetime'), cal, da, is_pred,
                        r.get('distance'), r.get('duration'), r.get('heart_rate'),
                        r.get('pace'), r.get('cadence'),
-                       r.get('systolic_pressure'), r.get('diastolic_pressure'), r.get('pulse_rate')))
+                       systolic, diastolic, pulse,
+                       r.get('carbs_grams'), r.get('gi_value'), weight, bmi))
 
-            # 记录插入信息，用于第二遍关联
             inserted_records.append({
                 'id': c.lastrowid,
                 'is_pred': is_pred,
@@ -2326,22 +2852,39 @@ def batch_add():
                     numeric_value = float(record['value'])
                     if numeric_value > 0:
                         record_date = record['datetime'].split(' ')[0] if ' ' in record['datetime'] else record['datetime'][:10]
-                        link_prediction_to_real_record(db, record['id'], current_user_id, record_date, record['type'], numeric_value)
+                        link_prediction_to_real_record(db, record['id'], current_user_id, record_date, record['type'], numeric_value, record['datetime'])
                 except (ValueError, TypeError) as e:
                     print(f"Warning: Could not link prediction for batch record {record['id']}: {e}")
 
         db.commit()
 
-        return jsonify({"status": "success"})
+        # 检查是否有运动记录被插入，如果有则触发运动后血糖预测更新
+        has_exercise_record = False
+        exercise_date = None
+        for record in inserted_records:
+            if record['type'] in ['跑步', '运动']:
+                has_exercise_record = True
+                if record['datetime']:
+                    exercise_date = record['datetime'].split(' ')[0] if ' ' in record['datetime'] else record['datetime'][:10]
+                break
+
+        if has_exercise_record and exercise_date:
+            # 强制更新运动后血糖预测（基于新的运动数据）
+            try:
+                predict_post_exercise_glucose(db, current_user_id, exercise_date, force_update=True)
+            except Exception as e:
+                print(f"Warning: Failed to update post-exercise prediction: {e}")
+
+        return api_success(message="Records saved successfully")
     except Exception as e:
         traceback.print_exc()
-        return jsonify({"status": "error", "message": str(e)}), 500
+        return api_error(str(e), status_code=500, error_type="batch_add_error")
 
 
 @app.route('/backfill_predictions', methods=['POST'])
 def backfill_predictions():
     """
-    批量补全历史运动后餐前血糖预测
+    批量补全历史运动后血糖预测
 
     POST 参数:
     - days: 回溯天数（默认30天）
@@ -2354,14 +2897,13 @@ def backfill_predictions():
 
         result = backfill_post_exercise_predictions(db, current_user_id, days)
 
-        return jsonify({
-            "status": "success",
-            "message": f"成功预测 {result['success']} 条记录，跳过 {result['skipped']} 条",
-            "data": result
-        })
+        return api_success(
+            data=result,
+            message=f"成功预测 {result['success']} 条记录，跳过 {result['skipped']} 条"
+        )
     except Exception as e:
         traceback.print_exc()
-        return jsonify({"status": "error", "message": str(e)}), 500
+        return api_error(str(e), status_code=500, error_type="backfill_error")
 
 
 @app.route('/delete/<int:id>', methods=['POST'])
@@ -2373,11 +2915,11 @@ def delete(id):
         db.commit()
         # 支持 AJAX 和表单提交两种方式
         if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-            return jsonify({"status": "success"})
+            return api_success(message="Record deleted successfully")
         return redirect(url_for('index'))
     except Exception as e:
         if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-            return jsonify({"status": "error", "message": str(e)}), 500
+            return api_error(str(e), status_code=500, error_type="delete_error")
         return f"Error deleting record: {e}", 500
 
 @app.route('/record/<int:id>')
@@ -2407,7 +2949,8 @@ def update_record(id):
                      value = ?, unit = ?, type = ?, notes = ?, timestamp = ?,
                      calories = ?, diet_analysis = ?, is_predicted = ?,
                      distance = ?, duration = ?, heart_rate = ?, pace = ?, cadence = ?,
-                     systolic_pressure = ?, diastolic_pressure = ?, pulse_rate = ?
+                     systolic_pressure = ?, diastolic_pressure = ?, pulse_rate = ?,
+                     weight = ?, bmi = ?
                      WHERE id = ?""",
                   (data.get('value', 0), data.get('unit', 'mmol/L'), data.get('type', ''),
                    data.get('notes', ''), data.get('timestamp', ''),
@@ -2416,12 +2959,13 @@ def update_record(id):
                    data.get('distance'), data.get('duration'), data.get('heart_rate'),
                    data.get('pace'), data.get('cadence'),
                    data.get('systolic_pressure'), data.get('diastolic_pressure'), data.get('pulse_rate'),
+                   data.get('weight'), data.get('bmi'),
                    id))
         db.commit()
-        return jsonify({"status": "success"})
+        return api_success(message="Record updated successfully")
     except Exception as e:
         traceback.print_exc()
-        return jsonify({"status": "error", "message": str(e)}), 500
+        return api_error(str(e), status_code=500, error_type="update_error")
 
 @app.route('/export')
 def export():
@@ -2449,28 +2993,34 @@ def export():
 
 @app.route('/import', methods=['POST'])
 def import_csv():
-    """从 CSV 文件导入数据"""
+    """从 CSV 文件导入数据（支持普通格式和CGM格式）"""
     try:
         if 'file' not in request.files:
-            return jsonify({"status": "error", "message": "没有上传文件"}), 400
+            return api_error("没有上传文件", error_type="upload_error")
 
         file = request.files['file']
         if file.filename == '':
-            return jsonify({"status": "error", "message": "没有选择文件"}), 400
+            return api_error("没有选择文件", error_type="upload_error")
 
         if not file.filename.endswith('.csv'):
-            return jsonify({"status": "error", "message": "请上传 CSV 文件"}), 400
+            return api_error("请上传 CSV 文件", error_type="format_error")
+
+        # 获取导入模式（普通模式或CGM模式）
+        import_mode = request.form.get('mode', 'normal')  # 'normal' or 'cgm'
+        source_unit = request.form.get('unit', 'mmol/L')  # 数据源单位
 
         # 读取 CSV
         df = pd.read_csv(file, encoding='utf-8-sig')
 
-        # 列名映射（支持不同的列名格式）
+        # 列名映射（支持不同的列名格式，增强对CGM设备的支持）
         column_mapping = {
-            'value': ['value', '血糖值', '数值'],
+            'value': ['value', '血糖值', '数值', '血糖', 'Glucose', 'CGM值', '葡萄糖', 'BG',
+                      'mg/dL', 'mmol/L', '测量值', 'glucose_value', 'reading'],
             'unit': ['unit', '单位'],
-            'type': ['type', '类型', '测量类型'],
-            'notes': ['notes', '备注', '说明'],
-            'timestamp': ['timestamp', '时间', '测量时间', 'datetime'],
+            'type': ['type', '类型', '测量类型', '记录类型'],
+            'notes': ['notes', '备注', '说明', '注释', 'memo', 'remark'],
+            'timestamp': ['timestamp', '时间', '测量时间', 'datetime', '日期时间', 'Date Time',
+                          'Time', '记录时间', 'date_time', '采集时间'],
             'calories': ['calories', '热量', '卡路里'],
             'diet_analysis': ['diet_analysis', '饮食分析'],
             'is_predicted': ['is_predicted', '预测值'],
@@ -2490,7 +3040,7 @@ def import_csv():
 
         # 必须有 timestamp 列
         if 'timestamp' not in df.columns:
-            return jsonify({"status": "error", "message": "CSV 缺少时间列 (timestamp)"}), 400
+            return api_error("CSV 缺少时间列 (timestamp/时间/日期时间)", error_type="format_error")
 
         db = get_db()
         c = db.cursor()
@@ -2504,15 +3054,35 @@ def import_csv():
                 value = row.get('value', 0)
                 if pd.isna(value):
                     value = 0
+                else:
+                    value = float(value)
+
+                # 单位转换：如果数据源是 mg/dL，转换为 mmol/L
+                if source_unit == 'mg/dL' and value > 0:
+                    value = round(value / 18.0, 1)
 
                 timestamp = row.get('timestamp', '')
                 if pd.isna(timestamp) or timestamp == '':
                     skipped_count += 1
                     continue
 
+                # 标准化时间戳格式
+                timestamp_str = str(timestamp)
+                try:
+                    # 尝试解析常见的时间格式
+                    parsed_time = pd.to_datetime(timestamp_str)
+                    timestamp_str = parsed_time.strftime('%Y-%m-%d %H:%M:%S')
+                except (ValueError, TypeError, pd.errors.ParserError):
+                    pass  # 如果解析失败，保留原始格式
+
+                # CGM模式：根据时间自动分配测量类型
+                record_type = row.get('type', '') if not pd.isna(row.get('type')) else ''
+                if import_mode == 'cgm' and not record_type:
+                    record_type = 'CGM'  # CGM数据标记为 CGM 类型
+
                 # 检查是否已存在相同记录（基于时间戳和数值）
                 c.execute("SELECT id FROM records WHERE user_id = ? AND timestamp = ? AND value = ?",
-                         (current_user_id, str(timestamp), float(value)))
+                         (current_user_id, timestamp_str, float(value)))
                 if c.fetchone():
                     skipped_count += 1
                     continue
@@ -2522,11 +3092,11 @@ def import_csv():
                            distance, duration, heart_rate, pace, cadence)
                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                           (current_user_id,
-                           float(value) if not pd.isna(value) else 0,
-                           row.get('unit', 'mmol/L') if not pd.isna(row.get('unit')) else 'mmol/L',
-                           row.get('type', '') if not pd.isna(row.get('type')) else '',
+                           value,
+                           'mmol/L',  # 统一存储为 mmol/L
+                           record_type,
                            row.get('notes', '') if not pd.isna(row.get('notes')) else '',
-                           str(timestamp),
+                           timestamp_str,
                            int(row.get('calories', 0)) if not pd.isna(row.get('calories')) else 0,
                            row.get('diet_analysis', '') if not pd.isna(row.get('diet_analysis')) else '',
                            1 if row.get('is_predicted') else 0,
@@ -2542,13 +3112,36 @@ def import_csv():
                 continue
 
         db.commit()
-        return jsonify({
-            "status": "success",
-            "message": f"成功导入 {imported_count} 条记录，跳过 {skipped_count} 条"
-        })
+        return api_success(
+            data={"imported": imported_count, "skipped": skipped_count},
+            message=f"成功导入 {imported_count} 条记录，跳过 {skipped_count} 条"
+        )
     except Exception as e:
         traceback.print_exc()
-        return jsonify({"status": "error", "message": str(e)}), 500
+        return api_error(str(e), status_code=500, error_type="import_error")
+
+
+@app.route('/preview_import', methods=['POST'])
+def preview_import():
+    """预览 CSV 文件内容，返回前几行数据和列名"""
+    try:
+        if 'file' not in request.files:
+            return api_error("没有上传文件", error_type="upload_error")
+
+        file = request.files['file']
+        if file.filename == '':
+            return api_error("没有选择文件", error_type="upload_error")
+
+        # 读取 CSV 前10行预览
+        df = pd.read_csv(file, encoding='utf-8-sig', nrows=10)
+
+        return api_success(data={
+            "columns": list(df.columns),
+            "rows": df.fillna('').to_dict('records'),
+            "total_preview": len(df)
+        })
+    except Exception as e:
+        return api_error(str(e), status_code=500, error_type="preview_error")
 
 # ========== Medication Plan Management APIs ==========
 
@@ -2579,10 +3172,10 @@ def add_medication_plan():
                   data.get('frequency_detail')))
 
         db.commit()
-        return jsonify({"status": "success", "id": c.lastrowid})
+        return api_success(data={"id": c.lastrowid}, message="Medication plan added successfully")
     except Exception as e:
         traceback.print_exc()
-        return jsonify({"status": "error", "message": str(e)}), 500
+        return api_error(str(e), status_code=500, error_type="medication_error")
 
 @app.route('/medication_plans', methods=['GET'])
 def get_medication_plans():
@@ -2643,10 +3236,10 @@ def update_medication_plan(plan_id):
                   plan_id))
 
         db.commit()
-        return jsonify({"status": "success"})
+        return api_success(message="Medication plan updated successfully")
     except Exception as e:
         traceback.print_exc()
-        return jsonify({"status": "error", "message": str(e)}), 500
+        return api_error(str(e), status_code=500, error_type="medication_error")
 
 @app.route('/delete_medication_plan/<int:plan_id>', methods=['POST'])
 def delete_medication_plan(plan_id):
@@ -2656,9 +3249,9 @@ def delete_medication_plan(plan_id):
         c = db.cursor()
         c.execute("DELETE FROM medication_plans WHERE id = ?", (plan_id,))
         db.commit()
-        return jsonify({"status": "success"})
+        return api_success(message="Medication plan deleted successfully")
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+        return api_error(str(e), status_code=500, error_type="medication_error")
 
 @app.route('/toggle_medication_plan/<int:plan_id>', methods=['POST'])
 def toggle_medication_plan(plan_id):
@@ -2668,9 +3261,9 @@ def toggle_medication_plan(plan_id):
         c = db.cursor()
         c.execute("UPDATE medication_plans SET is_active = NOT is_active WHERE id = ?", (plan_id,))
         db.commit()
-        return jsonify({"status": "success"})
+        return api_success(message="Medication plan toggled successfully")
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+        return api_error(str(e), status_code=500, error_type="medication_error")
 
 # ========== Health Analysis APIs ==========
 
@@ -2686,8 +3279,7 @@ def analyze_health():
         result = generate_health_analysis(db, current_user_id, is_auto=False, days=days)
 
         if result.get('success'):
-            return jsonify({
-                "status": "success",
+            return api_success(data={
                 "analysis_id": result['analysis_id'],
                 "result": result['result']
             })
@@ -2696,19 +3288,17 @@ def analyze_health():
             error_type = result.get('error_type', '')
             retry_after = result.get('retry_after', 0)
 
-            response_data = {
-                "status": "error",
-                "message": result.get('error', '分析失败'),
-                "error_type": error_type,
-                "retry_after": retry_after
-            }
-
             # 配额错误返回 429 状态码
             status_code = 429 if error_type == 'quota_exceeded' else 500
-            return jsonify(response_data), status_code
+            return api_error(
+                result.get('error', '分析失败'),
+                status_code=status_code,
+                error_type=error_type,
+                details={"retry_after": retry_after} if retry_after else None
+            )
     except Exception as e:
         traceback.print_exc()
-        return jsonify({"status": "error", "message": str(e)}), 500
+        return api_error(str(e), status_code=500, error_type="analysis_error")
 
 @app.route('/get_latest_analysis', methods=['GET'])
 def get_latest_analysis():
@@ -2732,7 +3322,7 @@ def get_latest_analysis():
             if analysis.get('recommendations'):
                 try:
                     analysis['recommendations'] = json.loads(analysis['recommendations'])
-                except:
+                except (json.JSONDecodeError, TypeError, ValueError):
                     pass
             return jsonify(analysis)
         else:
@@ -2767,7 +3357,7 @@ def get_health_analyses():
             if analysis.get('recommendations'):
                 try:
                     analysis['recommendations'] = json.loads(analysis['recommendations'])
-                except:
+                except (json.JSONDecodeError, TypeError, ValueError):
                     pass
             analyses.append(analysis)
 
@@ -2829,8 +3419,8 @@ def prediction_accuracy():
 @app.route('/prediction_status', methods=['GET'])
 def prediction_status():
     """
-    获取今日预测状态
-    返回今日所有预测记录及其验证状态
+    获取今日所有时间槽状态
+    返回所有时间点的状态：已测量(measured)、已预测(predicted)、待测(pending)
     """
     try:
         db = get_db()
@@ -2838,50 +3428,146 @@ def prediction_status():
         current_user_id = user_manager.get_current_user_id()
         today_str = datetime.datetime.now().strftime('%Y-%m-%d')
 
-        # 获取今日所有预测记录
-        c.execute("""
-            SELECT
-                p.id,
-                p.type,
-                p.value as predicted_value,
-                p.timestamp,
-                p.notes,
-                p.verified_by_real_id,
-                p.prediction_error,
-                r.value as real_value,
-                r.timestamp as real_timestamp
-            FROM records p
-            LEFT JOIN records r ON p.verified_by_real_id = r.id
-            WHERE p.user_id = ?
-            AND DATE(p.timestamp) = ?
-            AND p.is_predicted = 1
-            AND p.value > 0
-            ORDER BY p.timestamp ASC
-        """, (current_user_id, today_str))
+        # 定义所有时间槽
+        all_slots = [
+            {'key': 'fasting', 'name': '空腹', 'time': '07:15', 'type_patterns': ['空腹', '早空腹']},
+            {'key': 'post_exercise', 'name': '运动后', 'time': '08:45', 'type_patterns': ['运动后']},
+            {'key': 'post_breakfast', 'name': '早餐后2小时', 'time': '11:00', 'type_patterns': ['早餐后', '餐后2小时', '餐后1小时']},
+            {'key': 'post_lunch', 'name': '午餐后2小时', 'time': '14:30', 'type_patterns': ['午餐后']},
+            {'key': 'pre_dinner', 'name': '晚饭前', 'time': '17:30', 'type_patterns': ['晚饭前', '晚餐前', '餐前']},
+            {'key': 'post_dinner', 'name': '晚餐后2小时', 'time': '20:00', 'type_patterns': ['晚餐后']},
+            {'key': 'bedtime', 'name': '睡前', 'time': '22:00', 'type_patterns': ['睡前']}
+        ]
 
-        predictions = []
-        for row in c.fetchall():
-            pred = {
-                'id': row[0],
-                'type': row[1],
-                'predicted_value': round(row[2], 2),
-                'timestamp': row[3],
-                'notes': row[4],
-                'verified': row[5] is not None,
-                'real_value': round(row[7], 2) if row[7] else None,
-                'real_timestamp': row[8],
-                'error': round(row[6], 2) if row[6] else None
+        # 获取今日所有血糖记录（实测+预测）
+        c.execute("""
+            SELECT id, type, value, timestamp, is_predicted, notes, verified_by_real_id, prediction_error
+            FROM records
+            WHERE user_id = ?
+            AND DATE(timestamp) = ?
+            AND value > 0
+            AND systolic_pressure IS NULL
+            ORDER BY timestamp ASC
+        """, (current_user_id, today_str))
+        today_records = c.fetchall()
+
+        # 为每个时间槽匹配记录
+        slots = []
+        for slot in all_slots:
+            slot_data = {
+                'key': slot['key'],
+                'name': slot['name'],
+                'time': slot['time'],
+                'timestamp': f"{today_str} {slot['time']}:00",
+                'status': 'pending',  # pending, measured, predicted, verified
+                'value': None,
+                'predicted_value': None,
+                'real_value': None,
+                'notes': None,
+                'error': None
             }
 
-            # 获取该类型的达标标准
-            target = settings.get_glucose_target(pred['type'])
-            pred['target'] = {
+            # 匹配记录到该槽位
+            measured_record = None
+            predicted_record = None
+
+            for record in today_records:
+                record_type = record['type'] or ''
+                record_time = record['timestamp'].split(' ')[1][:5] if ' ' in record['timestamp'] else ''
+                is_predicted = record['is_predicted']
+
+                # 检查类型是否匹配
+                matched = False
+                for pattern in slot['type_patterns']:
+                    if pattern in record_type:
+                        matched = True
+                        break
+
+                # 对于早餐后槽位，需要排除午餐后和晚餐后
+                if slot['key'] == 'post_breakfast' and matched:
+                    if '午餐后' in record_type or '晚餐后' in record_type:
+                        matched = False
+                    # 时间范围检查：10:00-13:00
+                    if record_time:
+                        hour = int(record_time.split(':')[0])
+                        if hour < 10 or hour >= 13:
+                            matched = False
+
+                # 对于餐前槽位，需要排除运动后餐前
+                if slot['key'] == 'pre_dinner' and matched:
+                    if '运动后' in record_type:
+                        matched = False
+                    # 时间范围检查：16:00-19:00
+                    if record_time and '餐前' in record_type:
+                        hour = int(record_time.split(':')[0])
+                        if hour < 16 or hour >= 19:
+                            matched = False
+
+                # 对于午餐后槽位，需要基于时间匹配通用的"餐后2小时"记录
+                if slot['key'] == 'post_lunch' and not matched:
+                    # "餐后2小时" 在 13:00-17:00 应匹配午餐后
+                    if '餐后2小时' in record_type or '餐后' in record_type:
+                        if '午餐' not in record_type and '早餐' not in record_type and '晚餐' not in record_type:
+                            if record_time:
+                                hour = int(record_time.split(':')[0])
+                                if 13 <= hour < 17:
+                                    matched = True
+
+                # 对于晚餐后槽位，需要基于时间匹配通用的"餐后2小时"记录
+                if slot['key'] == 'post_dinner' and not matched:
+                    # "餐后2小时" 在 19:00-23:00 应匹配晚餐后
+                    if '餐后2小时' in record_type or '餐后' in record_type:
+                        if '午餐' not in record_type and '早餐' not in record_type and '晚餐' not in record_type:
+                            if record_time:
+                                hour = int(record_time.split(':')[0])
+                                if 19 <= hour < 23:
+                                    matched = True
+
+                if matched:
+                    if not is_predicted:
+                        if measured_record is None:
+                            measured_record = record
+                    else:
+                        if predicted_record is None:
+                            predicted_record = record
+
+            # 确定槽位状态
+            if measured_record:
+                slot_data['status'] = 'measured'
+                slot_data['value'] = round(measured_record['value'], 2)
+                slot_data['real_value'] = round(measured_record['value'], 2)
+                slot_data['timestamp'] = measured_record['timestamp']
+                # 如果有预测值被这个实测值验证
+                if predicted_record and predicted_record['verified_by_real_id'] == measured_record['id']:
+                    slot_data['status'] = 'verified'
+                    slot_data['predicted_value'] = round(predicted_record['value'], 2)
+                    slot_data['error'] = round(predicted_record['prediction_error'], 2) if predicted_record['prediction_error'] else None
+                    slot_data['notes'] = predicted_record['notes']
+            elif predicted_record:
+                slot_data['status'] = 'predicted'
+                slot_data['value'] = round(predicted_record['value'], 2)
+                slot_data['predicted_value'] = round(predicted_record['value'], 2)
+                slot_data['timestamp'] = predicted_record['timestamp']
+                slot_data['notes'] = predicted_record['notes']
+                # 检查是否已验证
+                if predicted_record['verified_by_real_id']:
+                    # 查询真实值
+                    c.execute("SELECT value FROM records WHERE id = ?", (predicted_record['verified_by_real_id'],))
+                    real_row = c.fetchone()
+                    if real_row:
+                        slot_data['status'] = 'verified'
+                        slot_data['real_value'] = round(real_row['value'], 2)
+                        slot_data['error'] = round(predicted_record['prediction_error'], 2) if predicted_record['prediction_error'] else None
+
+            # 获取达标标准
+            target = settings.get_glucose_target(slot['name'])
+            slot_data['target'] = {
                 'min': target['min'],
                 'max': target['max'],
                 'optimal_max': target['optimal_max']
             }
 
-            predictions.append(pred)
+            slots.append(slot_data)
 
         # 获取近7天预测准确性统计
         c.execute("""
@@ -2908,7 +3594,7 @@ def prediction_status():
 
         return jsonify({
             'date': today_str,
-            'predictions': predictions,
+            'slots': slots,
             'accuracy_by_type': accuracy_by_type
         })
 
@@ -2978,7 +3664,12 @@ def prediction_comparison():
 def trigger_prediction():
     """
     手动触发预测
-    支持触发空腹血糖、运动后餐前血糖、以及剩余时间点预测
+    支持触发空腹血糖、运动后血糖、以及剩余时间点预测
+
+    参数:
+        type: 'all', 'fpg', '空腹', 'post_exercise', '运动后', 'remaining', '剩余时间点'
+        date: 目标日期 (默认今天)
+        force_update: 是否强制更新已有预测 (默认 false)
     """
     try:
         db = get_db()
@@ -2986,6 +3677,7 @@ def trigger_prediction():
         data = request.json or {}
         prediction_type = data.get('type', 'all')
         target_date = data.get('date', datetime.datetime.now().strftime('%Y-%m-%d'))
+        force_update = data.get('force_update', False)
 
         results = []
 
@@ -2994,32 +3686,29 @@ def trigger_prediction():
             predict_morning_fpg(db, current_user_id)
             results.append({'type': '空腹', 'status': 'triggered'})
 
-        if prediction_type in ['all', 'post_exercise', '运动后餐前']:
-            # 触发运动后餐前血糖预测
+        if prediction_type in ['all', 'post_exercise', '运动后']:
+            # 触发运动后血糖预测
             result = predict_post_exercise_glucose(db, current_user_id, target_date)
             if result:
-                results.append({'type': '运动后餐前', 'status': 'success', 'value': result})
+                results.append({'type': '运动后', 'status': 'success', 'value': result})
             else:
-                results.append({'type': '运动后餐前', 'status': 'skipped', 'reason': '条件不满足或已存在'})
+                results.append({'type': '运动后', 'status': 'skipped', 'reason': '条件不满足或已存在'})
 
         if prediction_type in ['all', 'remaining', '剩余时间点']:
             # 触发剩余时间点预测（基于实测数据向后预测）
-            remaining_results = predict_remaining_glucose_slots(db, current_user_id, target_date)
+            remaining_results = predict_remaining_glucose_slots(db, current_user_id, target_date, force_update=force_update)
             if remaining_results:
                 for pred in remaining_results:
                     results.append({
                         'type': pred['type'],
-                        'status': 'success',
+                        'status': 'updated' if force_update else 'success',
                         'value': pred['value'],
                         'base': f"{pred['base_type']}({pred['base_glucose']})"
                     })
             else:
                 results.append({'type': '剩余时间点', 'status': 'skipped', 'reason': '无实测数据或已有预测'})
 
-        return jsonify({
-            'status': 'success',
-            'results': results
-        })
+        return api_success(data={'results': results})
 
     except Exception as e:
         error_str = str(e)
@@ -3031,14 +3720,14 @@ def trigger_prediction():
             retry_match = re.search(r'retry in (\d+)', error_str.lower())
             retry_seconds = int(retry_match.group(1)) if retry_match else 60
 
-            return jsonify({
-                "status": "error",
-                "message": f"AI 服务配额已用尽，请等待 {retry_seconds} 秒后重试",
-                "error_type": "quota_exceeded",
-                "retry_after": retry_seconds
-            }), 429
+            return api_error(
+                f"AI 服务配额已用尽，请等待 {retry_seconds} 秒后重试",
+                status_code=429,
+                error_type="quota_exceeded",
+                details={"retry_after": retry_seconds}
+            )
 
-        return jsonify({"status": "error", "message": str(e)}), 500
+        return api_error(str(e), status_code=500, error_type="prediction_error")
 
 
 @app.route('/find_duplicates', methods=['GET'])
@@ -3077,14 +3766,13 @@ def find_duplicates():
                 'ids': id_list
             })
 
-        return jsonify({
-            'status': 'success',
+        return api_success(data={
             'duplicates': duplicates,
             'total_groups': len(duplicates)
         })
     except Exception as e:
         traceback.print_exc()
-        return jsonify({"status": "error", "message": str(e)}), 500
+        return api_error(str(e), status_code=500, error_type="query_error")
 
 @app.route('/delete_duplicates', methods=['POST'])
 def delete_duplicates():
@@ -3120,15 +3808,14 @@ def delete_duplicates():
 
         db.commit()
 
-        return jsonify({
-            'status': 'success',
-            'deleted_count': deleted_count,
-            'message': f'已删除 {deleted_count} 条重复记录'
-        })
+        return api_success(
+            data={'deleted_count': deleted_count},
+            message=f'已删除 {deleted_count} 条重复记录'
+        )
     except Exception as e:
         traceback.print_exc()
         db.rollback()
-        return jsonify({"status": "error", "message": str(e)}), 500
+        return api_error(str(e), status_code=500, error_type="delete_error")
 
 # ========== User Management APIs ==========
 
@@ -3138,13 +3825,13 @@ def switch_user(user_id):
     try:
         user = user_manager.get_user(user_id)
         if not user:
-            return jsonify({"status": "error", "message": "用户不存在"}), 404
+            return api_error("用户不存在", status_code=404, error_type="not_found")
 
         user_manager.set_current_user(user_id)
-        return jsonify({"status": "success", "user": user})
+        return api_success(data={"user": user}, message="User switched successfully")
     except Exception as e:
         traceback.print_exc()
-        return jsonify({"status": "error", "message": str(e)}), 500
+        return api_error(str(e), status_code=500, error_type="user_error")
 
 @app.route('/get_users', methods=['GET'])
 def get_users():
