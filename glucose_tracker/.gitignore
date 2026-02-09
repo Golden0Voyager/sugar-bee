@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.venv/
+venv/
+
+# OS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+
+# 数据库
+*.db
+
+# 个人配置（含隐私数据）
+user_config.json
+
+# 日志
+*.log
