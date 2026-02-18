@@ -948,6 +948,36 @@
         #userListContainer::-webkit-scrollbar-thumb:hover {
             background: #555;
         }
+        /* Weight chart legend toggles */
+        .wc-legend {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 3px 10px;
+            border-radius: 20px;
+            cursor: pointer;
+            user-select: none;
+            font-size: 12px;
+            color: var(--lc);
+            background: color-mix(in srgb, var(--lc) 10%, transparent);
+            transition: all 0.25s;
+        }
+        .wc-legend:hover { background: color-mix(in srgb, var(--lc) 18%, transparent); }
+        .wc-legend:not(.active) {
+            opacity: 0.35;
+            background: transparent;
+            text-decoration: line-through;
+        }
+        .wc-legend-line {
+            display: inline-block;
+            width: 14px;
+            height: 2.5px;
+            background: var(--lc);
+            border-radius: 2px;
+        }
+        .wc-legend-dash {
+            background: repeating-linear-gradient(90deg, var(--lc) 0 4px, transparent 4px 7px);
+        }
     </style>
 </head>
 <body class="bg-light">
@@ -2116,19 +2146,16 @@
         <div class="card-body">
             <div class="d-flex justify-content-between align-items-start mb-3">
                 <h3 class="mb-0"><i class="bi bi-speedometer me-2" style="color: #00897B;"></i>体重/BMI趋势</h3>
-                <div class="d-flex gap-3 align-items-center small">
-                    <div class="d-flex align-items-center gap-1">
-                        <span style="display: inline-block; width: 16px; height: 3px; background: #00897B;"></span>
-                        <span class="text-muted">体重(kg)</span>
-                    </div>
-                    <div class="d-flex align-items-center gap-1">
-                        <span style="display: inline-block; width: 16px; height: 3px; background: #FF7043;"></span>
-                        <span class="text-muted">BMI</span>
-                    </div>
-                    <div class="d-flex align-items-center gap-1">
-                        <span style="display: inline-block; width: 16px; height: 2px; background: #EF5350; border-top: 2px dashed #EF5350;"></span>
-                        <span class="text-muted">超重线(24)</span>
-                    </div>
+                <div class="d-flex gap-2 align-items-center small" id="weightChartLegend">
+                    <span class="wc-legend active" data-target="weight" style="--lc: #00897B;">
+                        <span class="wc-legend-line"></span>体重
+                    </span>
+                    <span class="wc-legend active" data-target="bmi" style="--lc: #FF7043;">
+                        <span class="wc-legend-line"></span>BMI
+                    </span>
+                    <span class="wc-legend active" data-target="overweight" style="--lc: #EF5350;">
+                        <span class="wc-legend-line wc-legend-dash"></span>超重线
+                    </span>
                 </div>
             </div>
             <canvas id="weightChart" height="60"></canvas>
@@ -2916,8 +2943,9 @@
                 return;
             }
 
-            if (data.status === 'success' && data.results) {
-                const successCount = data.results.filter(r => r.status === 'success').length;
+            if (data.status === 'success' && (data.results || (data.data && data.data.results))) {
+                const results = data.results || data.data.results;
+                const successCount = results.filter(r => r.status === 'success').length;
                 if (successCount > 0) {
                     showToast(`成功生成 ${successCount} 个时间点的预测`, 'success');
                     // 刷新页面显示新预测
@@ -4429,7 +4457,6 @@
                 pointBackgroundColor: bmiData.map(p => getBMIColor(p.y)),
                 pointBorderColor: '#fff',
                 pointBorderWidth: 2,
-                borderDash: [5, 3],
                 fill: false,
                 yAxisID: 'y1'
             });
@@ -4440,7 +4467,7 @@
         const weightMin = Math.floor(Math.min(...allWeights) - 2);
         const weightMax = Math.ceil(Math.max(...allWeights) + 2);
 
-        new Chart(ctx, {
+        const weightChartInstance = new Chart(ctx, {
             type: 'line',
             data: { datasets },
             options: {
@@ -4469,14 +4496,14 @@
                                 yMin: 24,
                                 yMax: 24,
                                 yScaleID: 'y1',
-                                borderColor: '#EF5350',
+                                borderColor: 'rgba(239, 83, 80, 0.5)',
                                 borderWidth: 1.5,
                                 borderDash: [6, 4],
                                 label: {
                                     display: true,
                                     content: '超重 BMI=24',
                                     position: 'end',
-                                    backgroundColor: 'rgba(239, 83, 80, 0.1)',
+                                    backgroundColor: 'rgba(239, 83, 80, 0.08)',
                                     color: '#EF5350',
                                     font: { size: 10 }
                                 }
@@ -4530,6 +4557,29 @@
                 }
             }
         });
+
+        // Legend toggle logic
+        const bmiDatasetIndex = bmiData.length > 0 ? 1 : -1;
+        document.querySelectorAll('#weightChartLegend .wc-legend').forEach(el => {
+            el.addEventListener('click', () => {
+                const target = el.dataset.target;
+                const active = el.classList.toggle('active');
+                if (target === 'weight') {
+                    weightChartInstance.getDatasetMeta(0).hidden = !active;
+                } else if (target === 'bmi' && bmiDatasetIndex >= 0) {
+                    weightChartInstance.getDatasetMeta(bmiDatasetIndex).hidden = !active;
+                } else if (target === 'overweight') {
+                    const ann = weightChartInstance.options.plugins.annotation.annotations.overweightLine;
+                    ann.display = active;
+                }
+                weightChartInstance.update();
+            });
+        });
+        // Hide BMI toggle if no BMI data
+        if (bmiDatasetIndex < 0) {
+            const bmiToggle = document.querySelector('#weightChartLegend .wc-legend[data-target="bmi"]');
+            if (bmiToggle) bmiToggle.style.display = 'none';
+        }
     }
 
     // 生成AI预测控制按钮（统一开关）
