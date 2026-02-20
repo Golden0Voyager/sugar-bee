@@ -9,12 +9,6 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css" rel="stylesheet">
-    <script src='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.js'></script>
-    <!-- Markdown Parser -->
-    <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js"></script>
-    <!-- PDF Export -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <style>
         :root {
             /* 清新薄荷配色方案 - Fresh Mint Theme */
@@ -1102,6 +1096,13 @@
                         </a>
                     </li>
                     <input type="file" id="restoreFileInput" accept=".db" style="display:none">
+                    <li><hr class="dropdown-divider"></li>
+                    <li><h6 class="dropdown-header"><i class="bi bi-wrench me-2"></i>数据清理</h6></li>
+                    <li>
+                        <a class="dropdown-item" href="#" onclick="findAndCleanDuplicates()">
+                            <i class="bi bi-copy me-2 text-info"></i>查找重复记录
+                        </a>
+                    </li>
                 </ul>
             </div>
         </div>
@@ -1252,7 +1253,6 @@
                                                         <option value="餐后2小时">
                                                         <option value="晚饭前">
                                                         <option value="睡前">
-                                                        <option value="运动后">
                                                     </datalist>
                                                 </div>
                                             </div>
@@ -2069,50 +2069,6 @@
             </div>
 
             <canvas id="glucoseChart" height="80"></canvas>
-
-            <!-- AI 预测区域（可折叠） -->
-            <div class="border-top mt-3 pt-3">
-                <div class="d-flex justify-content-between align-items-center mb-2">
-                    <button class="btn btn-link text-decoration-none p-0 d-flex align-items-center gap-2"
-                            type="button"
-                            data-bs-toggle="collapse"
-                            data-bs-target="#predictionSection"
-                            aria-expanded="true">
-                        <i class="bi bi-magic text-primary"></i>
-                        <span class="fw-bold text-dark">AI 血糖预测</span>
-                        <i class="bi bi-chevron-down text-muted small collapse-toggle-icon" id="predictionCollapseIcon"></i>
-                    </button>
-                    <div class="d-flex gap-2">
-                        <button class="btn btn-sm btn-outline-primary" onclick="refreshPredictionStatus()" title="刷新预测状态">
-                            <i class="bi bi-arrow-clockwise"></i>
-                        </button>
-                        <button class="btn btn-sm btn-primary" onclick="triggerManualPrediction()" title="手动生成预测">
-                            <i class="bi bi-plus-lg me-1"></i>预测
-                        </button>
-                    </div>
-                </div>
-
-                <div class="collapse show" id="predictionSection">
-                    <!-- 预测列表 -->
-                    <div id="predictionList" class="mb-3">
-                        <div class="text-center text-muted py-3">
-                            <div class="spinner-border spinner-border-sm me-2" role="status"></div>
-                            加载预测状态...
-                        </div>
-                    </div>
-
-                    <!-- 预测准确性统计 -->
-                    <div id="predictionAccuracyStats" class="border-top pt-2 mt-2 d-none">
-                        <div class="d-flex justify-content-between align-items-center mb-2">
-                            <small class="text-muted fw-bold">近7天预测准确性</small>
-                            <button class="btn btn-link btn-sm p-0 text-decoration-none" onclick="showPredictionComparison()">
-                                查看对比图 <i class="bi bi-arrow-right-short"></i>
-                            </button>
-                        </div>
-                        <div id="accuracyBadges" class="d-flex flex-wrap gap-2"></div>
-                    </div>
-                </div>
-            </div>
         </div>
     </div>
 
@@ -2189,276 +2145,6 @@
             </div>
             <div class="collapse show" id="calendarSection">
                 <div id="calendar"></div>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Floating Action Button (FAB) - Hidden (使用新的ChatGPT风格输入框) -->
-<button class="btn btn-primary rounded-circle shadow-lg position-fixed d-none align-items-center justify-content-center"
-        style="bottom: 30px; right: 30px; width: 64px; height: 64px; z-index: 1050; font-size: 1.5rem;"
-        type="button" data-bs-toggle="offcanvas" data-bs-target="#inputOffcanvas">
-    <i class="bi bi-plus-lg"></i>
-</button>
-
-<!-- Input Offcanvas (Bottom Sheet) - Material Design -->
-<div class="offcanvas offcanvas-bottom rounded-top-4 h-auto" tabindex="-1" id="inputOffcanvas" style="max-height: 90vh;">
-    <div class="offcanvas-header pb-0">
-        <h3 class="offcanvas-title">记录健康</h3>
-        <button type="button" class="btn-close" data-bs-dismiss="offcanvas" style="font-size: 1.25rem;"></button>
-    </div>
-    <div class="offcanvas-body">
-        <ul class="nav nav-pills nav-fill mb-4 bg-light rounded-pill p-2" id="inputTab" role="tablist" style="gap: 8px;">
-            <li class="nav-item" role="presentation">
-                <button class="nav-link active rounded-pill" id="ai-tab" data-bs-toggle="pill" data-bs-target="#ai" type="button" role="tab" style="font-size: 1.1rem; padding: 12px 20px;">
-                    <i class="bi bi-stars me-2"></i>智能识别
-                </button>
-            </li>
-            <li class="nav-item" role="presentation">
-                <button class="nav-link rounded-pill" id="manual-tab" data-bs-toggle="pill" data-bs-target="#manual" type="button" role="tab" style="font-size: 1.1rem; padding: 12px 20px;">
-                    <i class="bi bi-pencil-square me-2"></i>手动录入
-                </button>
-            </li>
-        </ul>
-        
-        <div class="tab-content" id="inputTabContent">
-            <!-- AI Input - Material Design -->
-            <div class="tab-pane fade show active" id="ai" role="tabpanel">
-                <div class="mb-3">
-                    <textarea class="form-control rounded-4" id="aiInput" rows="4" placeholder="例如：今天空腹6.5... 或上传跑步截图" style="font-size: 1.1rem; padding: 16px;"></textarea>
-                    <div class="d-flex gap-3 mt-3">
-                        <button class="btn-circle-icon" type="button" id="speechBtn" title="语音输入">
-                            <i class="bi bi-mic-fill"></i>
-                        </button>
-                        <label class="btn-circle-icon mb-0" for="imageUpload" title="上传图片">
-                            <i class="bi bi-image"></i>
-                            <input type="file" id="imageUpload" accept="image/*" class="d-none" onchange="previewImage(this)">
-                        </label>
-                    </div>
-                </div>
-                
-                <!-- Image Preview Container -->
-                <div id="imagePreviewContainer" class="mb-3 d-none">
-                    <div class="position-relative d-inline-block">
-                        <img id="selectedImage" src="#" class="img-thumbnail rounded-3" style="max-height: 150px;">
-                        <button type="button" class="btn-close position-absolute top-0 end-0 bg-white m-1" onclick="clearImage()"></button>
-                    </div>
-                </div>
-
-                <button class="btn btn-primary w-100 rounded-pill" onclick="analyzeText()" id="analyzeBtn" style="font-size: 1.1rem; padding: 14px 24px;">
-                    <span id="btnText">识别并添加</span>
-                    <div class="spinner-border spinner-border-sm d-none ms-2" id="btnSpinner" role="status"></div>
-                </button>
-                
-                <!-- Preview Area -->
-                <div id="aiPreview" class="mt-4 d-none">
-                    <h4 class="text-muted mb-3">识别结果 (请确认)</h4>
-                    <div id="previewList" class="list-group mb-3"></div>
-                    <div class="d-flex gap-3">
-                        <button class="btn btn-success flex-grow-1 rounded-pill" onclick="confirmBatchAdd()" style="font-size: 1.1rem; padding: 14px 24px;">确认保存</button>
-                        <button class="btn btn-outline-secondary rounded-pill px-4" onclick="cancelPreview()" style="font-size: 1.1rem; padding: 14px 24px;">取消</button>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Manual Input - Material Design -->
-            <div class="tab-pane fade" id="manual" role="tabpanel">
-                <form id="manualInputForm" class="row g-3">
-                    <!-- 记录类型选择 -->
-                    <div class="col-12">
-                        <label class="form-label fw-bold" style="font-size: 1.1rem;">记录类型</label>
-                        <select id="recordType" class="form-select rounded-3" onchange="toggleRecordFields()" style="font-size: 1.1rem; padding: 12px;">
-                            <option value="glucose">血糖测量</option>
-                            <option value="bloodpressure">血压测量</option>
-                            <option value="weight">体重记录</option>
-                            <option value="meal">餐食记录</option>
-                            <option value="exercise">运动记录</option>
-                            <option value="medication">药物方案</option>
-                        </select>
-                    </div>
-
-                    <!-- 血糖字段 -->
-                    <div id="glucoseFields" class="col-12">
-                        <div class="row g-3">
-                            <div class="col-md-4">
-                                <label class="form-label" style="font-size: 1rem;">血糖值 <span class="text-danger">*</span></label>
-                                <input type="number" step="0.1" id="glucose_value" class="form-control rounded-3" style="font-size: 1.1rem; padding: 12px;">
-                            </div>
-                            <div class="col-md-4">
-                                <label class="form-label" style="font-size: 1rem;">单位</label>
-                                <select id="glucose_unit" class="form-select rounded-3" style="font-size: 1.1rem; padding: 12px;">
-                                    <option value="mmol/L">mmol/L</option>
-                                    <option value="mg/dL">mg/dL</option>
-                                </select>
-                            </div>
-                            <div class="col-md-4">
-                                <label class="form-label" style="font-size: 1rem;">测量类型</label>
-                                <input type="text" id="glucose_type" class="form-control rounded-3" list="glucoseTypeOptions" placeholder="如：空腹" style="font-size: 1.1rem; padding: 12px;">
-                                <datalist id="glucoseTypeOptions">
-                                    <option value="空腹">
-                                    <option value="餐前">
-                                    <option value="运动后">
-                                    <option value="餐后1小时">
-                                    <option value="餐后2小时">
-                                    <option value="晚饭前">
-                                    <option value="睡前">
-                                    <option value="运动后">
-                                </datalist>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- 血压字段 -->
-                    <div id="bloodPressureFields" class="col-12 d-none">
-                        <div class="row g-3">
-                            <div class="col-md-4">
-                                <label class="form-label" style="font-size: 1rem;">收缩压/高压 <span class="text-danger">*</span></label>
-                                <input type="number" id="bp_systolic" class="form-control rounded-3" placeholder="如：137" style="font-size: 1.1rem; padding: 12px;">
-                            </div>
-                            <div class="col-md-4">
-                                <label class="form-label" style="font-size: 1rem;">舒张压/低压 <span class="text-danger">*</span></label>
-                                <input type="number" id="bp_diastolic" class="form-control rounded-3" placeholder="如：73" style="font-size: 1.1rem; padding: 12px;">
-                            </div>
-                            <div class="col-md-4">
-                                <label class="form-label" style="font-size: 1rem;">脉搏 (bpm)</label>
-                                <input type="number" id="bp_pulse" class="form-control rounded-3" placeholder="可选" style="font-size: 1.1rem; padding: 12px;">
-                            </div>
-                            <div class="col-12">
-                                <label class="form-label" style="font-size: 1rem;">测量类型</label>
-                                <input type="text" id="bp_type" class="form-control rounded-3" list="bpTypeOptions" placeholder="如：空腹血压" style="font-size: 1.1rem; padding: 12px;">
-                                <datalist id="bpTypeOptions">
-                                    <option value="空腹血压">
-                                    <option value="血压测量">
-                                    <option value="餐后血压">
-                                </datalist>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- 体重字段 -->
-                    <div id="weightFields" class="col-12 d-none">
-                        <div class="row g-3">
-                            <div class="col-md-6">
-                                <label class="form-label" style="font-size: 1rem;">体重 (kg) <span class="text-danger">*</span></label>
-                                <input type="number" step="0.1" id="weight_value" class="form-control rounded-3" placeholder="如：75.0" style="font-size: 1.1rem; padding: 12px;" oninput="calcBMIPreview()">
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label" style="font-size: 1rem;">BMI <small class="text-muted">(自动计算)</small></label>
-                                <input type="text" id="weight_bmi" class="form-control rounded-3 bg-light" readonly style="font-size: 1.1rem; padding: 12px;">
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- 餐食字段 -->
-                    <div id="mealFields" class="col-12 d-none">
-                        <div class="row g-3">
-                            <div class="col-md-6">
-                                <label class="form-label" style="font-size: 1rem;">餐食类型 <span class="text-danger">*</span></label>
-                                <select id="meal_type" class="form-select rounded-3" style="font-size: 1.1rem; padding: 12px;">
-                                    <option value="早餐">早餐</option>
-                                    <option value="午餐">午餐</option>
-                                    <option value="晚餐">晚餐</option>
-                                    <option value="加餐">加餐/零食</option>
-                                </select>
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label" style="font-size: 1rem;">热量 (kcal)</label>
-                                <input type="number" id="meal_calories" class="form-control rounded-3" placeholder="估算值" style="font-size: 1.1rem; padding: 12px;">
-                            </div>
-                            <div class="col-12">
-                                <label class="form-label" style="font-size: 1rem;">食物内容 <span class="text-danger">*</span></label>
-                                <textarea id="meal_notes" class="form-control rounded-3" rows="2" placeholder="例如：一碗米饭、西兰花、鸡胸肉" style="font-size: 1.1rem; padding: 12px;"></textarea>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- 运动字段 -->
-                    <div id="exerciseFields" class="col-12 d-none">
-                        <div class="row g-3">
-                            <div class="col-md-6">
-                                <label class="form-label" style="font-size: 1rem;">运动类型</label>
-                                <input type="text" id="exercise_type" class="form-control rounded-3" value="跑步" list="exerciseTypeOptions" style="font-size: 1.1rem; padding: 12px;">
-                                <datalist id="exerciseTypeOptions">
-                                    <option value="跑步">
-                                    <option value="快走">
-                                    <option value="游泳">
-                                    <option value="骑车">
-                                    <option value="运动">
-                                </datalist>
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label" style="font-size: 1rem;">距离 (km)</label>
-                                <input type="number" step="0.1" id="exercise_distance" class="form-control rounded-3" style="font-size: 1.1rem; padding: 12px;">
-                            </div>
-                            <div class="col-md-4">
-                                <label class="form-label" style="font-size: 1rem;">时长</label>
-                                <input type="text" id="exercise_duration" class="form-control rounded-3" placeholder="如：30分钟" style="font-size: 1.1rem; padding: 12px;">
-                            </div>
-                            <div class="col-md-4">
-                                <label class="form-label" style="font-size: 1rem;">心率 (bpm)</label>
-                                <input type="number" id="exercise_heart_rate" class="form-control rounded-3" style="font-size: 1.1rem; padding: 12px;">
-                            </div>
-                            <div class="col-md-4">
-                                <label class="form-label" style="font-size: 1rem;">消耗 (kcal)</label>
-                                <input type="number" id="exercise_calories" class="form-control rounded-3" style="font-size: 1.1rem; padding: 12px;">
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- 药物方案字段 -->
-                    <div id="medicationFields" class="col-12 d-none">
-                        <div class="row g-3">
-                            <div class="col-md-6">
-                                <label class="form-label" style="font-size: 1rem;">药物名称 <span class="text-danger">*</span></label>
-                                <input type="text" id="med_name_manual" class="form-control rounded-3" list="medOptions2" placeholder="如：二甲双胍" style="font-size: 1.1rem; padding: 12px;">
-                                <datalist id="medOptions2">
-                                    <option value="二甲双胍">
-                                    <option value="阿卡波糖">
-                                    <option value="格列齐特">
-                                    <option value="门冬胰岛素">
-                                    <option value="甘精胰岛素">
-                                    <option value="西格列汀">
-                                </datalist>
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label" style="font-size: 1rem;">剂量</label>
-                                <input type="text" id="med_dosage_manual" class="form-control rounded-3" placeholder="如：500mg" style="font-size: 1.1rem; padding: 12px;">
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label" style="font-size: 1rem;">每天次数 <span class="text-danger">*</span></label>
-                                <input type="number" id="med_times_manual" class="form-control rounded-3" value="1" min="1" max="10" style="font-size: 1.1rem; padding: 12px;">
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label" style="font-size: 1rem;">服用时机</label>
-                                <input type="text" id="med_timing_manual" class="form-control rounded-3" placeholder="如：早晚餐前30分钟" style="font-size: 1.1rem; padding: 12px;">
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label" style="font-size: 1rem;">开始日期 <span class="text-danger">*</span></label>
-                                <input type="date" id="med_start_manual" class="form-control rounded-3" style="font-size: 1.1rem; padding: 12px;">
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label" style="font-size: 1rem;">结束日期 <small>(可选)</small></label>
-                                <input type="date" id="med_end_manual" class="form-control rounded-3" style="font-size: 1.1rem; padding: 12px;">
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- 通用字段 -->
-                    <div class="col-md-6">
-                        <label class="form-label" style="font-size: 1rem;">时间 <span class="text-danger">*</span></label>
-                        <input type="datetime-local" id="manual_timestamp" class="form-control rounded-3" required style="font-size: 1.1rem; padding: 12px;">
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label" style="font-size: 1rem;">备注</label>
-                        <input type="text" id="manual_notes" class="form-control rounded-3" placeholder="其他说明..." style="font-size: 1.1rem; padding: 12px;">
-                    </div>
-
-                    <div class="col-12 mt-4">
-                        <button type="submit" class="btn btn-primary w-100 rounded-pill" style="font-size: 1.1rem; padding: 14px 24px;">
-                            <i class="bi bi-check-circle me-2"></i>保存记录
-                        </button>
-                    </div>
-                </form>
             </div>
         </div>
     </div>
@@ -2714,6 +2400,11 @@
 <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@2.2.1/dist/chartjs-plugin-annotation.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
+<!-- 非关键 JS 延迟加载 -->
+<script defer src='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.js'></script>
+<script defer src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script>
     // Injected from server
     const timelineData = {{ timeline | tojson }};
@@ -2992,198 +2683,15 @@
         }, 50);
     }
 
-    // ========== 预测状态卡片功能 ==========
+    // ========== 预测状态功能 ==========
     let predictionComparisonChart = null;
-
-    /**
-     * 加载并显示预测状态
-     */
-    async function loadPredictionStatus() {
-        try {
-            const response = await fetch('/prediction_status');
-            const data = await response.json();
-
-            renderPredictionList(data.slots);
-            renderAccuracyStats(data.accuracy_by_type);
-
-        } catch (error) {
-            console.error('Error loading prediction status:', error);
-            document.getElementById('predictionList').innerHTML = `
-                <div class="text-center text-muted py-3">
-                    <i class="bi bi-exclamation-triangle me-2"></i>
-                    加载失败，请刷新重试
-                </div>
-            `;
-        }
-    }
-
-    /**
-     * 渲染时间槽列表（预测+实测+待测）
-     */
-    function renderPredictionList(slots) {
-        const container = document.getElementById('predictionList');
-
-        if (!slots || slots.length === 0) {
-            container.innerHTML = `
-                <div class="text-center text-muted py-3">
-                    <i class="bi bi-info-circle d-block fs-4 mb-1"></i>
-                    <small>暂无数据</small>
-                </div>
-            `;
-            return;
-        }
-
-        let html = '<div class="list-group list-group-flush">';
-
-        slots.forEach((slot, index) => {
-            const time = slot.time;
-
-            // 状态配置
-            const statusConfig = {
-                'pending': { icon: '○', color: 'secondary', text: '待测量', bgClass: 'bg-light' },
-                'predicted': { icon: '◐', color: 'warning', text: '待验证', bgClass: 'bg-warning-subtle' },
-                'measured': { icon: '●', color: 'primary', text: '已测量', bgClass: 'bg-primary-subtle' },
-                'verified': { icon: '✓', color: 'success', text: '已验证', bgClass: 'bg-success-subtle' }
-            };
-
-            const config = statusConfig[slot.status] || statusConfig['pending'];
-
-            // 获取显示值和颜色
-            let valueHtml = '';
-            let displayValue = slot.value || slot.predicted_value || slot.real_value;
-
-            if (slot.status === 'verified') {
-                // 已验证：显示 预测值 → 实测值 + 误差
-                const predResult = checkGlucoseCompliance(slot.real_value, slot.name);
-                const errorColor = slot.error !== null ? (Math.abs(slot.error) < 0.5 ? 'success' : (Math.abs(slot.error) < 1.0 ? 'warning' : 'danger')) : 'secondary';
-                const errorSign = slot.error > 0 ? '+' : '';
-                valueHtml = `
-                    <span class="text-muted small">${slot.predicted_value}</span>
-                    <i class="bi bi-arrow-right text-muted small"></i>
-                    <span class="fw-bold" style="color: ${predResult.badge.color};">${slot.real_value}</span>
-                    ${slot.error !== null ? `<span class="badge bg-${errorColor}-subtle text-${errorColor} ms-2">误差 ${errorSign}${slot.error}</span>` : ''}
-                `;
-            } else if (slot.status === 'measured') {
-                // 已测量：显示实测值
-                const result = checkGlucoseCompliance(slot.real_value, slot.name);
-                valueHtml = `
-                    <span class="fw-bold" style="color: ${result.badge.color};">${slot.real_value}</span>
-                    <span class="badge bg-${config.color}-subtle text-${config.color}">${config.icon} ${config.text}</span>
-                `;
-            } else if (slot.status === 'predicted') {
-                // 已预测：显示预测值
-                const predResult = checkGlucoseCompliance(slot.predicted_value, slot.name);
-                valueHtml = `
-                    <span class="fw-bold" style="color: ${predResult.badge.color};">${slot.predicted_value}</span>
-                    <span class="badge bg-${config.color}-subtle text-${config.color}">${config.icon} ${config.text}</span>
-                `;
-            } else {
-                // 待测量
-                valueHtml = `
-                    <span class="text-muted">--</span>
-                    <span class="badge bg-${config.color}-subtle text-${config.color}">${config.icon} ${config.text}</span>
-                `;
-            }
-
-            // 处理预测依据（从notes中提取）
-            const hasNotes = slot.notes && slot.notes.trim().length > 0 && (slot.status === 'predicted' || slot.status === 'verified');
-            const cleanNotes = hasNotes ? slot.notes.replace('AI预测: ', '').replace('AI预测:', '').replace('AI预测 |', '').trim() : '';
-            const collapseId = `slotBasis${index}`;
-
-            html += `
-                <div class="list-group-item px-0 py-2 border-0 border-bottom">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <div class="d-flex align-items-center gap-2">
-                            <span class="badge bg-light text-dark">${time}</span>
-                            <span class="fw-medium">${slot.name}</span>
-                            ${hasNotes ? `
-                                <button class="btn btn-link btn-sm p-0 text-muted"
-                                        data-bs-toggle="collapse"
-                                        data-bs-target="#${collapseId}"
-                                        aria-expanded="false"
-                                        title="查看预测依据">
-                                    <i class="bi bi-info-circle"></i>
-                                </button>
-                            ` : ''}
-                        </div>
-                        <div class="d-flex align-items-center gap-2">
-                            ${valueHtml}
-                        </div>
-                    </div>
-                    ${hasNotes ? `
-                        <div class="collapse mt-2" id="${collapseId}">
-                            <div class="p-2 rounded" style="background: var(--bs-light); font-size: 0.85rem;">
-                                <div class="d-flex align-items-start gap-2">
-                                    <i class="bi bi-lightbulb text-warning"></i>
-                                    <div class="text-muted">${cleanNotes}</div>
-                                </div>
-                            </div>
-                        </div>
-                    ` : ''}
-                </div>
-            `;
-        });
-
-        html += '</div>';
-        container.innerHTML = html;
-    }
-
-    /**
-     * 渲染准确性统计
-     */
-    function renderAccuracyStats(accuracyByType) {
-        const container = document.getElementById('predictionAccuracyStats');
-        const badgesContainer = document.getElementById('accuracyBadges');
-
-        if (!accuracyByType || Object.keys(accuracyByType).length === 0) {
-            container.classList.add('d-none');
-            return;
-        }
-
-        container.classList.remove('d-none');
-
-        let html = '';
-        for (const [type, stats] of Object.entries(accuracyByType)) {
-            const accuracy = stats.accuracy || 0;
-            const mae = stats.mae || 0;
-
-            // 根据准确率选择颜色
-            let color = 'success';
-            if (accuracy < 60) color = 'danger';
-            else if (accuracy < 80) color = 'warning';
-
-            html += `
-                <div class="d-flex align-items-center gap-2 px-3 py-2 rounded-pill" style="background: var(--bs-${color}-bg-subtle);">
-                    <span class="fw-medium text-${color}">${type}</span>
-                    <span class="badge bg-${color}">${accuracy.toFixed(0)}%</span>
-                    <small class="text-muted">MAE: ${mae}</small>
-                </div>
-            `;
-        }
-
-        badgesContainer.innerHTML = html;
-    }
-
-    /**
-     * 刷新预测状态
-     */
-    async function refreshPredictionStatus() {
-        const container = document.getElementById('predictionList');
-        container.innerHTML = `
-            <div class="text-center text-muted py-3">
-                <div class="spinner-border spinner-border-sm me-2" role="status"></div>
-                刷新中...
-            </div>
-        `;
-        await loadPredictionStatus();
-    }
 
     /**
      * 手动触发预测
      */
-    async function triggerManualPrediction() {
+    async function triggerManualPrediction(evt) {
         try {
-            const btn = event.target.closest('button');
+            const btn = evt ? evt.target.closest('button') : document.querySelector('[onclick*="triggerManualPrediction"]');
             if (btn) {
                 btn.disabled = true;
                 btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>生成中...';
@@ -3198,10 +2706,9 @@
             const data = await response.json();
 
             if (data.status === 'success') {
-                showToast('预测生成完成', 'success');
-                await loadPredictionStatus();
+                showToast('预测生成完成，刷新页面查看', 'success');
+                setTimeout(() => location.reload(), 1500);
             } else {
-                // 检查是否是配额错误
                 if (data.error_type === 'quota_exceeded' && data.retry_after > 0) {
                     showPredictionQuotaModal(data.retry_after);
                 } else {
@@ -3213,7 +2720,7 @@
             console.error('Error triggering prediction:', error);
             showToast('预测生成失败，请重试', 'danger');
         } finally {
-            const btn = document.querySelector('[onclick="triggerManualPrediction()"]');
+            const btn = document.querySelector('[onclick*="triggerManualPrediction"]');
             if (btn) {
                 btn.disabled = false;
                 btn.innerHTML = '<i class="bi bi-plus-lg me-1"></i>生成预测';
@@ -3564,9 +3071,6 @@
 
         // Initialize Weight/BMI Chart
         initWeightChart();
-
-        // 加载预测状态卡片
-        loadPredictionStatus();
 
         // Initialize Bootstrap Tooltips
         var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
@@ -4587,6 +4091,10 @@
         const togglesContainer = document.getElementById('predictionToggles');
         const controlPanel = document.getElementById('aiPredictionControls');
 
+        // 清空旧按钮，防止切换时间范围时重复累加
+        togglesContainer.innerHTML = '';
+        controlPanel.classList.add('d-none');
+
         // 收集所有有预测数据的类型
         const predictionTypes = [];
         for (const [key, indices] of Object.entries(datasetIndexMap)) {
@@ -4628,8 +4136,9 @@
                 // 显示预测曲线时，检查对应的实际数据是否正在显示
                 if (realIndex >= 0) {
                     const realMeta = glucoseChart.getDatasetMeta(realIndex);
-                    // 只有当实际数据正在显示时，才显示对应的预测曲线
-                    predMeta.hidden = realMeta.hidden;
+                    // Chart.js 中 meta.hidden 为 null 表示可见（继承配置），true 表示隐藏
+                    // 必须显式设为 false 才能覆盖数据集配置中的 hidden: true
+                    predMeta.hidden = realMeta.hidden === true ? true : false;
                 } else {
                     predMeta.hidden = false;
                 }
@@ -5562,10 +5071,16 @@
             if (parsedData.length > 0) {
                 renderPreview();
             } else {
-                alert('未能识别出有效数据，请检查输入或图片。');
+                showToast('未能识别出有效数据，请检查输入或图片', 'warning');
             }
         } catch (e) {
-            alert('识别出错: ' + e);
+            const errMsg = String(e);
+            if (errMsg.includes('429') || errMsg.includes('RESOURCE_EXHAUSTED')) {
+                showToast('AI 服务配额暂时用尽，请稍后再试', 'warning');
+            } else {
+                showToast('识别出错，请重试', 'danger');
+            }
+            console.error('AI parse error:', e);
         } finally {
             toggleLoading(false);
             _isAnalyzing = false;
@@ -6166,6 +5681,10 @@
     }
     
     document.getElementById('speechBtn').onclick = toggleSpeechRecognition;
+    // 不支持语音识别时隐藏按钮
+    if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+        document.getElementById('speechBtn').classList.add('d-none');
+    }
 
     // ========== 编辑功能 ========== 
     let editModal;
@@ -7170,6 +6689,46 @@
             }
         };
         fileInput.click();
+    }
+
+    // ========== 去重功能 ==========
+    async function findAndCleanDuplicates() {
+        try {
+            showToast('正在扫描重复记录...', 'info');
+            const res = await fetch('/find_duplicates');
+            const data = await res.json();
+
+            if (!data.data || data.data.total_groups === 0) {
+                showToast('未发现重复记录', 'success');
+                return;
+            }
+
+            const groups = data.data.duplicates;
+            const total = data.data.total_groups;
+            const totalDup = groups.reduce((sum, g) => sum + g.count - 1, 0);
+
+            let detail = groups.slice(0, 5).map(g =>
+                `  ${g.time} ${g.type} = ${g.value} (${g.count}条)`
+            ).join('\n');
+            if (total > 5) detail += `\n  ... 共 ${total} 组`;
+
+            if (!confirm(`发现 ${total} 组重复记录（共 ${totalDup} 条冗余）:\n\n${detail}\n\n是否自动清理？每组仅保留最早的一条。`)) {
+                return;
+            }
+
+            const delRes = await fetch('/delete_duplicates', { method: 'POST' });
+            const delData = await delRes.json();
+
+            if (delData.status === 'success') {
+                showToast(`已清理 ${delData.data.deleted_count} 条重复记录`, 'success');
+                setTimeout(() => location.reload(), 1500);
+            } else {
+                showToast('清理失败: ' + (delData.message || '未知错误'), 'danger');
+            }
+        } catch (e) {
+            console.error('Duplicate check error:', e);
+            showToast('查找重复记录失败: ' + e.message, 'danger');
+        }
     }
 
     // ========== User Switching Functions ==========

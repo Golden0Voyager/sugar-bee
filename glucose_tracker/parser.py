@@ -1,24 +1,11 @@
-from google import genai
-from google.genai import types
-import os
 import json
 import datetime
 import re
-from dotenv import load_dotenv
 import settings
+from ai_client import call_ai
 
-load_dotenv()
-
-# Configure API
-api_key = os.getenv("GEMINI_API_KEY")
 
 def parse_glucose_input(text, history_context=None, images_data=None, mime_type=None):
-    if not api_key:
-        print("Error: API Key not found")
-        return []
-
-    client = genai.Client(api_key=api_key)
-
     current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     context_str = "无历史数据参考，请使用通用医疗标准。"
@@ -234,22 +221,8 @@ def parse_glucose_input(text, history_context=None, images_data=None, mime_type=
     """
 
     try:
-        contents = [prompt]
+        raw_text = call_ai(prompt, images_data=images_data, mime_type=mime_type)
 
-        # 如果有多张图片，逐一添加到内容中
-        if images_data:
-            for image_data in images_data:
-                contents.append(types.Part.from_bytes(data=image_data, mime_type=mime_type))
-
-        # 添加文本输入（如果有）
-        if text:
-            contents.append(text)
-
-        response = client.models.generate_content(
-            model='gemini-3-flash-preview',
-            contents=contents
-        )
-        raw_text = response.text
         print(f"DEBUG: Raw AI response text: {raw_text}")
 
         # More robust extraction

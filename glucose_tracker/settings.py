@@ -4,6 +4,17 @@ import os
 
 CONFIG_FILE = "user_config.json"
 
+# ========== AI 模型配置 ==========
+# Gemini 模型链（按优先级排列，全部失败时自动降级到 ZhipuAI）
+GEMINI_MODELS = ['gemini-3-flash-preview', 'gemini-2.5-flash']
+
+# ZhipuAI 模型配置（国内可用，免费）
+ZHIPUAI_MODELS = {
+    'text': ['glm-4.7-flash'],          # 文本生成（免费，200K上下文）
+    'vision': ['glm-4.6v-flash'],      # 图片识别（免费，base64支持）
+}
+ZHIPUAI_BASE_URL = 'https://open.bigmodel.cn/api/paas/v4/'
+
 # ========== 血糖值验证范围常量 ==========
 # 用于数据验证和预测值范围检查，单位：mmol/L
 GLUCOSE_RANGE = {

@@ -8,7 +8,7 @@ import traceback
 from werkzeug.utils import secure_filename
 from parser import parse_glucose_input
 import settings
-from google import genai
+from ai_client import call_ai, AI_AVAILABLE
 import json
 import re
 import shutil
@@ -33,10 +33,8 @@ os.makedirs(AVATAR_FOLDER, exist_ok=True)
 # Initialize user manager
 user_manager = UserManager(DB_NAME)
 
-# Configure Gemini API for FPG prediction
 from dotenv import load_dotenv
 load_dotenv()
-api_key = os.getenv("GEMINI_API_KEY")
 
 
 # ========== 标准化 API 响应辅助函数 ==========
@@ -230,6 +228,20 @@ def init_db():
                       is_auto_generated BOOLEAN DEFAULT 0,
                       created_at DATETIME DEFAULT CURRENT_TIMESTAMP)''')
 
+        # ========== 性能索引 ==========
+        # 核心查询索引：用户+时间戳（覆盖绝大多数查询）
+        c.execute('CREATE INDEX IF NOT EXISTS idx_records_user_ts ON records(user_id, timestamp DESC)')
+        # 预测记录筛选
+        c.execute('CREATE INDEX IF NOT EXISTS idx_records_user_pred ON records(user_id, is_predicted, timestamp)')
+        # 体重查询
+        c.execute('CREATE INDEX IF NOT EXISTS idx_records_weight ON records(user_id, weight, timestamp DESC)')
+        # 血压查询
+        c.execute('CREATE INDEX IF NOT EXISTS idx_records_bp ON records(user_id, systolic_pressure, timestamp DESC)')
+        # 健康分析报告
+        c.execute('CREATE INDEX IF NOT EXISTS idx_analyses_user ON health_analyses(user_id, created_at DESC)')
+        # 药物日志
+        c.execute('CREATE INDEX IF NOT EXISTS idx_medlogs_plan ON medication_logs(plan_id, log_date)')
+
         conn.commit()
     except Exception as e:
         print(f"DB Init Error: {e}")
@@ -373,7 +385,7 @@ def predict_morning_fpg(db, user_id=1):
     触发条件：
     - 当天第一次打开应用（今天还没有生成 FPG 预测记录）
     """
-    if not api_key:
+    if not AI_AVAILABLE:
         return  # No API key, skip prediction
 
     try:
@@ -623,12 +635,7 @@ def predict_morning_fpg(db, user_id=1):
         """
 
         # 6. 调用 Gemini API
-        client = genai.Client(api_key=api_key)
-        response = client.models.generate_content(
-            model='gemini-3-flash-preview',
-            contents=prompt
-        )
-        raw_text = response.text
+        raw_text = call_ai(prompt)
 
         print(f"DEBUG FPG Prediction: Raw AI response: {raw_text}")
 
@@ -693,7 +700,7 @@ def predict_post_exercise_glucose(db, user_id=1, target_date=None, force_update=
         target_date: 目标日期（YYYY-MM-DD格式），默认为今天
         force_update: 是否强制更新已有的预测记录（用于上传运动数据后重新预测）
     """
-    if not api_key:
+    if not AI_AVAILABLE:
         return None  # No API key, skip prediction
 
     try:
@@ -835,12 +842,7 @@ def predict_post_exercise_glucose(db, user_id=1, target_date=None, force_update=
         """
 
         # 6. 调用 Gemini API
-        client = genai.Client(api_key=api_key)
-        response = client.models.generate_content(
-            model='gemini-3-flash-preview',
-            contents=prompt
-        )
-        raw_text = response.text
+        raw_text = call_ai(prompt)
 
         print(f"DEBUG Post-Exercise Prediction ({target_date}): Raw AI response: {raw_text}")
 
@@ -910,7 +912,7 @@ def backfill_post_exercise_predictions(db, user_id=1, days=30):
     Returns:
         dict: {'success': int, 'skipped': int, 'dates': list}
     """
-    if not api_key:
+    if not AI_AVAILABLE:
         return {'success': 0, 'skipped': 0, 'dates': [], 'error': 'No API key configured'}
 
     try:
@@ -975,23 +977,9 @@ def backfill_post_exercise_predictions(db, user_id=1, days=30):
 
 def predict_remaining_glucose_slots(db, user_id=1, target_date=None, force_update=False):
     """
-    基于当日已有数据，向后预测剩余时间点的血糖值
-
-    预测逻辑：
-    1. 获取今日最后一条实测血糖记录作为基准
-    2. 根据时间推移、饮食、运动等因素预测后续时间点
-    3. 预测值会被后续实测值覆盖
-
-    Args:
-        db: 数据库连接
-        user_id: 用户ID
-        target_date: 目标日期（默认今天）
-        force_update: 是否强制更新已有的预测记录（用于用户录入新数据后更新剩余预测）
-
-    Returns:
-        list: 生成的预测记录列表
+    基于当日已有数据，使用 Gemini AI 预测剩余时间点的血糖值（单次 API 调用）
     """
-    if not api_key:
+    if not AI_AVAILABLE:
         return []
 
     try:
@@ -1011,170 +999,191 @@ def predict_remaining_glucose_slots(db, user_id=1, target_date=None, force_updat
             {'key': 'bedtime', 'name': '睡前', 'time': '22:00', 'type': '睡前'}
         ]
 
-        # 获取今日所有实测血糖记录（非预测）
+        # 获取今日所有实测血糖记录
         c.execute("""
             SELECT value, type, timestamp
-            FROM records
-            WHERE user_id = ?
-            AND DATE(timestamp) = ?
-            AND value > 0
-            AND is_predicted = 0
-            AND systolic_pressure IS NULL
-            ORDER BY timestamp DESC
-            LIMIT 1
+            FROM records WHERE user_id = ? AND DATE(timestamp) = ?
+            AND value > 0 AND is_predicted = 0 AND systolic_pressure IS NULL
+            ORDER BY timestamp ASC
         """, (user_id, target_date))
-        last_measured = c.fetchone()
+        measured_records = c.fetchall()
 
-        if not last_measured:
-            return []  # 没有实测数据，无法预测
+        if not measured_records:
+            return []
 
-        base_glucose = last_measured['value']
-        base_time = last_measured['timestamp'].split(' ')[1][:5] if ' ' in last_measured['timestamp'] else '07:00'
-        base_type = last_measured['type'] or ''
-
-        # 获取今日运动数据
+        # 获取今日饮食记录
         c.execute("""
-            SELECT distance, calories, duration
-            FROM records
-            WHERE user_id = ?
-            AND DATE(timestamp) = ?
-            AND (type IN ('运动', '跑步', '走路', '骑行') OR type LIKE '%跑%')
+            SELECT type, notes, calories, carbs_grams, gi_value, timestamp
+            FROM records WHERE user_id = ? AND DATE(timestamp) = ?
+            AND calories > 0 AND type NOT IN ('跑步', '运动')
+            ORDER BY timestamp ASC
         """, (user_id, target_date))
-        exercise_row = c.fetchone()
-        exercise_calories = exercise_row['calories'] if exercise_row else 0
+        meal_records = c.fetchall()
 
-        # 获取今日饮食记录（如有）
+        # 获取今日运动记录
         c.execute("""
-            SELECT notes, timestamp
-            FROM records
-            WHERE user_id = ?
-            AND DATE(timestamp) = ?
-            AND (notes LIKE '%早餐%' OR notes LIKE '%午餐%' OR notes LIKE '%晚餐%')
+            SELECT type, distance, duration, heart_rate, calories, timestamp
+            FROM records WHERE user_id = ? AND DATE(timestamp) = ?
+            AND (type IN ('运动', '跑步') OR distance IS NOT NULL)
+            ORDER BY timestamp ASC
         """, (user_id, target_date))
-        meals = c.fetchall()
+        exercise_records = c.fetchall()
 
-        # 获取历史同类型血糖均值作为参考
+        # 获取近7天历史均值
         c.execute("""
             SELECT type, AVG(value) as avg_value
-            FROM records
-            WHERE user_id = ?
-            AND timestamp > datetime('now', '-30 days')
-            AND value > 0
-            AND is_predicted = 0
-            AND systolic_pressure IS NULL
+            FROM records WHERE user_id = ? AND timestamp > datetime('now', '-7 days')
+            AND value > 0 AND is_predicted = 0 AND systolic_pressure IS NULL
             GROUP BY type
         """, (user_id,))
-        historical_avg = {row['type']: row['avg_value'] for row in c.fetchall()}
+        historical_avg = {row['type']: round(row['avg_value'], 1) for row in c.fetchall()}
 
-        # BMR 计算（用于静息消耗估算）
-        config = settings.load_config()
-        current_year = datetime.datetime.now().year
-        age = current_year - config.get('birth_year', 1964)
-        weight = config.get('weight', 75)
-        height = config.get('height', 170)
-        gender = config.get('gender', 'male')
-        s = 5 if gender == 'male' else -161
-        bmr = 10 * weight + 6.25 * height - 5 * age + s  # 每日基础代谢
-        hourly_bmr = bmr / 24  # 每小时静息消耗
-
-        predictions = []
+        # 筛选需要预测的时间点
+        last_measured_time = measured_records[-1]['timestamp'].split(' ')[1][:5]
+        slots_to_predict = []
 
         for slot in predictable_slots:
-            slot_time = slot['time']
+            # 跳过已过去的时间点
+            if slot['time'] <= last_measured_time:
+                # 但如果已有实测记录，不需要检查
+                pass
 
-            # 检查该时间点是否已有实测记录（真实数据不覆盖）
+            # 检查是否已有实测记录
             c.execute("""
-                SELECT id FROM records
-                WHERE user_id = ?
-                AND DATE(timestamp) = ?
-                AND type = ?
-                AND is_predicted = 0
-                AND value > 0
+                SELECT id FROM records WHERE user_id = ? AND DATE(timestamp) = ?
+                AND type = ? AND is_predicted = 0 AND value > 0
             """, (user_id, target_date, slot['type']))
             if c.fetchone():
-                continue  # 已有实测记录，跳过
-
-            # 跳过当前时间之前的槽位（基准时间之前的不预测）
-            if slot_time <= base_time:
                 continue
 
-            # 检查是否已有该时间点的预测
-            existing_prediction_id = None
+            # 检查是否已有预测
             c.execute("""
-                SELECT id FROM records
-                WHERE user_id = ?
-                AND DATE(timestamp) = ?
-                AND type = ?
-                AND is_predicted = 1
+                SELECT id FROM records WHERE user_id = ? AND DATE(timestamp) = ?
+                AND type = ? AND is_predicted = 1
             """, (user_id, target_date, slot['type']))
             existing = c.fetchone()
-            if existing:
-                if not force_update:
-                    continue  # 预测已存在且不强制更新，跳过
-                existing_prediction_id = existing[0]
-
-            # 计算时间差（小时）
-            base_h, base_m = map(int, base_time.split(':'))
-            slot_h, slot_m = map(int, slot_time.split(':'))
-            hours_diff = (slot_h - base_h) + (slot_m - base_m) / 60
-
-            if hours_diff <= 0:
+            if existing and not force_update:
                 continue
 
-            # 简单预测模型
-            # 基础：历史均值或基于当前值的估算
-            hist_avg = historical_avg.get(slot['type'], base_glucose)
+            slots_to_predict.append({
+                **slot,
+                'existing_id': existing[0] if existing else None
+            })
 
-            # 血糖变化因素
-            # 1. 时间衰减（餐后血糖随时间下降）
-            time_decay = 0.1 * hours_diff if '餐后' in base_type else 0.05 * hours_diff
+        if not slots_to_predict:
+            return []
 
-            # 2. 运动影响（降低血糖）
-            exercise_effect = min(0.5, exercise_calories / 500) if exercise_calories > 0 else 0
+        # 构建 Gemini prompt
+        user_profile = settings.get_ai_system_prompt()
 
-            # 3. 静息消耗
-            bmr_effect = hours_diff * hourly_bmr / 2000 * 0.3  # 转换为血糖影响
+        measured_str = '\n'.join([
+            f"  - {r['timestamp'].split(' ')[1][:5]} {r['type']}: {r['value']} mmol/L"
+            for r in measured_records
+        ])
 
-            # 4. 餐后升高（如果预测的是餐后时间点）
-            meal_effect = 0
-            if '餐后' in slot['type']:
-                meal_effect = 1.5  # 餐后血糖通常升高
+        meal_str = '无饮食记录'
+        if meal_records:
+            meal_str = '\n'.join([
+                f"  - {r['timestamp'].split(' ')[1][:5]} {r['type']}: {r['notes'] or ''} "
+                f"(热量: {r['calories'] or 0}kcal, 碳水: {r['carbs_grams'] or '?'}g, GI: {r['gi_value'] or '?'})"
+                for r in meal_records
+            ])
 
-            # 综合预测
-            predicted_value = base_glucose - time_decay - exercise_effect - bmr_effect + meal_effect
+        exercise_str = '无运动记录'
+        if exercise_records:
+            exercise_str = '\n'.join([
+                f"  - {r['timestamp'].split(' ')[1][:5]} {r['type']}: "
+                f"距离{r['distance'] or '?'}km, 时长{r['duration'] or '?'}, "
+                f"心率{r['heart_rate'] or '?'}bpm, 消耗{r['calories'] or '?'}kcal"
+                for r in exercise_records
+            ])
 
-            # 参考历史均值调整
-            predicted_value = predicted_value * 0.6 + hist_avg * 0.4
+        history_str = ', '.join([f"{k}: {v}" for k, v in historical_avg.items()]) or '无历史数据'
 
-            # 限制在合理范围
-            predicted_value = max(3.5, min(15.0, round(predicted_value, 1)))
+        slots_str = ', '.join([f"{s['type']}({s['time']})" for s in slots_to_predict])
 
-            # 生成或更新预测记录
-            timestamp = f"{target_date} {slot_time}:00"
-            notes = f"AI预测 | 基于{base_type}({base_glucose}) | 运动消耗{exercise_calories}kcal"
+        prompt = f"""你是一位专业的血糖预测助手。请根据今日已有数据预测剩余时间点的血糖值。
 
-            if existing_prediction_id:
-                # 更新已有预测
+{user_profile}
+
+今日日期: {target_date}
+当前时间: {current_time}
+
+=== 今日已测血糖 ===
+{measured_str}
+
+=== 今日饮食 ===
+{meal_str}
+
+=== 今日运动 ===
+{exercise_str}
+
+=== 近7天历史均值 ===
+{history_str}
+
+=== 需要预测的时间点 ===
+{slots_str}
+
+请为每个时间点预测血糖值（mmol/L），并给出简短理由。
+返回严格的 JSON 数组格式，不要包含 markdown：
+[
+    {{"type": "时间点类型", "predicted_value": float, "reasoning": "1句话预测依据"}}
+]
+"""
+
+        # 调用 Gemini API（单次调用预测所有槽位）
+        raw_text = call_ai(prompt)
+        print(f"DEBUG Remaining Slots Prediction: {raw_text[:500]}")
+
+        # 解析响应
+        match = re.search(r'\[[\s\S]*\]', raw_text)
+        if not match:
+            print("ERROR: AI response is not valid JSON array")
+            return []
+
+        results = json.loads(match.group(0))
+
+        # 将预测结果存入数据库
+        predictions = []
+        for result in results:
+            pred_type = result.get('type', '')
+            predicted_value = result.get('predicted_value')
+            reasoning = result.get('reasoning', '')
+
+            # 匹配到对应的时间槽
+            matched_slot = None
+            for slot in slots_to_predict:
+                if slot['type'] == pred_type:
+                    matched_slot = slot
+                    break
+
+            if not matched_slot or predicted_value is None:
+                continue
+
+            # 验证预测值范围
+            predicted_value = max(3.5, min(15.0, round(float(predicted_value), 1)))
+
+            timestamp = f"{target_date} {matched_slot['time']}:00"
+            notes = f"AI预测: {reasoning}"
+
+            if matched_slot.get('existing_id'):
                 c.execute("""
-                    UPDATE records
-                    SET value = ?, notes = ?, verified_by_real_id = NULL, prediction_error = NULL
+                    UPDATE records SET value = ?, notes = ?, verified_by_real_id = NULL, prediction_error = NULL
                     WHERE id = ?
-                """, (predicted_value, notes, existing_prediction_id))
-                print(f"✓ Updated prediction for {slot['type']}: {predicted_value}")
+                """, (predicted_value, notes, matched_slot['existing_id']))
+                print(f"✓ Updated prediction for {pred_type}: {predicted_value}")
             else:
-                # 插入新预测
                 c.execute("""
-                    INSERT INTO records (user_id, value, type, timestamp, is_predicted, notes, created_at)
-                    VALUES (?, ?, ?, ?, 1, ?, datetime('now'))
-                """, (user_id, predicted_value, slot['type'], timestamp, notes))
-                print(f"✓ Created prediction for {slot['type']}: {predicted_value}")
+                    INSERT INTO records (user_id, value, unit, type, timestamp, is_predicted, notes, created_at)
+                    VALUES (?, ?, 'mmol/L', ?, ?, 1, ?, datetime('now'))
+                """, (user_id, predicted_value, pred_type, timestamp, notes))
+                print(f"✓ Created prediction for {pred_type}: {predicted_value}")
 
             predictions.append({
-                'type': slot['type'],
+                'type': pred_type,
                 'value': predicted_value,
-                'time': slot_time,
-                'base_glucose': base_glucose,
-                'base_type': base_type
+                'time': matched_slot['time'],
+                'reasoning': reasoning
             })
 
         db.commit()
@@ -1272,8 +1281,8 @@ def generate_health_analysis(db, user_id=1, is_auto=False, days=7):
     Returns:
         dict: 分析结果或错误信息
     """
-    if not api_key:
-        return {"error": "未配置 GEMINI_API_KEY"}
+    if not AI_AVAILABLE:
+        return {"error": "未配置 AI API Key"}
 
     try:
         now = datetime.datetime.now()
@@ -1576,12 +1585,7 @@ def generate_health_analysis(db, user_id=1, is_auto=False, days=7):
         """
 
         # 8. 调用 Gemini API
-        client = genai.Client(api_key=api_key)
-        response = client.models.generate_content(
-            model='gemini-3-flash-preview',
-            contents=prompt
-        )
-        raw_text = response.text
+        raw_text = call_ai(prompt)
 
         print(f"DEBUG Health Analysis: Raw AI response: {raw_text[:500]}...")
 
@@ -1688,11 +1692,18 @@ def index():
         current_user_id = user_manager.get_current_user_id()
         current_user = user_manager.get_user(current_user_id)
 
-        # 自动生成早晨空腹血糖预测（如果符合条件）
-        predict_morning_fpg(db, current_user_id)
+        # 自动生成预测（后台非阻塞，不影响页面加载速度）
+        def _run_predictions(user_id):
+            try:
+                pred_db = sqlite3.connect(DB_NAME)
+                pred_db.row_factory = sqlite3.Row
+                predict_morning_fpg(pred_db, user_id)
+                predict_post_exercise_glucose(pred_db, user_id)
+                pred_db.close()
+            except Exception as e:
+                print(f"[AI] 后台预测出错: {e}")
 
-        # 自动生成运动后血糖预测（如果符合条件）
-        predict_post_exercise_glucose(db, current_user_id)
+        threading.Thread(target=_run_predictions, args=(current_user_id,), daemon=True).start()
 
         # 获取分页参数，默认显示最近 365 天（确保日历视图能看到全年数据）
         days = request.args.get('days', 365, type=int)
@@ -1910,129 +1921,87 @@ def index():
 
             sorted_dates.append({'date': date_str, 'data': data})
 
-        # 4. Calculate 7-Day Stats for Dashboard
+        # 4. Calculate 7-Day Stats for Dashboard（合并查询优化）
 
-        # === 血糖统计 ===
-        # 近7天平均早空腹血糖（排除预测数据）
-        c.execute("""
-            SELECT AVG(value) FROM records
-            WHERE user_id = ?
-            AND (type LIKE '%空腹%' OR type LIKE '%早空腹%')
-            AND value > 0
-            AND is_predicted = 0
-            AND timestamp > datetime('now', '-7 days')
-        """, (current_user_id,))
-        avg_fasting_7d = c.fetchone()[0]
+        seven_days_ago = (datetime.datetime.now() - datetime.timedelta(days=7)).strftime('%Y-%m-%d %H:%M:%S')
 
-        # 近7天平均餐后2小时血糖（排除预测数据）
+        # === 血糖统计（4合1） ===
         c.execute("""
-            SELECT AVG(value) FROM records
-            WHERE user_id = ?
-            AND type LIKE '%餐后2小时%'
-            AND value > 0
-            AND is_predicted = 0
-            AND timestamp > datetime('now', '-7 days')
-        """, (current_user_id,))
-        avg_post2h_7d = c.fetchone()[0]
-
-        # 近7日最高血糖（排除预测数据）
-        c.execute("""
-            SELECT MAX(value) FROM records
-            WHERE user_id = ?
-            AND value > 0
-            AND is_predicted = 0
-            AND timestamp > datetime('now', '-7 days')
-        """, (current_user_id,))
-        max_glucose_7d = c.fetchone()[0]
-
-        # 近7日最低血糖（排除预测数据）
-        c.execute("""
-            SELECT MIN(value) FROM records
-            WHERE user_id = ?
-            AND value > 0
-            AND is_predicted = 0
-            AND timestamp > datetime('now', '-7 days')
-        """, (current_user_id,))
-        min_glucose_7d = c.fetchone()[0]
-
-        # === 运动统计 ===
-        # 最近7天跑步总里程数
-        c.execute("""
-            SELECT SUM(distance) FROM records
-            WHERE user_id = ?
-            AND distance IS NOT NULL
-            AND timestamp > datetime('now', '-7 days')
-        """, (current_user_id,))
-        total_distance_7d = c.fetchone()[0]
-
-        # 运动总消耗卡路里数（7天）
-        c.execute("""
-            SELECT SUM(calories) FROM records
-            WHERE user_id = ?
-            AND (type = '跑步' OR type = '运动' OR distance IS NOT NULL)
-            AND calories > 0
-            AND timestamp > datetime('now', '-7 days')
-        """, (current_user_id,))
-        total_exercise_cal_7d = c.fetchone()[0]
-
-        # 最近7天跑步平均心率
-        c.execute("""
-            SELECT AVG(heart_rate) FROM records
-            WHERE user_id = ?
-            AND heart_rate IS NOT NULL
-            AND (type = '跑步' OR type = '运动')
-            AND timestamp > datetime('now', '-7 days')
-        """, (current_user_id,))
-        avg_heart_rate_7d = c.fetchone()[0]
-
-        # === 血压统计 ===
-        # 最近7天平均血压（排除 0 值）
-        c.execute("""
-            SELECT AVG(systolic_pressure), AVG(diastolic_pressure), COUNT(*)
+            SELECT
+                AVG(CASE WHEN (type LIKE '%空腹%') THEN value END) as avg_fasting,
+                AVG(CASE WHEN type LIKE '%餐后2小时%' THEN value END) as avg_post2h,
+                MAX(value) as max_glucose,
+                MIN(value) as min_glucose
             FROM records
-            WHERE user_id = ?
-            AND systolic_pressure IS NOT NULL
-            AND diastolic_pressure IS NOT NULL
-            AND systolic_pressure > 0
-            AND diastolic_pressure > 0
-            AND timestamp > datetime('now', '-7 days')
-        """, (current_user_id,))
-        bp_7d_stats = c.fetchone()
+            WHERE user_id = ? AND value > 0 AND is_predicted = 0
+            AND systolic_pressure IS NULL AND timestamp > ?
+        """, (current_user_id, seven_days_ago))
+        glucose_stats = c.fetchone()
+        avg_fasting_7d = glucose_stats[0]
+        avg_post2h_7d = glucose_stats[1]
+        max_glucose_7d = glucose_stats[2]
+        min_glucose_7d = glucose_stats[3]
 
-        # 血压最高的一天（7天内，排除 0 值）
+        # === 运动统计（3合1） ===
         c.execute("""
-            SELECT MAX(systolic_pressure), MAX(diastolic_pressure),
-                   DATE(timestamp) as day
+            SELECT
+                SUM(distance) as total_distance,
+                SUM(CASE WHEN (type = '跑步' OR type = '运动' OR distance IS NOT NULL) AND calories > 0 THEN calories END) as total_cal,
+                AVG(CASE WHEN heart_rate IS NOT NULL AND (type = '跑步' OR type = '运动') THEN heart_rate END) as avg_hr
             FROM records
-            WHERE user_id = ?
-            AND systolic_pressure IS NOT NULL
-            AND systolic_pressure > 0
-            AND timestamp > datetime('now', '-7 days')
-            GROUP BY day
-            ORDER BY systolic_pressure DESC
-            LIMIT 1
-        """, (current_user_id,))
-        bp_max_day = c.fetchone()
+            WHERE user_id = ? AND timestamp > ?
+            AND (distance IS NOT NULL OR type IN ('跑步', '运动'))
+        """, (current_user_id, seven_days_ago))
+        exercise_stats = c.fetchone()
+        total_distance_7d = exercise_stats[0]
+        total_exercise_cal_7d = exercise_stats[1]
+        avg_heart_rate_7d = exercise_stats[2]
 
-        # 血压最低的一天（7天内，排除 0 值）
+        # === 血压统计（3合1） ===
         c.execute("""
-            SELECT MIN(systolic_pressure), MIN(diastolic_pressure),
-                   DATE(timestamp) as day
+            SELECT
+                AVG(systolic_pressure) as avg_sys,
+                AVG(diastolic_pressure) as avg_dia,
+                COUNT(*) as bp_count,
+                MAX(systolic_pressure) as max_sys,
+                MAX(diastolic_pressure) as max_dia,
+                MIN(systolic_pressure) as min_sys,
+                MIN(diastolic_pressure) as min_dia
             FROM records
-            WHERE user_id = ?
-            AND systolic_pressure IS NOT NULL
-            AND systolic_pressure > 0
-            AND timestamp > datetime('now', '-7 days')
-            GROUP BY day
-            ORDER BY systolic_pressure ASC
-            LIMIT 1
-        """, (current_user_id,))
-        bp_min_day = c.fetchone()
+            WHERE user_id = ? AND systolic_pressure IS NOT NULL
+            AND systolic_pressure > 0 AND diastolic_pressure > 0
+            AND timestamp > ?
+        """, (current_user_id, seven_days_ago))
+        bp_stats = c.fetchone()
+
+        # 获取最高/最低血压对应的日期
+        bp_max_date = '-'
+        bp_min_date = '-'
+        if bp_stats[3]:  # max_sys exists
+            c.execute("""
+                SELECT DATE(timestamp) FROM records
+                WHERE user_id = ? AND systolic_pressure = ? AND timestamp > ?
+                AND systolic_pressure IS NOT NULL LIMIT 1
+            """, (current_user_id, bp_stats[3], seven_days_ago))
+            row = c.fetchone()
+            if row:
+                bp_max_date = row[0]
+        if bp_stats[5]:  # min_sys exists
+            c.execute("""
+                SELECT DATE(timestamp) FROM records
+                WHERE user_id = ? AND systolic_pressure = ? AND timestamp > ?
+                AND systolic_pressure IS NOT NULL LIMIT 1
+            """, (current_user_id, bp_stats[5], seven_days_ago))
+            row = c.fetchone()
+            if row:
+                bp_min_date = row[0]
 
         # === 用药情况 ===
         # 今日应服用的药物清单（根据频率筛选）
         today = datetime.datetime.now()
         today_str = today.strftime('%Y-%m-%d')
+        today_start = today_str + ' 00:00:00'
+        today_end = today_str + ' 23:59:59'
         weekday_name = today.strftime('%A')  # Monday, Tuesday, etc.
         day_of_month = today.day
 
@@ -2057,20 +2026,21 @@ def index():
             WHERE user_id = ?
             AND weight IS NOT NULL
             AND weight > 0
-            AND timestamp > datetime('now', '-7 days')
-        """, (current_user_id,))
+            AND timestamp > ?
+        """, (current_user_id, seven_days_ago))
         avg_weight_7d = c.fetchone()[0]
 
         # 30天体重变化（最近 vs 30天前）
+        twenty_five_days_ago = (datetime.datetime.now() - datetime.timedelta(days=25)).strftime('%Y-%m-%d %H:%M:%S')
         c.execute("""
             SELECT weight FROM records
             WHERE user_id = ?
             AND weight IS NOT NULL
             AND weight > 0
-            AND timestamp <= datetime('now', '-25 days')
+            AND timestamp <= ?
             ORDER BY timestamp DESC
             LIMIT 1
-        """, (current_user_id,))
+        """, (current_user_id, twenty_five_days_ago))
         old_weight_row = c.fetchone()
         weight_change_30d = None
         if old_weight_row and latest_weight:
@@ -2083,12 +2053,12 @@ def index():
         c.execute("""
             SELECT weight, bmi, timestamp FROM records
             WHERE user_id = ?
-            AND DATE(timestamp) = ?
+            AND timestamp BETWEEN ? AND ?
             AND weight IS NOT NULL
             AND weight > 0
             ORDER BY timestamp DESC
             LIMIT 1
-        """, (current_user_id, today_str))
+        """, (current_user_id, today_start, today_end))
         today_weight_row = c.fetchone()
         today_weight = None
         if today_weight_row:
@@ -2100,39 +2070,51 @@ def index():
             }
 
         c.execute("""
-            SELECT medication_name, dosage, times_per_day, timing_notes, frequency, frequency_detail
+            SELECT id, medication_name, dosage, times_per_day, timing_notes, frequency, frequency_detail
             FROM medication_plans
-            WHERE user_id = ?
-            AND is_active = 1
+            WHERE user_id = ? AND is_active = 1
+            AND (start_date IS NULL OR start_date <= ?)
+            AND (end_date IS NULL OR end_date >= ?)
             ORDER BY medication_name ASC
-        """, (current_user_id,))
+        """, (current_user_id, today_str, today_str))
         all_meds = c.fetchall()
 
         active_medications = []
+        today_med_plans = []
         for row in all_meds:
-            med_dict = dict(zip(['name', 'dosage', 'times', 'timing', 'frequency', 'frequency_detail'], row))
-            frequency = med_dict.get('frequency', 'daily')
-            frequency_detail = med_dict.get('frequency_detail')
+            frequency = row['frequency'] or 'daily'
+            frequency_detail = row['frequency_detail'] or ''
 
             # 判断今天是否应该服用
             should_take_today = False
             if frequency == 'daily':
                 should_take_today = True
             elif frequency == 'weekly' and frequency_detail:
-                should_take_today = (weekday_name == frequency_detail)
+                should_take_today = (weekday_name in frequency_detail)
             elif frequency == 'monthly' and frequency_detail:
-                allowed_days = [int(d.strip()) for d in frequency_detail.split(',')]
-                should_take_today = (day_of_month in allowed_days)
+                try:
+                    allowed_days = [int(d.strip()) for d in frequency_detail.split(',')]
+                    should_take_today = (day_of_month in allowed_days)
+                except ValueError:
+                    should_take_today = True
+            elif frequency == 'custom':
+                should_take_today = True
             else:
                 should_take_today = True  # 默认显示
 
             if should_take_today:
-                # 只保留前端需要的字段
                 active_medications.append({
-                    'name': med_dict['name'],
-                    'dosage': med_dict['dosage'],
-                    'times': med_dict['times'],
-                    'timing': med_dict['timing']
+                    'name': row['medication_name'],
+                    'dosage': row['dosage'],
+                    'times': row['times_per_day'],
+                    'timing': row['timing_notes']
+                })
+                today_med_plans.append({
+                    'id': row['id'],
+                    'name': row['medication_name'],
+                    'dosage': row['dosage'],
+                    'times': row['times_per_day'],
+                    'timing': row['timing_notes']
                 })
 
         # Calculate Compliance Rate (7 days)
@@ -2140,11 +2122,11 @@ def index():
         c.execute("""
             SELECT value, type FROM records
             WHERE user_id = ?
-            AND timestamp > datetime('now', '-7 days')
+            AND timestamp > ?
             AND value > 0
             AND is_predicted = 0
             AND systolic_pressure IS NULL
-        """, (current_user_id,))
+        """, (current_user_id, seven_days_ago))
         recent_glucose = c.fetchall()
         total_glucose = len(recent_glucose)
         ok_count = 0
@@ -2186,11 +2168,11 @@ def index():
             SELECT value, type, timestamp, is_predicted
             FROM records
             WHERE user_id = ?
-            AND DATE(timestamp) = ?
+            AND timestamp BETWEEN ? AND ?
             AND value > 0
             AND systolic_pressure IS NULL
             ORDER BY timestamp ASC, is_predicted ASC
-        """, (current_user_id, today_str))
+        """, (current_user_id, today_start, today_end))
         today_glucose_records = c.fetchall()
 
         # 匹配今日记录到各时间点（实测值优先于预测值）
@@ -2272,12 +2254,12 @@ def index():
             SELECT type, distance, calories, duration, heart_rate, pace, cadence, timestamp
             FROM records
             WHERE user_id = ?
-            AND DATE(timestamp) = ?
+            AND timestamp BETWEEN ? AND ?
             AND (type IN ('运动', '跑步', '走路', '骑行', '游泳', '健身')
                  OR type LIKE '%跑%' OR type LIKE '%走%' OR type LIKE '%骑%')
             ORDER BY timestamp DESC
             LIMIT 1
-        """, (current_user_id, today_str))
+        """, (current_user_id, today_start, today_end))
         today_exercise_row = c.fetchone()
         today_exercise = None
         if today_exercise_row:
@@ -2294,60 +2276,26 @@ def index():
 
         # 今日血压数据
         c.execute("""
-            SELECT systolic_pressure, diastolic_pressure, heart_rate, timestamp
+            SELECT systolic_pressure, diastolic_pressure, pulse_rate, timestamp
             FROM records
             WHERE user_id = ?
-            AND DATE(timestamp) = ?
+            AND timestamp BETWEEN ? AND ?
             AND systolic_pressure IS NOT NULL
             ORDER BY timestamp DESC
             LIMIT 1
-        """, (current_user_id, today_str))
+        """, (current_user_id, today_start, today_end))
         today_bp_row = c.fetchone()
         today_bp = None
         if today_bp_row:
             today_bp = {
                 'systolic': today_bp_row['systolic_pressure'],
                 'diastolic': today_bp_row['diastolic_pressure'],
-                'heart_rate': today_bp_row['heart_rate'],
+                'heart_rate': today_bp_row['pulse_rate'],
                 'time': today_bp_row['timestamp'].split(' ')[1][:5] if ' ' in today_bp_row['timestamp'] else ''
             }
 
         # 今日用药状态 - 获取详细信息
-        # 1. 获取今日应服用的药物（激活的药物计划）
-        today_weekday = datetime.datetime.now().strftime('%A')  # e.g., 'Monday'
-        c.execute("""
-            SELECT id, medication_name, dosage, times_per_day, timing_notes, frequency, frequency_detail
-            FROM medication_plans
-            WHERE user_id = ? AND is_active = 1
-            AND (start_date IS NULL OR start_date <= ?)
-            AND (end_date IS NULL OR end_date >= ?)
-        """, (current_user_id, today_str, today_str))
-        all_med_plans = c.fetchall()
-
-        # 过滤出今日应服用的药物
-        today_med_plans = []
-        for plan in all_med_plans:
-            freq = plan['frequency'] or 'daily'
-            freq_detail = plan['frequency_detail'] or ''
-
-            should_take_today = False
-            if freq == 'daily':
-                should_take_today = True
-            elif freq == 'weekly' and today_weekday in freq_detail:
-                should_take_today = True
-            elif freq == 'custom':
-                should_take_today = True  # 简化处理
-
-            if should_take_today:
-                today_med_plans.append({
-                    'id': plan['id'],
-                    'name': plan['medication_name'],
-                    'dosage': plan['dosage'],
-                    'times': plan['times_per_day'],
-                    'timing': plan['timing_notes']
-                })
-
-        # 2. 获取今日已服用的记录
+        # 获取今日已服用的记录
         c.execute("""
             SELECT plan_id, COUNT(*) as count FROM medication_logs
             WHERE user_id = ? AND log_date = ?
@@ -2412,15 +2360,15 @@ def index():
             'avg_heart_rate_7d': round(avg_heart_rate_7d) if avg_heart_rate_7d else 0,
 
             # === 血压统计（7天） ===
-            'avg_systolic_7d': round(bp_7d_stats[0]) if bp_7d_stats[0] else 0,
-            'avg_diastolic_7d': round(bp_7d_stats[1]) if bp_7d_stats[1] else 0,
-            'bp_count_7d': bp_7d_stats[2] if bp_7d_stats[2] else 0,
-            'bp_max_sys': bp_max_day[0] if bp_max_day else 0,
-            'bp_max_dia': bp_max_day[1] if bp_max_day else 0,
-            'bp_max_date': bp_max_day[2] if bp_max_day else '-',
-            'bp_min_sys': bp_min_day[0] if bp_min_day else 0,
-            'bp_min_dia': bp_min_day[1] if bp_min_day else 0,
-            'bp_min_date': bp_min_day[2] if bp_min_day else '-',
+            'avg_systolic_7d': round(bp_stats[0]) if bp_stats[0] else 0,
+            'avg_diastolic_7d': round(bp_stats[1]) if bp_stats[1] else 0,
+            'bp_count_7d': bp_stats[2] if bp_stats[2] else 0,
+            'bp_max_sys': bp_stats[3] if bp_stats[3] else 0,
+            'bp_max_dia': bp_stats[4] if bp_stats[4] else 0,
+            'bp_max_date': bp_max_date,
+            'bp_min_sys': bp_stats[5] if bp_stats[5] else 0,
+            'bp_min_dia': bp_stats[6] if bp_stats[6] else 0,
+            'bp_min_date': bp_min_date,
 
             # === 用药情况 ===
             'active_medications': active_medications,
@@ -3707,7 +3655,7 @@ def trigger_prediction():
                         'type': pred['type'],
                         'status': 'updated' if force_update else 'success',
                         'value': pred['value'],
-                        'base': f"{pred['base_type']}({pred['base_glucose']})"
+                        'reasoning': pred.get('reasoning', '')
                     })
             else:
                 results.append({'type': '剩余时间点', 'status': 'skipped', 'reason': '无实测数据或已有预测'})
