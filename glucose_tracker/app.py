@@ -3722,17 +3722,24 @@ def api_day_overview():
 
         # 用药
         med_plans = []
-        c.execute("SELECT * FROM medication_plans WHERE user_id = ? AND active = 1", (current_user_id,))
-        for plan in c.fetchall():
-            freq = plan['frequency'] or 'daily'
+        c.execute("""
+            SELECT id, medication_name, dosage, times_per_day, timing_notes, frequency, frequency_detail
+            FROM medication_plans WHERE user_id = ? AND is_active = 1
+            AND (start_date IS NULL OR start_date <= ?)
+            AND (end_date IS NULL OR end_date >= ?)
+            ORDER BY medication_name ASC
+        """, (current_user_id, date_str, date_str))
+        for row in c.fetchall():
+            freq = row['frequency'] or 'daily'
+            freq_detail = row['frequency_detail'] or ''
             include = False
             if freq == 'daily': include = True
             elif freq == 'weekdays': include = weekday_name not in ('Saturday', 'Sunday')
-            elif freq == 'weekly': include = weekday_name == 'Monday'
+            elif freq == 'weekly': include = weekday_name == freq_detail if freq_detail else weekday_name == 'Monday'
             elif freq == 'monthly': include = day_of_month == 1
             if include:
-                med_plans.append({'id': plan['id'], 'name': plan['name'], 'dosage': plan['dosage'],
-                                  'timing': plan['timing'], 'times': plan['times_per_day'] or 1})
+                med_plans.append({'id': row['id'], 'name': row['medication_name'], 'dosage': row['dosage'],
+                                  'timing': row['timing_notes'], 'times': row['times_per_day'] or 1})
 
         c.execute("SELECT plan_id, COUNT(*) as count FROM medication_logs WHERE user_id = ? AND log_date = ? GROUP BY plan_id",
                   (current_user_id, date_str))
