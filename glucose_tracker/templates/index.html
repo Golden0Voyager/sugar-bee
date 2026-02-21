@@ -12,15 +12,15 @@
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
         :root {
-            /* 群青配色方案 - Ultramarine Theme */
-            --md-primary: #4758AB;
-            --md-primary-dark: #354385;
-            --md-primary-light: #6B7BC5;
+            /* 天青湖蓝配色方案 - Celestial Blue Theme */
+            --md-primary: #5AACBE;
+            --md-primary-dark: #3B7C91;
+            --md-primary-light: #8BC8D4;
             --md-secondary: #E8913A;
             --md-secondary-dark: #D07A2A;
-            --md-cta: #E8913A;
+            --md-cta: #2E6277;
             --md-surface: #FFFFFF;
-            --md-background: #F5F6FA;
+            --md-background: #F4F8FA;
             --md-error: #EF5350;
             --md-success: #4CAF50;
             --md-warning: #FFA726;
@@ -47,11 +47,11 @@
             /* Card padding */
             --card-padding: 24px;
 
-            /* Elevation shadows - 群青色调阴影 */
-            --md-shadow-1: 0 1px 3px rgba(71,88,171,0.10), 0 1px 2px rgba(71,88,171,0.18);
-            --md-shadow-2: 0 3px 6px rgba(71,88,171,0.12), 0 3px 6px rgba(71,88,171,0.16);
-            --md-shadow-3: 0 10px 20px rgba(71,88,171,0.14), 0 6px 6px rgba(71,88,171,0.16);
-            --md-shadow-4: 0 14px 28px rgba(71,88,171,0.18), 0 10px 10px rgba(71,88,171,0.15);
+            /* Elevation shadows - 天青色调阴影 */
+            --md-shadow-1: 0 1px 3px rgba(90,172,190,0.10), 0 1px 2px rgba(90,172,190,0.18);
+            --md-shadow-2: 0 3px 6px rgba(90,172,190,0.12), 0 3px 6px rgba(90,172,190,0.16);
+            --md-shadow-3: 0 10px 20px rgba(90,172,190,0.14), 0 6px 6px rgba(90,172,190,0.16);
+            --md-shadow-4: 0 14px 28px rgba(90,172,190,0.18), 0 10px 10px rgba(90,172,190,0.15);
         }
 
         /* Base Typography - Larger for elderly users */
@@ -134,7 +134,7 @@
         }
         .glucose-slot.slot-active {
             border-color: var(--md-primary);
-            box-shadow: 0 0 0 3px rgba(71, 88, 171, 0.2);
+            box-shadow: 0 0 0 3px rgba(90, 172, 190, 0.2);
         }
 
         /* Progress Bar Animation */
@@ -164,49 +164,33 @@
             100% { left: 100%; }
         }
 
-        /* AI Prediction Button - Material Design with Gradient */
+        /* AI Prediction Button - Warm Amber CTA */
         .btn-ai-predict {
-            background: linear-gradient(135deg, #00BFA5 0%, #00897B 100%);
-            border: none;
+            background: var(--md-secondary);
+            border: 2px solid var(--md-secondary);
             color: white;
-            padding: 8px 16px;
-            border-radius: 20px;
-            font-size: 0.85rem;
-            font-weight: 500;
-            box-shadow: 0 2px 8px rgba(0, 191, 165, 0.4);
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            padding: 10px 20px;
+            border-radius: 10px;
+            font-size: 0.95rem;
+            font-weight: 600;
+            box-shadow: none;
+            transition: background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
             position: relative;
             overflow: hidden;
+            min-height: auto;
         }
         .btn-ai-predict:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(0, 191, 165, 0.5);
+            background: var(--md-secondary-dark);
+            border-color: var(--md-secondary-dark);
+            box-shadow: 0 2px 8px rgba(232, 145, 58, 0.3);
             color: white;
         }
         .btn-ai-predict:active {
-            transform: translateY(0);
-            box-shadow: 0 2px 6px rgba(0, 191, 165, 0.4);
-        }
-        .btn-ai-predict::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: -100%;
-            width: 100%;
-            height: 100%;
-            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
-            transition: left 0.5s;
-        }
-        .btn-ai-predict:hover::before {
-            left: 100%;
+            transform: scale(0.97);
+            box-shadow: none;
         }
         .btn-ai-predict .ai-icon {
             display: inline-block;
-            animation: pulse-glow 2s ease-in-out infinite;
-        }
-        @keyframes pulse-glow {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.6; }
         }
         .btn-ai-predict:disabled {
             background: linear-gradient(135deg, #a0a0a0 0%, #808080 100%);
@@ -306,39 +290,104 @@
             margin-top: 12px;
         }
 
-        /* Material Buttons */
+        /* ========== 统一按钮系统 - Unified Button System ========== */
+
+        /* 基础按钮 */
         .btn {
-            font-size: 1.05rem;
-            font-weight: 500;
-            padding: 12px 24px;
-            border-radius: 8px;
+            font-family: inherit;
+            font-size: 1rem;
+            font-weight: 600;
+            padding: 10px 22px;
+            border-radius: 10px;
+            border: 2px solid transparent;
             text-transform: none;
-            letter-spacing: 0.5px;
-            box-shadow: var(--md-shadow-1);
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            letter-spacing: 0;
+            box-shadow: none;
+            transition: background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, color 0.2s ease;
             min-height: var(--touch-target-min);
+            cursor: pointer;
+            touch-action: manipulation;
         }
         .btn:hover {
-            box-shadow: var(--md-shadow-2);
-            transform: translateY(-2px);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.10);
         }
         .btn:active {
-            box-shadow: var(--md-shadow-1);
-            transform: translateY(0);
+            box-shadow: none;
+            transform: scale(0.97);
         }
+        .btn:focus-visible {
+            outline: none;
+            box-shadow: 0 0 0 3px rgba(90,172,190,0.4);
+        }
+
+        /* 主按钮 - 深钴青（最高层级 CTA） */
         .btn-primary {
-            background: var(--md-primary);
-            border-color: var(--md-primary);
+            background: var(--md-cta);
+            border-color: var(--md-cta);
             color: white;
         }
         .btn-primary:hover {
+            background: #1E4F63;
+            border-color: #1E4F63;
+            color: white;
+        }
+        .btn-primary:active {
+            background: #194555;
+            color: white;
+        }
+        .btn-primary:focus-visible {
+            box-shadow: 0 0 0 3px rgba(46,98,119,0.4);
+        }
+
+        /* 次要按钮 - 湖蓝描边 */
+        .btn-outline-primary {
+            background: transparent;
+            border: 2px solid var(--md-primary);
+            border-radius: 10px;
+            color: var(--md-primary-dark);
+            font-weight: 600;
+        }
+        .btn-outline-primary:hover {
+            background: var(--md-primary);
+            border-color: var(--md-primary);
+            color: white;
+            box-shadow: 0 2px 8px rgba(90,172,190,0.25);
+        }
+        .btn-outline-primary:active {
             background: var(--md-primary-dark);
             border-color: var(--md-primary-dark);
             color: white;
         }
-        .btn-primary:focus {
-            box-shadow: 0 0 0 4px rgba(71,88,171,0.25);
+        .btn-outline-primary:focus-visible {
+            box-shadow: 0 0 0 3px rgba(90,172,190,0.4);
         }
+
+        /* 浅色/幽灵按钮 */
+        .btn-light {
+            background: white;
+            border: 1.5px solid #e2e8f0;
+            color: var(--md-text-primary);
+            box-shadow: none;
+        }
+        .btn-light:hover {
+            background: #f8fafb;
+            border-color: var(--md-primary-light);
+            color: var(--md-primary-dark);
+        }
+
+        /* 成功/危险按钮 - 保持语义色但统一形状 */
+        .btn-success {
+            background: #3a9d5c;
+            border-color: #3a9d5c;
+            color: white;
+        }
+        .btn-success:hover { background: #2f8a4e; border-color: #2f8a4e; color: white; }
+        .btn-danger {
+            background: #dc4a4a;
+            border-color: #dc4a4a;
+            color: white;
+        }
+        .btn-danger:hover { background: #c43b3b; border-color: #c43b3b; color: white; }
 
         /* Timeline Styles - Material Design */
         .timeline-item {
@@ -426,7 +475,7 @@
             background-color: #f8f9fa;
         }
         .fc-daygrid-day.fc-day-today {
-            background-color: rgba(71, 88, 171, 0.08) !important;
+            background-color: rgba(90, 172, 190, 0.08) !important;
         }
         .fc-daygrid-day-number {
             color: #495057;
@@ -478,27 +527,28 @@
         }
         .fc-button-primary {
             background-color: white !important;
-            border: 1px solid #e9ecef !important;
-            color: #495057 !important;
-            box-shadow: 0 1px 2px rgba(0,0,0,0.05) !important;
-            border-radius: 8px !important;
-            padding: 6px 12px !important;
-            font-weight: 500 !important;
-            transition: all 0.2s !important;
+            border: 1.5px solid #e2e8f0 !important;
+            color: var(--md-text-secondary) !important;
+            box-shadow: none !important;
+            border-radius: 10px !important;
+            padding: 8px 14px !important;
+            font-weight: 600 !important;
+            font-size: 0.95rem !important;
+            transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease !important;
         }
         .fc-button-primary:hover {
-            background-color: #f8f9fa !important;
-            border-color: #dee2e6 !important;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.08) !important;
+            background-color: #f0f8fa !important;
+            border-color: var(--md-primary-light) !important;
+            color: var(--md-primary-dark) !important;
         }
         .fc-button-active {
-            background-color: var(--md-primary) !important;
-            border-color: var(--md-primary) !important;
+            background-color: var(--md-cta) !important;
+            border-color: var(--md-cta) !important;
             color: white !important;
-            box-shadow: 0 2px 4px rgba(71, 88, 171, 0.3) !important;
+            box-shadow: 0 2px 6px rgba(46,98,119,0.25) !important;
         }
         .fc-button-active:hover {
-            background-color: var(--md-primary-dark) !important;
+            background-color: #1E4F63 !important;
         }
         .fc .fc-daygrid-day-top {
             flex-direction: row;
@@ -541,9 +591,15 @@
 
         /* FAB & Offcanvas */
         .btn-fab {
-            transition: transform 0.2s;
-            background: linear-gradient(135deg, var(--md-primary), var(--md-primary-dark));
+            transition: background 0.2s ease, transform 0.15s ease;
+            background: var(--md-cta);
             border: none;
+            color: white;
+            box-shadow: 0 4px 14px rgba(46,98,119,0.35);
+        }
+        .btn-fab:hover {
+            background: #1E4F63;
+            box-shadow: 0 6px 18px rgba(46,98,119,0.4);
         }
         .btn-fab:active { transform: scale(0.95); }
         .offcanvas-bottom { border-top-left-radius: 1.5rem; border-top-right-radius: 1.5rem; box-shadow: 0 -4px 20px rgba(0,0,0,0.1); }
@@ -589,14 +645,14 @@
             background-clip: text;
         }
         .logo-text .slogan-zh {
-            font-size: 0.7rem;
-            color: #6c757d;
+            font-size: 0.8rem;
+            color: var(--md-text-secondary);
             font-weight: 500;
             margin: 0;
             line-height: 1;
         }
         .logo-text .slogan-en {
-            font-size: 0.6rem;
+            font-size: 0.7rem;
             color: #adb5bd;
             font-weight: 400;
             margin: 0;
@@ -606,43 +662,60 @@
         }
         
         /* Nav Pills Segmented Control */
-        .nav-pills .nav-link { color: #6c757d; font-weight: 500; transition: all 0.2s; min-height: var(--touch-target-min); font-size: 1rem; display: flex; align-items: center; }
-        .nav-pills .nav-link.active { background-color: #fff; color: var(--md-primary); box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+        .nav-pills .nav-link {
+            color: var(--md-text-secondary);
+            font-weight: 500;
+            transition: background 0.2s ease, color 0.2s ease;
+            min-height: var(--touch-target-min);
+            font-size: 1rem;
+            display: flex;
+            align-items: center;
+            border-radius: 10px;
+            padding: 8px 16px;
+        }
+        .nav-pills .nav-link:hover {
+            color: var(--md-primary-dark);
+            background: rgba(90,172,190,0.08);
+        }
+        .nav-pills .nav-link.active {
+            background-color: var(--md-cta);
+            color: white;
+            box-shadow: 0 2px 6px rgba(46,98,119,0.25);
+        }
 
         /* Circular Icon Buttons */
         .btn-circle-icon {
-            width: 42px;
-            height: 42px;
-            border-radius: 50%;
+            width: 44px;
+            height: 44px;
+            border-radius: 12px;
             display: flex;
             align-items: center;
             justify-content: center;
             background: white;
-            border: 1px solid #e9ecef;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-            transition: all 0.3s ease;
+            border: 1.5px solid #e2e8f0;
+            box-shadow: none;
+            transition: background 0.2s ease, border-color 0.2s ease;
             cursor: pointer;
         }
         .btn-circle-icon:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-            border-color: var(--md-primary);
+            background: #f0f8fa;
+            border-color: var(--md-primary-light);
         }
         .btn-circle-icon:active {
-            transform: translateY(0);
-            box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+            background: #e6f3f6;
+            transform: scale(0.96);
         }
         .btn-circle-icon i {
             font-size: 1.2rem;
-            color: #6c757d;
-            transition: color 0.3s ease;
+            color: var(--md-text-secondary);
+            transition: color 0.2s ease;
         }
         .btn-circle-icon:hover i {
-            color: var(--md-primary);
+            color: var(--md-primary-dark);
         }
         .btn-circle-icon.active {
-            background: linear-gradient(135deg, var(--md-primary), var(--md-primary-dark));
-            border-color: var(--md-primary);
+            background: var(--md-cta);
+            border-color: var(--md-cta);
         }
         .btn-circle-icon.active i {
             color: white;
@@ -657,30 +730,30 @@
         .markdown-content h1 {
             font-size: 1.8rem;
             font-weight: 600;
-            color: #1976D2;
+            color: #3B7C91;
             margin-top: 1.5rem;
             margin-bottom: 1rem;
             padding-bottom: 0.5rem;
-            border-bottom: 2px solid #1976D2;
+            border-bottom: 2px solid #5AACBE;
         }
         .markdown-content h2 {
             font-size: 1.5rem;
             font-weight: 600;
-            color: #0288D1;
+            color: #5AACBE;
             margin-top: 1.5rem;
             margin-bottom: 0.8rem;
         }
         .markdown-content h3 {
             font-size: 1.3rem;
             font-weight: 600;
-            color: #0097A7;
+            color: #8BC8D4;
             margin-top: 1.2rem;
             margin-bottom: 0.6rem;
         }
         .markdown-content h4 {
             font-size: 1.1rem;
             font-weight: 600;
-            color: #00796B;
+            color: #5AACBE;
             margin-top: 1rem;
             margin-bottom: 0.5rem;
         }
@@ -703,7 +776,7 @@
             font-style: italic;
         }
         .markdown-content blockquote {
-            border-left: 4px solid #1976D2;
+            border-left: 4px solid #5AACBE;
             padding-left: 1rem;
             margin: 1rem 0;
             color: #666;
@@ -761,12 +834,12 @@
         }
         #unifiedUserDropdown:hover {
             background: white;
-            box-shadow: 0 4px 16px rgba(0,0,0,0.12), 0 0 0 1px rgba(71,88,171,0.3);
+            box-shadow: 0 4px 16px rgba(0,0,0,0.12), 0 0 0 1px rgba(90,172,190,0.3);
             transform: translateY(-1px);
             color: var(--md-primary);
         }
         #unifiedUserDropdown:focus {
-            box-shadow: 0 4px 16px rgba(0,0,0,0.12), 0 0 0 2px rgba(71,88,171,0.4);
+            box-shadow: 0 4px 16px rgba(0,0,0,0.12), 0 0 0 2px rgba(90,172,190,0.4);
             outline: none;
         }
         #unifiedUserDropdown .bi-chevron-down {
@@ -821,7 +894,7 @@
             transform: scale(1.1);
         }
         .dropdown-item.active {
-            background: rgba(71,88,171,0.1);
+            background: rgba(90,172,190,0.1);
             color: var(--md-primary);
             font-weight: 600;
         }
@@ -842,8 +915,8 @@
         /* 时间范围选择器 - 药丸按钮组 */
         .time-range-pills {
             display: inline-flex;
-            background: #f0f2f5;
-            border-radius: 25px;
+            background: #eef2f5;
+            border-radius: 12px;
             padding: 4px;
             gap: 2px;
         }
@@ -851,23 +924,22 @@
             padding: 8px 16px;
             border: none;
             background: transparent;
-            border-radius: 20px;
+            border-radius: 10px;
             font-size: 0.9rem;
-            font-weight: 500;
-            color: #666;
+            font-weight: 600;
+            color: var(--md-text-secondary);
             cursor: pointer;
-            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            transition: background 0.2s ease, color 0.2s ease;
             white-space: nowrap;
         }
         .time-range-pills .pill-btn:hover {
-            color: var(--md-primary);
-            background: rgba(71,88,171,0.1);
+            color: var(--md-primary-dark);
+            background: rgba(90,172,190,0.12);
         }
         .time-range-pills .pill-btn.active {
-            background: white;
-            color: var(--md-primary);
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-            font-weight: 600;
+            background: var(--md-cta);
+            color: white;
+            box-shadow: 0 1px 4px rgba(46,98,119,0.2);
         }
 
         /* 表单下拉框美化 */
@@ -892,7 +964,7 @@
         .form-select:focus {
             border-color: var(--md-primary);
             background-color: white;
-            box-shadow: 0 0 0 4px rgba(71,88,171,0.15);
+            box-shadow: 0 0 0 4px rgba(90,172,190,0.15);
             outline: none;
         }
         .form-select option {
@@ -924,29 +996,11 @@
         .form-control:focus {
             border-color: var(--md-primary);
             background-color: white;
-            box-shadow: 0 0 0 4px rgba(71,88,171,0.15);
+            box-shadow: 0 0 0 4px rgba(90,172,190,0.15);
             outline: none;
         }
 
-        /* 按钮美化 */
-        .btn-outline-primary {
-            border-width: 2px;
-            border-radius: 10px;
-            font-weight: 500;
-            color: var(--md-primary);
-            border-color: var(--md-primary);
-            transition: all 0.2s ease;
-        }
-        .btn-outline-primary:hover {
-            transform: translateY(-1px);
-            background: var(--md-primary);
-            border-color: var(--md-primary);
-            color: white;
-            box-shadow: 0 4px 12px rgba(71,88,171,0.3);
-        }
-        .btn-outline-primary:focus {
-            box-shadow: 0 0 0 4px rgba(71,88,171,0.25);
-        }
+
 
         /* User list container */
         #userListContainer {
@@ -997,9 +1051,89 @@
         .wc-legend-dash {
             background: repeating-linear-gradient(90deg, var(--lc) 0 4px, transparent 4px 7px);
         }
+
+        /* Modal 统一样式 */
+        .modal-content {
+            border: none;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+        }
+
+        /* ========== 移动端响应式 ========== */
+        @media (max-width: 768px) {
+            body {
+                font-size: 17px;
+            }
+            .container {
+                padding-left: 12px;
+                padding-right: 12px;
+            }
+            .card-body {
+                padding: 16px;
+            }
+            /* 图表标题和时间选择器纵向排列 */
+            .card-body .d-flex.justify-content-between.align-items-center {
+                flex-direction: column;
+                align-items: flex-start !important;
+                gap: 8px;
+            }
+            /* 血糖时间轴横向滚动 */
+            .glucose-slots-container {
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+            }
+            /* 弹窗近全宽 */
+            .modal-dialog {
+                margin: 8px;
+                max-width: calc(100vw - 16px);
+            }
+            .modal-content {
+                border-radius: 16px;
+            }
+            /* 时间范围选择器换行 */
+            .time-range-pills {
+                flex-wrap: wrap;
+            }
+            /* Stats cards */
+            .stats-card .value {
+                font-size: 2.2rem;
+            }
+        }
+
+        @media (max-width: 480px) {
+            body {
+                font-size: 16px;
+            }
+            h3 {
+                font-size: 1.4rem;
+            }
+            h4 {
+                font-size: 1.25rem;
+            }
+            h5 {
+                font-size: 1.1rem;
+            }
+            /* 保持按钮最小触控目标 */
+            .btn {
+                min-height: 44px;
+                font-size: 1rem;
+            }
+            .btn-circle-icon {
+                width: 44px;
+                height: 44px;
+            }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.01ms !important;
+            }
+        }
     </style>
 </head>
-<body class="bg-light">
+<body>
 
 <div class="container py-4">
     <!-- Top Header -->
@@ -1026,7 +1160,7 @@
                     {% if stats.user.avatar %}
                     <img src="/static/avatars/{{ stats.user.avatar }}" class="rounded-circle" style="width: 32px; height: 32px; object-fit: cover; border: 2px solid #fff; box-shadow: 0 2px 6px rgba(0,0,0,0.1);">
                     {% else %}
-                    <div class="rounded-circle d-flex align-items-center justify-content-center" style="width: 32px; height: 32px; min-width: 32px; background: linear-gradient(135deg, #4758AB, #6B7BC5);">
+                    <div class="rounded-circle d-flex align-items-center justify-content-center" style="width: 32px; height: 32px; min-width: 32px; background: linear-gradient(135deg, #5AACBE, #8BC8D4);">
                         <i class="bi bi-person-fill text-white" style="font-size: 1rem;"></i>
                     </div>
                     {% endif %}
@@ -1040,7 +1174,7 @@
                             {% if stats.user.avatar %}
                             <img src="/static/avatars/{{ stats.user.avatar }}" class="rounded-circle" style="width: 52px; height: 52px; object-fit: cover; border: 3px solid #fff; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
                             {% else %}
-                            <div class="rounded-circle d-flex align-items-center justify-content-center" style="width: 52px; height: 52px; background: linear-gradient(135deg, #4758AB, #6B7BC5); box-shadow: 0 4px 12px rgba(71,88,171,0.3);">
+                            <div class="rounded-circle d-flex align-items-center justify-content-center" style="width: 52px; height: 52px; background: linear-gradient(135deg, #5AACBE, #8BC8D4); box-shadow: 0 4px 12px rgba(90,172,190,0.3);">
                                 <i class="bi bi-person-fill text-white" style="font-size: 1.5rem;"></i>
                             </div>
                             {% endif %}
@@ -1173,15 +1307,6 @@
                             <i class="bi bi-mic-fill text-success" style="font-size: 1.2rem;"></i>
                         </button>
 
-                        <!-- Manual Input Toggle Button -->
-                        <button class="btn btn-light rounded-circle d-flex align-items-center justify-content-center"
-                                type="button"
-                                onclick="toggleManualInput()"
-                                title="手动录入"
-                                style="width: 48px; height: 48px;">
-                            <i class="bi bi-pencil-square text-warning" style="font-size: 1.2rem;"></i>
-                        </button>
-
                         <!-- Submit/Analyze Button -->
                         <button class="btn btn-primary rounded-circle d-flex align-items-center justify-content-center"
                                 onclick="analyzeText()"
@@ -1211,234 +1336,6 @@
                     </div>
                 </div>
 
-                <!-- Manual Input Panel (Collapsible) -->
-                <div id="manualInputPanel" class="mt-4 d-none">
-                    <div class="card border-0 bg-light">
-                        <div class="card-body">
-                            <div class="d-flex justify-content-between align-items-center mb-3">
-                                <h5 class="mb-0"><i class="bi bi-pencil-square me-2"></i>手动录入</h5>
-                                <button type="button" class="btn-close" onclick="toggleManualInput()"></button>
-                            </div>
-
-                            <ul class="nav nav-pills nav-fill mb-3 bg-white rounded-pill p-2" id="inputTab" role="tablist" style="gap: 4px;">
-                                <li class="nav-item" role="presentation">
-                                    <button class="nav-link active rounded-pill small" id="ai-tab" data-bs-toggle="pill" data-bs-target="#ai-content" type="button" role="tab">
-                                        智能识别
-                                    </button>
-                                </li>
-                                <li class="nav-item" role="presentation">
-                                    <button class="nav-link rounded-pill small" id="manual-tab" data-bs-toggle="pill" data-bs-target="#manual" type="button" role="tab">
-                                        手动录入
-                                    </button>
-                                </li>
-                            </ul>
-
-                            <div class="tab-content" id="inputTabContent">
-                                <div class="tab-pane fade show active" id="ai-content" role="tabpanel">
-                                    <p class="text-muted small mb-0">请使用上方输入框进行智能识别</p>
-                                </div>
-
-                                <div class="tab-pane fade" id="manual" role="tabpanel">
-                                    <form id="manualInputForm" class="row g-3">
-                                        <!-- 记录类型选择 -->
-                                        <div class="col-12">
-                                            <label class="form-label fw-bold">记录类型</label>
-                                            <select id="recordType" class="form-select rounded-3" onchange="toggleRecordFields()">
-                                                <option value="glucose">血糖测量</option>
-                                                <option value="bloodpressure">血压测量</option>
-                                                <option value="weight">体重记录</option>
-                                                <option value="meal">餐食记录</option>
-                                                <option value="exercise">运动记录</option>
-                                                <option value="medication">药物方案</option>
-                                            </select>
-                                        </div>
-
-                                        <!-- 血糖字段 -->
-                                        <div id="glucoseFields" class="col-12">
-                                            <div class="row g-3">
-                                                <div class="col-md-4">
-                                                    <label class="form-label">血糖值 <span class="text-danger">*</span></label>
-                                                    <input type="number" step="0.1" id="glucose_value" class="form-control rounded-3">
-                                                </div>
-                                                <div class="col-md-4">
-                                                    <label class="form-label">单位</label>
-                                                    <select id="glucose_unit" class="form-select rounded-3">
-                                                        <option value="mmol/L">mmol/L</option>
-                                                        <option value="mg/dL">mg/dL</option>
-                                                    </select>
-                                                </div>
-                                                <div class="col-md-4">
-                                                    <label class="form-label">测量类型</label>
-                                                    <input type="text" id="glucose_type" class="form-control rounded-3" list="glucoseTypeOptions" placeholder="如：空腹">
-                                                    <datalist id="glucoseTypeOptions">
-                                                        <option value="空腹">
-                                                        <option value="餐前">
-                                                        <option value="运动后">
-                                                        <option value="餐后1小时">
-                                                        <option value="餐后2小时">
-                                                        <option value="晚饭前">
-                                                        <option value="睡前">
-                                                    </datalist>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        <!-- 血压字段 -->
-                                        <div id="bloodPressureFields" class="col-12 d-none">
-                                            <div class="row g-3">
-                                                <div class="col-md-4">
-                                                    <label class="form-label">收缩压/高压 <span class="text-danger">*</span></label>
-                                                    <input type="number" id="bp_systolic" class="form-control rounded-3" placeholder="如：137">
-                                                </div>
-                                                <div class="col-md-4">
-                                                    <label class="form-label">舒张压/低压 <span class="text-danger">*</span></label>
-                                                    <input type="number" id="bp_diastolic" class="form-control rounded-3" placeholder="如：73">
-                                                </div>
-                                                <div class="col-md-4">
-                                                    <label class="form-label">脉搏 (bpm)</label>
-                                                    <input type="number" id="bp_pulse" class="form-control rounded-3" placeholder="可选">
-                                                </div>
-                                                <div class="col-12">
-                                                    <label class="form-label">测量类型</label>
-                                                    <input type="text" id="bp_type" class="form-control rounded-3" list="bpTypeOptions" placeholder="如：空腹血压">
-                                                    <datalist id="bpTypeOptions">
-                                                        <option value="空腹血压">
-                                                        <option value="血压测量">
-                                                        <option value="餐后血压">
-                                                    </datalist>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        <!-- 体重字段 -->
-                                        <div id="weightFields" class="col-12 d-none">
-                                            <div class="row g-3">
-                                                <div class="col-md-6">
-                                                    <label class="form-label">体重 (kg) <span class="text-danger">*</span></label>
-                                                    <input type="number" step="0.1" id="weight_value" class="form-control rounded-3" placeholder="如：75.0" oninput="calcBMIPreview()">
-                                                </div>
-                                                <div class="col-md-6">
-                                                    <label class="form-label">BMI <small class="text-muted">(自动计算)</small></label>
-                                                    <input type="text" id="weight_bmi" class="form-control rounded-3 bg-light" readonly>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        <!-- 餐食字段 -->
-                                        <div id="mealFields" class="col-12 d-none">
-                                            <div class="row g-3">
-                                                <div class="col-md-6">
-                                                    <label class="form-label">餐食类型 <span class="text-danger">*</span></label>
-                                                    <select id="meal_type" class="form-select rounded-3">
-                                                        <option value="早餐">早餐</option>
-                                                        <option value="午餐">午餐</option>
-                                                        <option value="晚餐">晚餐</option>
-                                                        <option value="加餐">加餐/零食</option>
-                                                    </select>
-                                                </div>
-                                                <div class="col-md-6">
-                                                    <label class="form-label">热量 (kcal)</label>
-                                                    <input type="number" id="meal_calories" class="form-control rounded-3" placeholder="估算值">
-                                                </div>
-                                                <div class="col-12">
-                                                    <label class="form-label">食物内容 <span class="text-danger">*</span></label>
-                                                    <textarea id="meal_notes" class="form-control rounded-3" rows="2" placeholder="例如：一碗米饭、西兰花、鸡胸肉"></textarea>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        <!-- 运动字段 -->
-                                        <div id="exerciseFields" class="col-12 d-none">
-                                            <div class="row g-3">
-                                                <div class="col-md-6">
-                                                    <label class="form-label">运动类型</label>
-                                                    <input type="text" id="exercise_type" class="form-control rounded-3" value="跑步" list="exerciseTypeOptions">
-                                                    <datalist id="exerciseTypeOptions">
-                                                        <option value="跑步">
-                                                        <option value="快走">
-                                                        <option value="游泳">
-                                                        <option value="骑车">
-                                                        <option value="运动">
-                                                    </datalist>
-                                                </div>
-                                                <div class="col-md-6">
-                                                    <label class="form-label">距离 (km)</label>
-                                                    <input type="number" step="0.1" id="exercise_distance" class="form-control rounded-3">
-                                                </div>
-                                                <div class="col-md-4">
-                                                    <label class="form-label">时长</label>
-                                                    <input type="text" id="exercise_duration" class="form-control rounded-3" placeholder="如：30分钟">
-                                                </div>
-                                                <div class="col-md-4">
-                                                    <label class="form-label">心率 (bpm)</label>
-                                                    <input type="number" id="exercise_heart_rate" class="form-control rounded-3">
-                                                </div>
-                                                <div class="col-md-4">
-                                                    <label class="form-label">消耗 (kcal)</label>
-                                                    <input type="number" id="exercise_calories" class="form-control rounded-3">
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        <!-- 药物方案字段 -->
-                                        <div id="medicationFields" class="col-12 d-none">
-                                            <div class="row g-3">
-                                                <div class="col-md-6">
-                                                    <label class="form-label">药物名称 <span class="text-danger">*</span></label>
-                                                    <input type="text" id="med_name_manual" class="form-control rounded-3" list="medOptions2" placeholder="如：二甲双胍">
-                                                    <datalist id="medOptions2">
-                                                        <option value="二甲双胍">
-                                                        <option value="阿卡波糖">
-                                                        <option value="格列齐特">
-                                                        <option value="门冬胰岛素">
-                                                        <option value="甘精胰岛素">
-                                                        <option value="西格列汀">
-                                                    </datalist>
-                                                </div>
-                                                <div class="col-md-6">
-                                                    <label class="form-label">剂量</label>
-                                                    <input type="text" id="med_dosage_manual" class="form-control rounded-3" placeholder="如：500mg">
-                                                </div>
-                                                <div class="col-md-6">
-                                                    <label class="form-label">每天次数 <span class="text-danger">*</span></label>
-                                                    <input type="number" id="med_times_manual" class="form-control rounded-3" value="1" min="1" max="10">
-                                                </div>
-                                                <div class="col-md-6">
-                                                    <label class="form-label">服用时机</label>
-                                                    <input type="text" id="med_timing_manual" class="form-control rounded-3" placeholder="如：早晚餐前30分钟">
-                                                </div>
-                                                <div class="col-md-6">
-                                                    <label class="form-label">开始日期 <span class="text-danger">*</span></label>
-                                                    <input type="date" id="med_start_manual" class="form-control rounded-3">
-                                                </div>
-                                                <div class="col-md-6">
-                                                    <label class="form-label">结束日期 <small>(可选)</small></label>
-                                                    <input type="date" id="med_end_manual" class="form-control rounded-3">
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        <!-- 通用字段 -->
-                                        <div class="col-md-6">
-                                            <label class="form-label">时间 <span class="text-danger">*</span></label>
-                                            <input type="datetime-local" id="manual_timestamp" class="form-control rounded-3" required>
-                                        </div>
-                                        <div class="col-md-6">
-                                            <label class="form-label">备注</label>
-                                            <input type="text" id="manual_notes" class="form-control rounded-3" placeholder="其他说明...">
-                                        </div>
-
-                                        <div class="col-12 mt-4">
-                                            <button type="submit" class="btn btn-primary w-100 rounded-pill">
-                                                <i class="bi bi-check-circle me-2"></i>保存记录
-                                            </button>
-                                        </div>
-                                    </form>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
             </div>
         </div>
     </div>
@@ -1450,13 +1347,17 @@
             <div class="d-flex justify-content-between align-items-center mb-3">
                 <div class="d-flex align-items-center gap-2">
                     <i class="bi bi-calendar-check text-primary fs-4"></i>
-                    <div class="d-flex align-items-center gap-1">
-                        <button class="btn btn-sm btn-outline-secondary border-0 p-0 px-1" onclick="overviewNav(-1)" title="前一天" id="overviewPrev">‹</button>
-                        <div class="text-center">
+                    <div class="d-flex align-items-center gap-2">
+                        <button class="btn d-flex align-items-center justify-content-center" onclick="overviewNav(-1)" title="前一天" id="overviewPrev" style="background: white; border: 1px solid #e9ecef; color: #495057; border-radius: 8px; padding: 6px 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); min-height: auto;">
+                            <i class="bi bi-chevron-left"></i>
+                        </button>
+                        <div class="text-center px-1">
                             <h5 class="mb-0" id="overviewTitle">今日概览</h5>
                             <small class="text-muted" id="overviewDate">{{ stats.today_str }}</small>
                         </div>
-                        <button class="btn btn-sm btn-outline-secondary border-0 p-0 px-1" onclick="overviewNav(1)" title="后一天" id="overviewNext" disabled>›</button>
+                        <button class="btn d-flex align-items-center justify-content-center" onclick="overviewNav(1)" title="后一天" id="overviewNext" disabled style="background: white; border: 1px solid #e9ecef; color: #495057; border-radius: 8px; padding: 6px 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); min-height: auto;">
+                            <i class="bi bi-chevron-right"></i>
+                        </button>
                     </div>
                 </div>
                 <div class="d-flex align-items-center gap-2">
@@ -1664,7 +1565,7 @@
     {% if stats.latest_analysis %}
     <div class="row mb-4">
         <div class="col-12">
-            <div class="card" style="background: linear-gradient(135deg, #4758AB 0%, #354385 100%); color: white;">
+            <div class="card" style="background: linear-gradient(135deg, #5AACBE 0%, #3B7C91 100%); color: white;">
                 <div class="card-body">
                     <!-- 标题栏（始终可见） -->
                     <div class="d-flex justify-content-between align-items-center">
@@ -2424,6 +2325,12 @@
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script>
+    // Chart.js 全局字体配置
+    Chart.defaults.font.family = "'Noto Sans SC', -apple-system, BlinkMacSystemFont, sans-serif";
+    Chart.defaults.font.size = 13;
+    Chart.defaults.plugins.tooltip.titleFont = { size: 14, family: "'Noto Sans SC', sans-serif" };
+    Chart.defaults.plugins.tooltip.bodyFont = { size: 13, family: "'Noto Sans SC', sans-serif" };
+
     // Injected from server
     const timelineData = {{ timeline | tojson }};
     let dayModal = null;
@@ -7016,20 +6923,20 @@
     }
 
     .analysis-option-card:hover {
-        border-color: #4758AB;
+        border-color: #5AACBE;
         transform: translateY(-4px);
-        box-shadow: 0 8px 20px rgba(71, 88, 171, 0.15);
+        box-shadow: 0 8px 20px rgba(90, 172, 190, 0.15);
     }
 
     .analysis-option-card.recommended {
-        border-color: #4758AB;
+        border-color: #5AACBE;
         background: linear-gradient(135deg, #f8f9fe 0%, #fff 100%);
     }
 
     .analysis-option-card .icon-wrapper {
         width: 50px;
         height: 50px;
-        background: linear-gradient(135deg, #4758AB 0%, #354385 100%);
+        background: linear-gradient(135deg, #5AACBE 0%, #3B7C91 100%);
         border-radius: 12px;
         display: flex;
         align-items: center;
@@ -7066,7 +6973,7 @@
     }
 
     .analysis-option-card .option-badge.badge-primary {
-        background: linear-gradient(135deg, #4758AB 0%, #354385 100%);
+        background: linear-gradient(135deg, #5AACBE 0%, #3B7C91 100%);
         color: white;
     }
 
