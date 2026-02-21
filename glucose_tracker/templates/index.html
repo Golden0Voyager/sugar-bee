@@ -12,15 +12,15 @@
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
         :root {
-            /* 蜂蜜琥珀配色方案 - Honey Amber Theme (from logo) */
-            --md-primary: #D4943C;
-            --md-primary-dark: #B07828;
-            --md-primary-light: #F0C872;
-            --md-secondary: #E8913A;
-            --md-secondary-dark: #D07A2A;
-            --md-cta: #B07828;
+            /* 几何紫蓝配色方案 - Geometric Purple-Blue-Teal (from C logo) */
+            --md-primary: #5B6ABF;
+            --md-primary-dark: #4A55A0;
+            --md-primary-light: #8B95D9;
+            --md-secondary: #7B68EE;
+            --md-secondary-dark: #6554CC;
+            --md-cta: #3D4A99;
             --md-surface: #FFFFFF;
-            --md-background: #FFFBF5;
+            --md-background: #F5F3FF;
             --md-error: #EF5350;
             --md-success: #4CAF50;
             --md-warning: #FFA726;
@@ -34,12 +34,12 @@
             --glucose-low: #FF7043;
 
             /* Text colors */
-            --md-text-primary: #3D2E1E;
-            --md-text-secondary: #8B7355;
+            --md-text-primary: #1E293B;
+            --md-text-secondary: #64748B;
             --md-text-disabled: rgba(0, 0, 0, 0.38);
 
             /* Borders */
-            --border-color: #EBE0D0;
+            --border-color: #E2E8F0;
 
             /* Touch target */
             --touch-target-min: 48px;
@@ -47,11 +47,11 @@
             /* Card padding */
             --card-padding: 24px;
 
-            /* Elevation shadows - 蜂蜜色调阴影 */
-            --md-shadow-1: 0 1px 3px rgba(180,120,40,0.08), 0 1px 2px rgba(180,120,40,0.12);
-            --md-shadow-2: 0 3px 6px rgba(180,120,40,0.10), 0 3px 6px rgba(180,120,40,0.12);
-            --md-shadow-3: 0 10px 20px rgba(180,120,40,0.10), 0 6px 6px rgba(180,120,40,0.10);
-            --md-shadow-4: 0 14px 28px rgba(180,120,40,0.12), 0 10px 10px rgba(180,120,40,0.10);
+            /* Elevation shadows - 蓝紫色调阴影 */
+            --md-shadow-1: 0 1px 3px rgba(91,106,191,0.08), 0 1px 2px rgba(91,106,191,0.12);
+            --md-shadow-2: 0 3px 6px rgba(91,106,191,0.10), 0 3px 6px rgba(91,106,191,0.12);
+            --md-shadow-3: 0 10px 20px rgba(91,106,191,0.10), 0 6px 6px rgba(91,106,191,0.10);
+            --md-shadow-4: 0 14px 28px rgba(91,106,191,0.12), 0 10px 10px rgba(91,106,191,0.10);
         }
 
         /* Base Typography - Larger for elderly users */
@@ -326,8 +326,8 @@
             color: white;
         }
         .btn-primary:hover {
-            background: #946520;
-            border-color: #946520;
+            background: #3D4A99;
+            border-color: #3D4A99;
             color: white;
         }
         .btn-primary:active {
@@ -547,7 +547,7 @@
             box-shadow: 0 2px 6px rgba(46,98,119,0.25) !important;
         }
         .fc-button-active:hover {
-            background-color: #946520 !important;
+            background-color: #3D4A99 !important;
         }
         .fc .fc-daygrid-day-top {
             flex-direction: row;
@@ -597,7 +597,7 @@
             box-shadow: 0 4px 14px rgba(46,98,119,0.35);
         }
         .btn-fab:hover {
-            background: #946520;
+            background: #3D4A99;
             box-shadow: 0 6px 18px rgba(46,98,119,0.4);
         }
         .btn-fab:active { transform: scale(0.95); }
@@ -736,30 +736,30 @@
         .markdown-content h1 {
             font-size: 1.8rem;
             font-weight: 600;
-            color: #B07828;
+            color: #4A55A0;
             margin-top: 1.5rem;
             margin-bottom: 1rem;
             padding-bottom: 0.5rem;
-            border-bottom: 2px solid #D4943C;
+            border-bottom: 2px solid #5B6ABF;
         }
         .markdown-content h2 {
             font-size: 1.5rem;
             font-weight: 600;
-            color: #D4943C;
+            color: #5B6ABF;
             margin-top: 1.5rem;
             margin-bottom: 0.8rem;
         }
         .markdown-content h3 {
             font-size: 1.3rem;
             font-weight: 600;
-            color: #F0C872;
+            color: #8B95D9;
             margin-top: 1.2rem;
             margin-bottom: 0.6rem;
         }
         .markdown-content h4 {
             font-size: 1.1rem;
             font-weight: 600;
-            color: #D4943C;
+            color: #5B6ABF;
             margin-top: 1rem;
             margin-bottom: 0.5rem;
         }
@@ -782,7 +782,7 @@
             font-style: italic;
         }
         .markdown-content blockquote {
-            border-left: 4px solid #D4943C;
+            border-left: 4px solid #5B6ABF;
             padding-left: 1rem;
             margin: 1rem 0;
             color: #666;
@@ -1165,7 +1165,7 @@
                     {% if stats.user.avatar %}
                     <img src="/static/avatars/{{ stats.user.avatar }}" class="rounded-circle" style="width: 32px; height: 32px; object-fit: cover; border: 2px solid #fff; box-shadow: 0 2px 6px rgba(0,0,0,0.1);">
                     {% else %}
-                    <div class="rounded-circle d-flex align-items-center justify-content-center" style="width: 32px; height: 32px; min-width: 32px; background: linear-gradient(135deg, #D4943C, #F0C872);">
+                    <div class="rounded-circle d-flex align-items-center justify-content-center" style="width: 32px; height: 32px; min-width: 32px; background: linear-gradient(135deg, #5B6ABF, #8B95D9);">
                         <i class="bi bi-person-fill text-white" style="font-size: 1rem;"></i>
                     </div>
                     {% endif %}
@@ -1179,7 +1179,7 @@
                             {% if stats.user.avatar %}
                             <img src="/static/avatars/{{ stats.user.avatar }}" class="rounded-circle" style="width: 52px; height: 52px; object-fit: cover; border: 3px solid #fff; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
                             {% else %}
-                            <div class="rounded-circle d-flex align-items-center justify-content-center" style="width: 52px; height: 52px; background: linear-gradient(135deg, #D4943C, #F0C872); box-shadow: 0 4px 12px rgba(180,120,40,0.3);">
+                            <div class="rounded-circle d-flex align-items-center justify-content-center" style="width: 52px; height: 52px; background: linear-gradient(135deg, #5B6ABF, #8B95D9); box-shadow: 0 4px 12px rgba(180,120,40,0.3);">
                                 <i class="bi bi-person-fill text-white" style="font-size: 1.5rem;"></i>
                             </div>
                             {% endif %}
@@ -1570,7 +1570,7 @@
     {% if stats.latest_analysis %}
     <div class="row mb-4">
         <div class="col-12">
-            <div class="card" style="background: linear-gradient(135deg, #D4943C 0%, #B07828 100%); color: white;">
+            <div class="card" style="background: linear-gradient(135deg, #5B6ABF 0%, #4A55A0 100%); color: white;">
                 <div class="card-body">
                     <!-- 标题栏（始终可见） -->
                     <div class="d-flex justify-content-between align-items-center">
@@ -6928,20 +6928,20 @@
     }
 
     .analysis-option-card:hover {
-        border-color: #D4943C;
+        border-color: #5B6ABF;
         transform: translateY(-4px);
         box-shadow: 0 8px 20px rgba(180, 120, 40, 0.15);
     }
 
     .analysis-option-card.recommended {
-        border-color: #D4943C;
+        border-color: #5B6ABF;
         background: linear-gradient(135deg, #f8f9fe 0%, #fff 100%);
     }
 
     .analysis-option-card .icon-wrapper {
         width: 50px;
         height: 50px;
-        background: linear-gradient(135deg, #D4943C 0%, #B07828 100%);
+        background: linear-gradient(135deg, #5B6ABF 0%, #4A55A0 100%);
         border-radius: 12px;
         display: flex;
         align-items: center;
@@ -6978,7 +6978,7 @@
     }
 
     .analysis-option-card .option-badge.badge-primary {
-        background: linear-gradient(135deg, #D4943C 0%, #B07828 100%);
+        background: linear-gradient(135deg, #5B6ABF 0%, #4A55A0 100%);
         color: white;
     }
 
