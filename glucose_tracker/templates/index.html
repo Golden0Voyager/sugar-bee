@@ -12,15 +12,15 @@
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
         :root {
-            /* 天青湖蓝配色方案 - Celestial Blue Theme */
-            --md-primary: #5AACBE;
-            --md-primary-dark: #3B7C91;
-            --md-primary-light: #8BC8D4;
+            /* 蜂蜜琥珀配色方案 - Honey Amber Theme (from logo) */
+            --md-primary: #D4943C;
+            --md-primary-dark: #B07828;
+            --md-primary-light: #F0C872;
             --md-secondary: #E8913A;
             --md-secondary-dark: #D07A2A;
-            --md-cta: #2E6277;
+            --md-cta: #B07828;
             --md-surface: #FFFFFF;
-            --md-background: #F4F8FA;
+            --md-background: #FFFBF5;
             --md-error: #EF5350;
             --md-success: #4CAF50;
             --md-warning: #FFA726;
@@ -34,12 +34,12 @@
             --glucose-low: #FF7043;
 
             /* Text colors */
-            --md-text-primary: #1E293B;
-            --md-text-secondary: #64748B;
+            --md-text-primary: #3D2E1E;
+            --md-text-secondary: #8B7355;
             --md-text-disabled: rgba(0, 0, 0, 0.38);
 
             /* Borders */
-            --border-color: #E2E8F0;
+            --border-color: #EBE0D0;
 
             /* Touch target */
             --touch-target-min: 48px;
@@ -47,11 +47,11 @@
             /* Card padding */
             --card-padding: 24px;
 
-            /* Elevation shadows - 天青色调阴影 */
-            --md-shadow-1: 0 1px 3px rgba(90,172,190,0.10), 0 1px 2px rgba(90,172,190,0.18);
-            --md-shadow-2: 0 3px 6px rgba(90,172,190,0.12), 0 3px 6px rgba(90,172,190,0.16);
-            --md-shadow-3: 0 10px 20px rgba(90,172,190,0.14), 0 6px 6px rgba(90,172,190,0.16);
-            --md-shadow-4: 0 14px 28px rgba(90,172,190,0.18), 0 10px 10px rgba(90,172,190,0.15);
+            /* Elevation shadows - 蜂蜜色调阴影 */
+            --md-shadow-1: 0 1px 3px rgba(180,120,40,0.08), 0 1px 2px rgba(180,120,40,0.12);
+            --md-shadow-2: 0 3px 6px rgba(180,120,40,0.10), 0 3px 6px rgba(180,120,40,0.12);
+            --md-shadow-3: 0 10px 20px rgba(180,120,40,0.10), 0 6px 6px rgba(180,120,40,0.10);
+            --md-shadow-4: 0 14px 28px rgba(180,120,40,0.12), 0 10px 10px rgba(180,120,40,0.10);
         }
 
         /* Base Typography - Larger for elderly users */
@@ -134,7 +134,7 @@
         }
         .glucose-slot.slot-active {
             border-color: var(--md-primary);
-            box-shadow: 0 0 0 3px rgba(90, 172, 190, 0.2);
+            box-shadow: 0 0 0 3px rgba(180, 120, 40, 0.2);
         }
 
         /* Progress Bar Animation */
@@ -316,7 +316,7 @@
         }
         .btn:focus-visible {
             outline: none;
-            box-shadow: 0 0 0 3px rgba(90,172,190,0.4);
+            box-shadow: 0 0 0 3px rgba(180,120,40,0.4);
         }
 
         /* 主按钮 - 深钴青（最高层级 CTA） */
@@ -326,8 +326,8 @@
             color: white;
         }
         .btn-primary:hover {
-            background: #1E4F63;
-            border-color: #1E4F63;
+            background: #946520;
+            border-color: #946520;
             color: white;
         }
         .btn-primary:active {
@@ -350,7 +350,7 @@
             background: var(--md-primary);
             border-color: var(--md-primary);
             color: white;
-            box-shadow: 0 2px 8px rgba(90,172,190,0.25);
+            box-shadow: 0 2px 8px rgba(180,120,40,0.25);
         }
         .btn-outline-primary:active {
             background: var(--md-primary-dark);
@@ -358,7 +358,7 @@
             color: white;
         }
         .btn-outline-primary:focus-visible {
-            box-shadow: 0 0 0 3px rgba(90,172,190,0.4);
+            box-shadow: 0 0 0 3px rgba(180,120,40,0.4);
         }
 
         /* 浅色/幽灵按钮 */
@@ -474,7 +474,7 @@
             background-color: #f8f9fa;
         }
         .fc-daygrid-day.fc-day-today {
-            background-color: rgba(90, 172, 190, 0.08) !important;
+            background-color: rgba(180, 120, 40, 0.08) !important;
         }
         .fc-daygrid-day-number {
             color: #495057;
@@ -547,7 +547,7 @@
             box-shadow: 0 2px 6px rgba(46,98,119,0.25) !important;
         }
         .fc-button-active:hover {
-            background-color: #1E4F63 !important;
+            background-color: #946520 !important;
         }
         .fc .fc-daygrid-day-top {
             flex-direction: row;
@@ -597,7 +597,7 @@
             box-shadow: 0 4px 14px rgba(46,98,119,0.35);
         }
         .btn-fab:hover {
-            background: #1E4F63;
+            background: #946520;
             box-shadow: 0 6px 18px rgba(46,98,119,0.4);
         }
         .btn-fab:active { transform: scale(0.95); }
@@ -679,7 +679,7 @@
         }
         .nav-pills .nav-link:hover {
             color: var(--md-primary-dark);
-            background: rgba(90,172,190,0.06);
+            background: rgba(180,120,40,0.06);
         }
         .nav-pills .nav-link.active {
             background-color: white;
@@ -736,30 +736,30 @@
         .markdown-content h1 {
             font-size: 1.8rem;
             font-weight: 600;
-            color: #3B7C91;
+            color: #B07828;
             margin-top: 1.5rem;
             margin-bottom: 1rem;
             padding-bottom: 0.5rem;
-            border-bottom: 2px solid #5AACBE;
+            border-bottom: 2px solid #D4943C;
         }
         .markdown-content h2 {
             font-size: 1.5rem;
             font-weight: 600;
-            color: #5AACBE;
+            color: #D4943C;
             margin-top: 1.5rem;
             margin-bottom: 0.8rem;
         }
         .markdown-content h3 {
             font-size: 1.3rem;
             font-weight: 600;
-            color: #8BC8D4;
+            color: #F0C872;
             margin-top: 1.2rem;
             margin-bottom: 0.6rem;
         }
         .markdown-content h4 {
             font-size: 1.1rem;
             font-weight: 600;
-            color: #5AACBE;
+            color: #D4943C;
             margin-top: 1rem;
             margin-bottom: 0.5rem;
         }
@@ -782,7 +782,7 @@
             font-style: italic;
         }
         .markdown-content blockquote {
-            border-left: 4px solid #5AACBE;
+            border-left: 4px solid #D4943C;
             padding-left: 1rem;
             margin: 1rem 0;
             color: #666;
@@ -840,12 +840,12 @@
         }
         #unifiedUserDropdown:hover {
             background: white;
-            box-shadow: 0 4px 16px rgba(0,0,0,0.12), 0 0 0 1px rgba(90,172,190,0.3);
+            box-shadow: 0 4px 16px rgba(0,0,0,0.12), 0 0 0 1px rgba(180,120,40,0.3);
             transform: translateY(-1px);
             color: var(--md-primary);
         }
         #unifiedUserDropdown:focus {
-            box-shadow: 0 4px 16px rgba(0,0,0,0.12), 0 0 0 2px rgba(90,172,190,0.4);
+            box-shadow: 0 4px 16px rgba(0,0,0,0.12), 0 0 0 2px rgba(180,120,40,0.4);
             outline: none;
         }
         #unifiedUserDropdown .bi-chevron-down {
@@ -899,7 +899,7 @@
             transform: scale(1.1);
         }
         .dropdown-item.active {
-            background: rgba(90,172,190,0.1);
+            background: rgba(180,120,40,0.1);
             color: var(--md-primary-dark);
             font-weight: 600;
         }
@@ -939,7 +939,7 @@
         }
         .time-range-pills .pill-btn:hover {
             color: var(--md-primary-dark);
-            background: rgba(90,172,190,0.12);
+            background: rgba(180,120,40,0.12);
         }
         .time-range-pills .pill-btn.active {
             background: var(--md-cta);
@@ -969,7 +969,7 @@
         .form-select:focus {
             border-color: var(--md-primary);
             background-color: white;
-            box-shadow: 0 0 0 4px rgba(90,172,190,0.15);
+            box-shadow: 0 0 0 4px rgba(180,120,40,0.15);
             outline: none;
         }
         .form-select option {
@@ -1001,7 +1001,7 @@
         .form-control:focus {
             border-color: var(--md-primary);
             background-color: white;
-            box-shadow: 0 0 0 4px rgba(90,172,190,0.15);
+            box-shadow: 0 0 0 4px rgba(180,120,40,0.15);
             outline: none;
         }
 
@@ -1165,7 +1165,7 @@
                     {% if stats.user.avatar %}
                     <img src="/static/avatars/{{ stats.user.avatar }}" class="rounded-circle" style="width: 32px; height: 32px; object-fit: cover; border: 2px solid #fff; box-shadow: 0 2px 6px rgba(0,0,0,0.1);">
                     {% else %}
-                    <div class="rounded-circle d-flex align-items-center justify-content-center" style="width: 32px; height: 32px; min-width: 32px; background: linear-gradient(135deg, #5AACBE, #8BC8D4);">
+                    <div class="rounded-circle d-flex align-items-center justify-content-center" style="width: 32px; height: 32px; min-width: 32px; background: linear-gradient(135deg, #D4943C, #F0C872);">
                         <i class="bi bi-person-fill text-white" style="font-size: 1rem;"></i>
                     </div>
                     {% endif %}
@@ -1179,7 +1179,7 @@
                             {% if stats.user.avatar %}
                             <img src="/static/avatars/{{ stats.user.avatar }}" class="rounded-circle" style="width: 52px; height: 52px; object-fit: cover; border: 3px solid #fff; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
                             {% else %}
-                            <div class="rounded-circle d-flex align-items-center justify-content-center" style="width: 52px; height: 52px; background: linear-gradient(135deg, #5AACBE, #8BC8D4); box-shadow: 0 4px 12px rgba(90,172,190,0.3);">
+                            <div class="rounded-circle d-flex align-items-center justify-content-center" style="width: 52px; height: 52px; background: linear-gradient(135deg, #D4943C, #F0C872); box-shadow: 0 4px 12px rgba(180,120,40,0.3);">
                                 <i class="bi bi-person-fill text-white" style="font-size: 1.5rem;"></i>
                             </div>
                             {% endif %}
@@ -1570,7 +1570,7 @@
     {% if stats.latest_analysis %}
     <div class="row mb-4">
         <div class="col-12">
-            <div class="card" style="background: linear-gradient(135deg, #5AACBE 0%, #3B7C91 100%); color: white;">
+            <div class="card" style="background: linear-gradient(135deg, #D4943C 0%, #B07828 100%); color: white;">
                 <div class="card-body">
                     <!-- 标题栏（始终可见） -->
                     <div class="d-flex justify-content-between align-items-center">
@@ -6928,20 +6928,20 @@
     }
 
     .analysis-option-card:hover {
-        border-color: #5AACBE;
+        border-color: #D4943C;
         transform: translateY(-4px);
-        box-shadow: 0 8px 20px rgba(90, 172, 190, 0.15);
+        box-shadow: 0 8px 20px rgba(180, 120, 40, 0.15);
     }
 
     .analysis-option-card.recommended {
-        border-color: #5AACBE;
+        border-color: #D4943C;
         background: linear-gradient(135deg, #f8f9fe 0%, #fff 100%);
     }
 
     .analysis-option-card .icon-wrapper {
         width: 50px;
         height: 50px;
-        background: linear-gradient(135deg, #5AACBE 0%, #3B7C91 100%);
+        background: linear-gradient(135deg, #D4943C 0%, #B07828 100%);
         border-radius: 12px;
         display: flex;
         align-items: center;
@@ -6978,7 +6978,7 @@
     }
 
     .analysis-option-card .option-badge.badge-primary {
-        background: linear-gradient(135deg, #5AACBE 0%, #3B7C91 100%);
+        background: linear-gradient(135deg, #D4943C 0%, #B07828 100%);
         color: white;
     }
 
