@@ -9,16 +9,18 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
         :root {
-            /* 清新薄荷配色方案 - Fresh Mint Theme */
-            --md-primary: #00BFA5;
-            --md-primary-dark: #00897B;
-            --md-primary-light: #64FFDA;
-            --md-secondary: #FF7043;
-            --md-secondary-dark: #E64A19;
+            /* 群青配色方案 - Ultramarine Theme */
+            --md-primary: #4758AB;
+            --md-primary-dark: #354385;
+            --md-primary-light: #6B7BC5;
+            --md-secondary: #E8913A;
+            --md-secondary-dark: #D07A2A;
+            --md-cta: #E8913A;
             --md-surface: #FFFFFF;
-            --md-background: #E0F2F1;
+            --md-background: #F5F6FA;
             --md-error: #EF5350;
             --md-success: #4CAF50;
             --md-warning: #FFA726;
@@ -32,32 +34,53 @@
             --glucose-low: #FF7043;
 
             /* Text colors */
-            --md-text-primary: rgba(0, 0, 0, 0.87);
-            --md-text-secondary: rgba(0, 0, 0, 0.60);
+            --md-text-primary: #1E293B;
+            --md-text-secondary: #64748B;
             --md-text-disabled: rgba(0, 0, 0, 0.38);
 
-            /* Elevation shadows - 薄荷色调阴影 */
-            --md-shadow-1: 0 1px 3px rgba(0,150,136,0.12), 0 1px 2px rgba(0,150,136,0.24);
-            --md-shadow-2: 0 3px 6px rgba(0,150,136,0.16), 0 3px 6px rgba(0,150,136,0.23);
-            --md-shadow-3: 0 10px 20px rgba(0,150,136,0.19), 0 6px 6px rgba(0,150,136,0.23);
-            --md-shadow-4: 0 14px 28px rgba(0,150,136,0.25), 0 10px 10px rgba(0,150,136,0.22);
+            /* Borders */
+            --border-color: #E2E8F0;
+
+            /* Touch target */
+            --touch-target-min: 48px;
+
+            /* Card padding */
+            --card-padding: 24px;
+
+            /* Elevation shadows - 群青色调阴影 */
+            --md-shadow-1: 0 1px 3px rgba(71,88,171,0.10), 0 1px 2px rgba(71,88,171,0.18);
+            --md-shadow-2: 0 3px 6px rgba(71,88,171,0.12), 0 3px 6px rgba(71,88,171,0.16);
+            --md-shadow-3: 0 10px 20px rgba(71,88,171,0.14), 0 6px 6px rgba(71,88,171,0.16);
+            --md-shadow-4: 0 14px 28px rgba(71,88,171,0.18), 0 10px 10px rgba(71,88,171,0.15);
         }
 
         /* Base Typography - Larger for elderly users */
         body {
-            font-family: 'Roboto', -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
-            font-size: 16px;
-            line-height: 1.6;
+            font-family: 'Noto Sans SC', -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+            font-size: 18px;
+            line-height: 1.7;
             color: var(--md-text-primary);
             background-color: var(--md-background);
         }
 
-        h1 { font-size: 2.5rem; font-weight: 400; margin: 0; }
-        h2 { font-size: 2rem; font-weight: 400; margin: 0; }
-        h3 { font-size: 1.75rem; font-weight: 500; margin: 0; }
-        h4 { font-size: 1.5rem; font-weight: 500; margin: 0; }
-        h5 { font-size: 1.25rem; font-weight: 500; margin: 0; }
-        h6 { font-size: 1rem; font-weight: 500; margin: 0; }
+        h1 { font-size: 2.5rem; font-weight: 600; margin: 0; }
+        h2 { font-size: 2rem; font-weight: 600; margin: 0; }
+        h3 { font-size: 1.75rem; font-weight: 600; margin: 0; }
+        h4 { font-size: 1.5rem; font-weight: 600; margin: 0; }
+        h5 { font-size: 1.25rem; font-weight: 600; margin: 0; }
+        h6 { font-size: 1rem; font-weight: 600; margin: 0; }
+
+        /* Bootstrap primary color overrides */
+        .text-primary { color: var(--md-primary) !important; }
+        .bg-primary { background-color: var(--md-primary) !important; }
+        .border-primary { border-color: var(--md-primary) !important; }
+
+        /* Form labels */
+        .form-label {
+            font-size: 1rem;
+            font-weight: 500;
+            color: var(--md-text-primary);
+        }
 
         /* Material Card */
         .card {
@@ -111,7 +134,7 @@
         }
         .glucose-slot.slot-active {
             border-color: var(--md-primary);
-            box-shadow: 0 0 0 3px rgba(0, 191, 165, 0.2);
+            box-shadow: 0 0 0 3px rgba(71, 88, 171, 0.2);
         }
 
         /* Progress Bar Animation */
@@ -285,7 +308,7 @@
 
         /* Material Buttons */
         .btn {
-            font-size: 1rem;
+            font-size: 1.05rem;
             font-weight: 500;
             padding: 12px 24px;
             border-radius: 8px;
@@ -293,7 +316,7 @@
             letter-spacing: 0.5px;
             box-shadow: var(--md-shadow-1);
             transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            min-height: 48px;
+            min-height: var(--touch-target-min);
         }
         .btn:hover {
             box-shadow: var(--md-shadow-2);
@@ -306,10 +329,15 @@
         .btn-primary {
             background: var(--md-primary);
             border-color: var(--md-primary);
+            color: white;
         }
         .btn-primary:hover {
             background: var(--md-primary-dark);
             border-color: var(--md-primary-dark);
+            color: white;
+        }
+        .btn-primary:focus {
+            box-shadow: 0 0 0 4px rgba(71,88,171,0.25);
         }
 
         /* Timeline Styles - Material Design */
@@ -384,7 +412,7 @@
         }
         .fc-col-header-cell-cushion {
             color: #6c757d;
-            font-size: 0.75rem;
+            font-size: 0.85rem;
             font-weight: 600;
             text-transform: uppercase;
             letter-spacing: 0.5px;
@@ -398,18 +426,18 @@
             background-color: #f8f9fa;
         }
         .fc-daygrid-day.fc-day-today {
-            background-color: rgba(13, 110, 253, 0.08) !important;
+            background-color: rgba(71, 88, 171, 0.08) !important;
         }
         .fc-daygrid-day-number {
             color: #495057;
-            font-size: 0.9rem;
+            font-size: 1rem;
             font-weight: 500;
             padding: 6px;
         }
         /* Today's date styling - subtle highlight only */
         .fc-day-today .fc-daygrid-day-number {
             font-weight: 700 !important;
-            color: #0d6efd !important;
+            color: var(--md-primary) !important;
         }
         .fc-event {
             cursor: pointer;
@@ -417,7 +445,7 @@
             border-radius: 8px;
             margin-bottom: 4px;
             padding: 4px 8px;
-            font-size: 0.8rem;
+            font-size: 0.9rem;
             font-weight: 600;
             box-shadow: 0 1px 3px rgba(0,0,0,0.12);
             transition: all 0.2s;
@@ -464,13 +492,13 @@
             box-shadow: 0 2px 4px rgba(0,0,0,0.08) !important;
         }
         .fc-button-active {
-            background-color: #0d6efd !important;
-            border-color: #0d6efd !important;
+            background-color: var(--md-primary) !important;
+            border-color: var(--md-primary) !important;
             color: white !important;
-            box-shadow: 0 2px 4px rgba(13, 110, 253, 0.3) !important;
+            box-shadow: 0 2px 4px rgba(71, 88, 171, 0.3) !important;
         }
         .fc-button-active:hover {
-            background-color: #0b5ed7 !important;
+            background-color: var(--md-primary-dark) !important;
         }
         .fc .fc-daygrid-day-top {
             flex-direction: row;
@@ -514,7 +542,7 @@
         /* FAB & Offcanvas */
         .btn-fab {
             transition: transform 0.2s;
-            background: linear-gradient(135deg, #0d6efd, #0a58ca);
+            background: linear-gradient(135deg, var(--md-primary), var(--md-primary-dark));
             border: none;
         }
         .btn-fab:active { transform: scale(0.95); }
@@ -555,7 +583,7 @@
             margin: 0;
             line-height: 1.2;
             font-weight: 700;
-            background: linear-gradient(135deg, #0d6efd, #0a58ca);
+            background: linear-gradient(135deg, var(--md-primary), var(--md-primary-dark));
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
@@ -578,8 +606,8 @@
         }
         
         /* Nav Pills Segmented Control */
-        .nav-pills .nav-link { color: #6c757d; font-weight: 500; transition: all 0.2s; }
-        .nav-pills .nav-link.active { background-color: #fff; color: #0d6efd; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+        .nav-pills .nav-link { color: #6c757d; font-weight: 500; transition: all 0.2s; min-height: var(--touch-target-min); font-size: 1rem; display: flex; align-items: center; }
+        .nav-pills .nav-link.active { background-color: #fff; color: var(--md-primary); box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
 
         /* Circular Icon Buttons */
         .btn-circle-icon {
@@ -598,7 +626,7 @@
         .btn-circle-icon:hover {
             transform: translateY(-2px);
             box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-            border-color: #0d6efd;
+            border-color: var(--md-primary);
         }
         .btn-circle-icon:active {
             transform: translateY(0);
@@ -610,11 +638,11 @@
             transition: color 0.3s ease;
         }
         .btn-circle-icon:hover i {
-            color: #0d6efd;
+            color: var(--md-primary);
         }
         .btn-circle-icon.active {
-            background: linear-gradient(135deg, #0d6efd, #0a58ca);
-            border-color: #0d6efd;
+            background: linear-gradient(135deg, var(--md-primary), var(--md-primary-dark));
+            border-color: var(--md-primary);
         }
         .btn-circle-icon.active i {
             color: white;
@@ -726,19 +754,19 @@
             border-radius: 50px;
             padding: 6px 16px 6px 6px;
             box-shadow: 0 2px 8px rgba(0,0,0,0.08), 0 0 0 1px rgba(0,0,0,0.04);
-            font-size: 0.9rem;
+            font-size: 1rem;
             font-weight: 500;
-            color: #333;
+            color: var(--md-text-primary);
             transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
         }
         #unifiedUserDropdown:hover {
             background: white;
-            box-shadow: 0 4px 16px rgba(0,0,0,0.12), 0 0 0 1px rgba(66,133,244,0.3);
+            box-shadow: 0 4px 16px rgba(0,0,0,0.12), 0 0 0 1px rgba(71,88,171,0.3);
             transform: translateY(-1px);
             color: var(--md-primary);
         }
         #unifiedUserDropdown:focus {
-            box-shadow: 0 4px 16px rgba(0,0,0,0.12), 0 0 0 2px rgba(66,133,244,0.4);
+            box-shadow: 0 4px 16px rgba(0,0,0,0.12), 0 0 0 2px rgba(71,88,171,0.4);
             outline: none;
         }
         #unifiedUserDropdown .bi-chevron-down {
@@ -768,7 +796,7 @@
             to { opacity: 1; transform: translateY(0); }
         }
         .dropdown-header {
-            font-size: 0.7rem;
+            font-size: 0.8rem;
             font-weight: 700;
             letter-spacing: 0.8px;
             text-transform: uppercase;
@@ -782,10 +810,10 @@
             transition: all 0.15s ease;
             display: flex;
             align-items: center;
-            font-size: 0.9rem;
+            font-size: 1rem;
         }
         .dropdown-item:hover {
-            background: linear-gradient(135deg, var(--md-primary), #5e9eff);
+            background: linear-gradient(135deg, var(--md-primary), var(--md-primary-light));
             color: white;
             transform: translateX(4px);
         }
@@ -793,7 +821,7 @@
             transform: scale(1.1);
         }
         .dropdown-item.active {
-            background: rgba(66,133,244,0.1);
+            background: rgba(71,88,171,0.1);
             color: var(--md-primary);
             font-weight: 600;
         }
@@ -820,11 +848,11 @@
             gap: 2px;
         }
         .time-range-pills .pill-btn {
-            padding: 6px 14px;
+            padding: 8px 16px;
             border: none;
             background: transparent;
             border-radius: 20px;
-            font-size: 0.8rem;
+            font-size: 0.9rem;
             font-weight: 500;
             color: #666;
             cursor: pointer;
@@ -833,7 +861,7 @@
         }
         .time-range-pills .pill-btn:hover {
             color: var(--md-primary);
-            background: rgba(66,133,244,0.1);
+            background: rgba(71,88,171,0.1);
         }
         .time-range-pills .pill-btn.active {
             background: white;
@@ -844,10 +872,10 @@
 
         /* 表单下拉框美化 */
         .form-select {
-            border: 2px solid #e8eaed;
+            border: 2px solid var(--border-color);
             border-radius: 12px;
-            padding: 10px 36px 10px 14px;
-            font-size: 0.9rem;
+            padding: 12px 36px 12px 14px;
+            font-size: 1rem;
             font-weight: 500;
             color: #333;
             background-color: #fafbfc;
@@ -864,7 +892,7 @@
         .form-select:focus {
             border-color: var(--md-primary);
             background-color: white;
-            box-shadow: 0 0 0 4px rgba(66,133,244,0.15);
+            box-shadow: 0 0 0 4px rgba(71,88,171,0.15);
             outline: none;
         }
         .form-select option {
@@ -882,10 +910,10 @@
 
         /* 表单输入框美化 */
         .form-control {
-            border: 2px solid #e8eaed;
+            border: 2px solid var(--border-color);
             border-radius: 12px;
-            padding: 10px 14px;
-            font-size: 0.9rem;
+            padding: 12px 14px;
+            font-size: 1rem;
             background-color: #fafbfc;
             transition: all 0.2s ease;
         }
@@ -896,7 +924,7 @@
         .form-control:focus {
             border-color: var(--md-primary);
             background-color: white;
-            box-shadow: 0 0 0 4px rgba(66,133,244,0.15);
+            box-shadow: 0 0 0 4px rgba(71,88,171,0.15);
             outline: none;
         }
 
@@ -905,22 +933,19 @@
             border-width: 2px;
             border-radius: 10px;
             font-weight: 500;
+            color: var(--md-primary);
+            border-color: var(--md-primary);
             transition: all 0.2s ease;
         }
         .btn-outline-primary:hover {
             transform: translateY(-1px);
-            box-shadow: 0 4px 12px rgba(66,133,244,0.3);
+            background: var(--md-primary);
+            border-color: var(--md-primary);
+            color: white;
+            box-shadow: 0 4px 12px rgba(71,88,171,0.3);
         }
-        .btn-primary {
-            border-radius: 10px;
-            font-weight: 500;
-            border: none;
-            box-shadow: 0 2px 8px rgba(66,133,244,0.3);
-            transition: all 0.2s ease;
-        }
-        .btn-primary:hover {
-            transform: translateY(-1px);
-            box-shadow: 0 4px 16px rgba(66,133,244,0.4);
+        .btn-outline-primary:focus {
+            box-shadow: 0 0 0 4px rgba(71,88,171,0.25);
         }
 
         /* User list container */
@@ -1001,7 +1026,7 @@
                     {% if stats.user.avatar %}
                     <img src="/static/avatars/{{ stats.user.avatar }}" class="rounded-circle" style="width: 32px; height: 32px; object-fit: cover; border: 2px solid #fff; box-shadow: 0 2px 6px rgba(0,0,0,0.1);">
                     {% else %}
-                    <div class="rounded-circle d-flex align-items-center justify-content-center" style="width: 32px; height: 32px; min-width: 32px; background: linear-gradient(135deg, #4285f4, #5e9eff);">
+                    <div class="rounded-circle d-flex align-items-center justify-content-center" style="width: 32px; height: 32px; min-width: 32px; background: linear-gradient(135deg, #4758AB, #6B7BC5);">
                         <i class="bi bi-person-fill text-white" style="font-size: 1rem;"></i>
                     </div>
                     {% endif %}
@@ -1015,7 +1040,7 @@
                             {% if stats.user.avatar %}
                             <img src="/static/avatars/{{ stats.user.avatar }}" class="rounded-circle" style="width: 52px; height: 52px; object-fit: cover; border: 3px solid #fff; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
                             {% else %}
-                            <div class="rounded-circle d-flex align-items-center justify-content-center" style="width: 52px; height: 52px; background: linear-gradient(135deg, #4285f4, #5e9eff); box-shadow: 0 4px 12px rgba(66,133,244,0.3);">
+                            <div class="rounded-circle d-flex align-items-center justify-content-center" style="width: 52px; height: 52px; background: linear-gradient(135deg, #4758AB, #6B7BC5); box-shadow: 0 4px 12px rgba(71,88,171,0.3);">
                                 <i class="bi bi-person-fill text-white" style="font-size: 1.5rem;"></i>
                             </div>
                             {% endif %}
@@ -1027,19 +1052,19 @@
                         <div class="d-flex gap-3 mt-2 pt-2" style="border-top: 1px solid rgba(0,0,0,0.06);">
                             <div class="text-center flex-fill">
                                 <div class="fw-bold text-primary" style="font-size: 1.1rem;">{{ stats.user.height }}</div>
-                                <div class="text-muted" style="font-size: 0.7rem;">身高cm</div>
+                                <div class="text-muted" style="font-size: 0.8rem;">身高cm</div>
                             </div>
                             <div class="text-center flex-fill" style="border-left: 1px solid rgba(0,0,0,0.06);">
                                 <div class="fw-bold text-primary" style="font-size: 1.1rem;">{{ stats.user.weight }}</div>
-                                <div class="text-muted" style="font-size: 0.7rem;">体重kg</div>
+                                <div class="text-muted" style="font-size: 0.8rem;">体重kg</div>
                             </div>
                             <div class="text-center flex-fill" style="border-left: 1px solid rgba(0,0,0,0.06);">
                                 {% if stats.latest_bmi %}
                                 <div class="fw-bold" style="font-size: 1.1rem; color: {{ stats.bmi_category.color }};">{{ "%.1f"|format(stats.latest_bmi) }}</div>
-                                <div class="text-muted" style="font-size: 0.7rem;">BMI·{{ stats.bmi_category.label }}</div>
+                                <div class="text-muted" style="font-size: 0.8rem;">BMI·{{ stats.bmi_category.label }}</div>
                                 {% else %}
                                 <div class="fw-bold" style="font-size: 1.1rem; color: {{ stats.bmi_category.color }};">{{ "%.1f"|format(stats.user.weight / (stats.user.height / 100) ** 2) if stats.user.height and stats.user.weight else '-' }}</div>
-                                <div class="text-muted" style="font-size: 0.7rem;">BMI</div>
+                                <div class="text-muted" style="font-size: 0.8rem;">BMI</div>
                                 {% endif %}
                             </div>
                         </div>
@@ -1484,7 +1509,7 @@
                             {% endif %}
                         </div>
                         <!-- 数值 -->
-                        <div class="fw-bold" style="font-size: 0.9rem;">
+                        <div class="fw-bold" style="font-size: 1rem;">
                             {% if slot.value %}
                                 <span class="{% if slot.status == 'predicted' %}text-info{% elif slot.compliance == 'optimal' %}text-success{% elif slot.compliance == 'high' or slot.compliance == 'low' %}text-danger{% else %}text-warning{% endif %}">
                                     {{ "%.1f"|format(slot.value) }}
@@ -1499,9 +1524,9 @@
                             {% endif %}
                         </div>
                         <!-- 名称 -->
-                        <div class="text-muted" style="font-size: 0.7rem;">{{ slot.name }}</div>
+                        <div class="text-muted" style="font-size: 0.8rem;">{{ slot.name }}</div>
                         <!-- 时间 -->
-                        <div class="text-muted" style="font-size: 0.65rem;">{{ slot.time }}</div>
+                        <div class="text-muted" style="font-size: 0.75rem;">{{ slot.time }}</div>
                     </div>
                     {% endfor %}
                 </div>
@@ -1542,7 +1567,7 @@
                             <span class="fw-bold" style="color: var(--md-primary);">运动</span>
                         </div>
                         {% if stats.today_exercise %}
-                        <div style="font-size: 0.75rem;" class="text-muted">
+                        <div style="font-size: 0.85rem;" class="text-muted">
                             <div class="fw-semibold text-dark mb-1">{{ stats.today_exercise.type }}</div>
                             <div>📏 {{ stats.today_exercise.distance or 0 }}km · {{ stats.today_exercise.duration or '--' }}</div>
                             {% if stats.today_exercise.pace %}
@@ -1568,7 +1593,7 @@
                             <span class="fw-bold" style="color: var(--md-secondary);">血压</span>
                         </div>
                         {% if stats.today_bp %}
-                        <div style="font-size: 0.75rem;" class="text-muted">
+                        <div style="font-size: 0.85rem;" class="text-muted">
                             <div class="fw-semibold text-dark mb-1">{{ stats.today_bp.systolic }}/{{ stats.today_bp.diastolic }} mmHg</div>
                             {% if stats.today_bp.heart_rate %}
                             <div>💓 静息心率 {{ stats.today_bp.heart_rate }}bpm</div>
@@ -1588,7 +1613,7 @@
                             <span class="fw-bold" style="color: #00897B;">体重</span>
                         </div>
                         {% if stats.today_weight %}
-                        <div style="font-size: 0.75rem;" class="text-muted">
+                        <div style="font-size: 0.85rem;" class="text-muted">
                             <div class="fw-semibold text-dark mb-1">{{ "%.1f"|format(stats.today_weight.weight) }} kg</div>
                             {% if stats.today_weight.bmi %}
                             <div>📊 BMI {{ "%.1f"|format(stats.today_weight.bmi) }}
@@ -1610,7 +1635,7 @@
                             <span class="fw-bold" style="color: var(--md-info);">用药</span>
                         </div>
                         {% if stats.today_med_status and stats.today_med_status.plans %}
-                        <div style="font-size: 0.7rem;" class="text-muted">
+                        <div style="font-size: 0.8rem;" class="text-muted">
                             <div class="fw-semibold text-dark mb-1">今日 {{ stats.today_med_status.plans|length }} 种药物</div>
                             {% for med in stats.today_med_status.plans %}
                             <div class="d-flex align-items-center gap-1"
@@ -1639,7 +1664,7 @@
     {% if stats.latest_analysis %}
     <div class="row mb-4">
         <div class="col-12">
-            <div class="card" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
+            <div class="card" style="background: linear-gradient(135deg, #4758AB 0%, #354385 100%); color: white;">
                 <div class="card-body">
                     <!-- 标题栏（始终可见） -->
                     <div class="d-flex justify-content-between align-items-center">
@@ -6991,20 +7016,20 @@
     }
 
     .analysis-option-card:hover {
-        border-color: #667eea;
+        border-color: #4758AB;
         transform: translateY(-4px);
-        box-shadow: 0 8px 20px rgba(102, 126, 234, 0.15);
+        box-shadow: 0 8px 20px rgba(71, 88, 171, 0.15);
     }
 
     .analysis-option-card.recommended {
-        border-color: #667eea;
+        border-color: #4758AB;
         background: linear-gradient(135deg, #f8f9fe 0%, #fff 100%);
     }
 
     .analysis-option-card .icon-wrapper {
         width: 50px;
         height: 50px;
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        background: linear-gradient(135deg, #4758AB 0%, #354385 100%);
         border-radius: 12px;
         display: flex;
         align-items: center;
@@ -7041,7 +7066,7 @@
     }
 
     .analysis-option-card .option-badge.badge-primary {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        background: linear-gradient(135deg, #4758AB 0%, #354385 100%);
         color: white;
     }
 
