@@ -1150,10 +1150,10 @@ def predict_remaining_glucose_slots(db, user_id=1, target_date=None, force_updat
             predicted_value = result.get('predicted_value')
             reasoning = result.get('reasoning', '')
 
-            # 匹配到对应的时间槽
+            # 匹配到对应的时间槽（AI可能返回带括号时间的类型如"早餐后2小时(11:00)"）
             matched_slot = None
             for slot in slots_to_predict:
-                if slot['type'] == pred_type:
+                if slot['type'] == pred_type or pred_type.startswith(slot['type']):
                     matched_slot = slot
                     break
 

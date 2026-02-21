@@ -2101,18 +2101,7 @@
     <div class="card mb-4" id="weightChartCard">
         <div class="card-body">
             <div class="d-flex justify-content-between align-items-start mb-3">
-                <h3 class="mb-0"><i class="bi bi-speedometer me-2" style="color: #00897B;"></i>体重/BMI趋势</h3>
-                <div class="d-flex gap-2 align-items-center small" id="weightChartLegend">
-                    <span class="wc-legend active" data-target="weight" style="--lc: #00897B;">
-                        <span class="wc-legend-line"></span>体重
-                    </span>
-                    <span class="wc-legend active" data-target="bmi" style="--lc: #FF7043;">
-                        <span class="wc-legend-line"></span>BMI
-                    </span>
-                    <span class="wc-legend active" data-target="overweight" style="--lc: #EF5350;">
-                        <span class="wc-legend-line wc-legend-dash"></span>超重线
-                    </span>
-                </div>
+                <h3 class="mb-0"><i class="bi bi-speedometer me-2" style="color: #00897B;"></i>体重趋势</h3>
             </div>
             <canvas id="weightChart" height="60"></canvas>
         </div>
@@ -3913,22 +3902,10 @@
         const ctx = document.getElementById('weightChart').getContext('2d');
 
         const weightData = [];
-        const bmiData = [];
 
         weightRecords.forEach(record => {
             weightData.push({ x: record.timestamp, y: record.weight });
-            if (record.bmi) {
-                bmiData.push({ x: record.timestamp, y: record.bmi });
-            }
         });
-
-        // BMI point colors by category
-        function getBMIColor(bmi) {
-            if (bmi < 18.5) return '#42A5F5';
-            if (bmi < 24) return '#4CAF50';
-            if (bmi < 28) return '#FFA726';
-            return '#EF5350';
-        }
 
         const datasets = [
             {
@@ -3948,28 +3925,16 @@
             }
         ];
 
-        if (bmiData.length > 0) {
-            datasets.push({
-                label: 'BMI',
-                data: bmiData,
-                borderColor: '#FF7043',
-                backgroundColor: '#FF7043',
-                borderWidth: 2,
-                tension: 0.3,
-                pointRadius: bmiData.map(p => 4),
-                pointHoverRadius: 7,
-                pointBackgroundColor: bmiData.map(p => getBMIColor(p.y)),
-                pointBorderColor: '#fff',
-                pointBorderWidth: 2,
-                fill: false,
-                yAxisID: 'y1'
-            });
-        }
+        // BMI → 体重换算（基于用户身高）
+        const userHeight = {{ stats.user.height or 170 }};  // cm
+        const heightM = userHeight / 100;
+        const bmi24Weight = Math.round(24 * heightM * heightM * 10) / 10;  // 超重线
+        const bmi22Weight = Math.round(22 * heightM * heightM * 10) / 10;  // 健康目标线
 
         // Calculate axis ranges
         const allWeights = weightRecords.map(r => r.weight);
-        const weightMin = Math.floor(Math.min(...allWeights) - 2);
-        const weightMax = Math.ceil(Math.max(...allWeights) + 2);
+        const weightMin = Math.floor(Math.min(Math.min(...allWeights), bmi22Weight) - 2);
+        const weightMax = Math.ceil(Math.max(Math.max(...allWeights), bmi24Weight) + 2);
 
         const weightChartInstance = new Chart(ctx, {
             type: 'line',
@@ -3990,6 +3955,11 @@
                                     return d.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
                                 }
                                 return '';
+                            },
+                            label: (item) => {
+                                const w = item.raw.y;
+                                const bmi = (w / (heightM * heightM)).toFixed(1);
+                                return `体重: ${w} kg · BMI: ${bmi}`;
                             }
                         }
                     },
@@ -3997,19 +3967,40 @@
                         annotations: {
                             overweightLine: {
                                 type: 'line',
-                                yMin: 24,
-                                yMax: 24,
-                                yScaleID: 'y1',
+                                yMin: bmi24Weight,
+                                yMax: bmi24Weight,
+                                yScaleID: 'y',
                                 borderColor: 'rgba(239, 83, 80, 0.5)',
                                 borderWidth: 1.5,
                                 borderDash: [6, 4],
                                 label: {
                                     display: true,
-                                    content: '超重 BMI=24',
+                                    content: `超重 ${bmi24Weight}kg (BMI=24)`,
                                     position: 'end',
-                                    backgroundColor: 'rgba(239, 83, 80, 0.08)',
+                                    yAdjust: -12,
+                                    backgroundColor: 'transparent',
                                     color: '#EF5350',
-                                    font: { size: 10 }
+                                    font: { size: 10 },
+                                    padding: 2
+                                }
+                            },
+                            healthyLine: {
+                                type: 'line',
+                                yMin: bmi22Weight,
+                                yMax: bmi22Weight,
+                                yScaleID: 'y',
+                                borderColor: 'rgba(76, 175, 80, 0.5)',
+                                borderWidth: 1.5,
+                                borderDash: [6, 4],
+                                label: {
+                                    display: true,
+                                    content: `目标 ${bmi22Weight}kg (BMI=22)`,
+                                    position: 'start',
+                                    yAdjust: -12,
+                                    backgroundColor: 'transparent',
+                                    color: '#4CAF50',
+                                    font: { size: 10 },
+                                    padding: 2
                                 }
                             }
                         }
@@ -4039,51 +4030,11 @@
                             color: '#00897B'
                         },
                         grid: { color: 'rgba(0,0,0,0.05)' }
-                    },
-                    y1: bmiData.length > 0 ? {
-                        position: 'right',
-                        beginAtZero: false,
-                        min: 15,
-                        max: 35,
-                        title: {
-                            display: true,
-                            text: 'BMI',
-                            font: { size: 11, weight: 'bold' },
-                            color: '#FF7043'
-                        },
-                        ticks: {
-                            stepSize: 2,
-                            font: { size: 10 },
-                            color: '#FF7043'
-                        },
-                        grid: { drawOnChartArea: false }
-                    } : undefined
+                    }
                 }
             }
         });
 
-        // Legend toggle logic
-        const bmiDatasetIndex = bmiData.length > 0 ? 1 : -1;
-        document.querySelectorAll('#weightChartLegend .wc-legend').forEach(el => {
-            el.addEventListener('click', () => {
-                const target = el.dataset.target;
-                const active = el.classList.toggle('active');
-                if (target === 'weight') {
-                    weightChartInstance.getDatasetMeta(0).hidden = !active;
-                } else if (target === 'bmi' && bmiDatasetIndex >= 0) {
-                    weightChartInstance.getDatasetMeta(bmiDatasetIndex).hidden = !active;
-                } else if (target === 'overweight') {
-                    const ann = weightChartInstance.options.plugins.annotation.annotations.overweightLine;
-                    ann.display = active;
-                }
-                weightChartInstance.update();
-            });
-        });
-        // Hide BMI toggle if no BMI data
-        if (bmiDatasetIndex < 0) {
-            const bmiToggle = document.querySelector('#weightChartLegend .wc-legend[data-target="bmi"]');
-            if (bmiToggle) bmiToggle.style.display = 'none';
-        }
     }
 
     // 生成AI预测控制按钮（统一开关）
