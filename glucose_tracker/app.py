@@ -3612,7 +3612,144 @@ def prediction_comparison():
         return jsonify({"error": str(e)}), 500
 
 
-@app.route('/trigger_prediction', methods=['POST'])
+@app.route('/api/day_overview')
+def api_day_overview():
+    """返回指定日期的概览数据（血糖时间轴 + 运动/血压/体重/用药）"""
+    try:
+        date_str = request.args.get('date', datetime.datetime.now().strftime('%Y-%m-%d'))
+        db = get_db()
+        c = db.cursor()
+        current_user_id = user_manager.get_current_user_id()
+
+        day_start = date_str + ' 00:00:00'
+        day_end = date_str + ' 23:59:59'
+        target_date = datetime.datetime.strptime(date_str, '%Y-%m-%d')
+        weekday_name = target_date.strftime('%A')
+        day_of_month = target_date.day
+
+        # 血糖时间轴
+        today_schedule = [
+            {'key': 'fasting', 'name': '空腹', 'time': '07:15', 'icon': '🌅'},
+            {'key': 'post_exercise', 'name': '运动后', 'time': '08:45', 'icon': '🏃'},
+            {'key': 'post_breakfast', 'name': '早餐后2h', 'time': '11:00', 'icon': '☕'},
+            {'key': 'post_lunch', 'name': '午餐后2h', 'time': '14:30', 'icon': '🌞'},
+            {'key': 'pre_dinner', 'name': '晚饭前', 'time': '17:30', 'icon': '🍽️'},
+            {'key': 'post_dinner', 'name': '晚餐后2h', 'time': '20:00', 'icon': '🌙'},
+            {'key': 'bedtime', 'name': '睡前', 'time': '22:00', 'icon': '😴'}
+        ]
+
+        c.execute("""
+            SELECT value, type, timestamp, is_predicted
+            FROM records WHERE user_id = ? AND timestamp BETWEEN ? AND ?
+            AND value > 0 AND systolic_pressure IS NULL
+            ORDER BY timestamp ASC, is_predicted ASC
+        """, (current_user_id, day_start, day_end))
+        records = c.fetchall()
+
+        overview = []
+        measured_count = 0
+        predicted_count = 0
+        for slot in today_schedule:
+            slot_data = {'key': slot['key'], 'name': slot['name'], 'time': slot['time'],
+                         'icon': slot['icon'], 'value': None, 'status': 'pending', 'compliance': None}
+            measured_match = predicted_match = None
+            for r in records:
+                rt = r['type'] or ''
+                rh = -1
+                rt_time = r['timestamp'].split(' ')[1][:5] if ' ' in r['timestamp'] else ''
+                if rt_time and ':' in rt_time:
+                    try: rh = int(rt_time.split(':')[0])
+                    except: rh = -1
+                matched = False
+                if slot['key'] == 'fasting' and '空腹' in rt: matched = True
+                elif slot['key'] == 'post_exercise' and '运动后' in rt: matched = True
+                elif slot['key'] == 'post_breakfast' and ('早餐后' in rt or ('餐后' in rt and 10 <= rh < 13)): matched = True
+                elif slot['key'] == 'post_lunch' and ('午餐后' in rt or ('餐后' in rt and 13 <= rh < 17)): matched = True
+                elif slot['key'] == 'pre_dinner' and ('晚饭前' in rt or '晚餐前' in rt or ('餐前' in rt and 16 <= rh < 19)): matched = True
+                elif slot['key'] == 'post_dinner' and ('晚餐后' in rt or ('餐后' in rt and 19 <= rh < 23)): matched = True
+                elif slot['key'] == 'bedtime' and '睡前' in rt: matched = True
+                if matched:
+                    if not r['is_predicted'] and not measured_match: measured_match = r
+                    elif r['is_predicted'] and not predicted_match: predicted_match = r
+            chosen = measured_match or predicted_match
+            if chosen:
+                slot_data['value'] = chosen['value']
+                slot_data['status'] = 'predicted' if chosen['is_predicted'] else 'measured'
+                result = settings.check_glucose_compliance(chosen['value'], chosen['type'])
+                slot_data['compliance'] = result['level']
+                if slot_data['status'] == 'measured': measured_count += 1
+                else: predicted_count += 1
+            overview.append(slot_data)
+
+        # 运动
+        c.execute("""
+            SELECT type, distance, calories, duration, heart_rate, pace, cadence, timestamp
+            FROM records WHERE user_id = ? AND timestamp BETWEEN ? AND ?
+            AND (type IN ('运动','跑步','走路','骑行','游泳','健身') OR type LIKE '%跑%' OR type LIKE '%走%' OR type LIKE '%骑%')
+            ORDER BY timestamp DESC LIMIT 1
+        """, (current_user_id, day_start, day_end))
+        ex_row = c.fetchone()
+        exercise = None
+        if ex_row:
+            exercise = {k: ex_row[k] for k in ['type','distance','calories','duration','heart_rate','pace','cadence']}
+            exercise['time'] = ex_row['timestamp'].split(' ')[1][:5] if ' ' in ex_row['timestamp'] else ''
+
+        # 血压
+        c.execute("""
+            SELECT systolic_pressure, diastolic_pressure, pulse_rate, timestamp
+            FROM records WHERE user_id = ? AND timestamp BETWEEN ? AND ?
+            AND systolic_pressure IS NOT NULL ORDER BY timestamp DESC LIMIT 1
+        """, (current_user_id, day_start, day_end))
+        bp_row = c.fetchone()
+        bp = None
+        if bp_row:
+            bp = {'systolic': bp_row['systolic_pressure'], 'diastolic': bp_row['diastolic_pressure'],
+                  'heart_rate': bp_row['pulse_rate'],
+                  'time': bp_row['timestamp'].split(' ')[1][:5] if ' ' in bp_row['timestamp'] else ''}
+
+        # 体重
+        c.execute("""
+            SELECT weight, bmi, timestamp FROM records WHERE user_id = ? AND timestamp BETWEEN ? AND ?
+            AND weight > 0 ORDER BY timestamp DESC LIMIT 1
+        """, (current_user_id, day_start, day_end))
+        w_row = c.fetchone()
+        weight = None
+        if w_row:
+            bmi_cat = settings.get_bmi_category(w_row['bmi'])
+            weight = {'weight': w_row['weight'], 'bmi': w_row['bmi'],
+                      'bmi_category': bmi_cat,
+                      'time': w_row['timestamp'].split(' ')[1][:5] if ' ' in w_row['timestamp'] else ''}
+
+        # 用药
+        med_plans = []
+        c.execute("SELECT * FROM medication_plans WHERE user_id = ? AND active = 1", (current_user_id,))
+        for plan in c.fetchall():
+            freq = plan['frequency'] or 'daily'
+            include = False
+            if freq == 'daily': include = True
+            elif freq == 'weekdays': include = weekday_name not in ('Saturday', 'Sunday')
+            elif freq == 'weekly': include = weekday_name == 'Monday'
+            elif freq == 'monthly': include = day_of_month == 1
+            if include:
+                med_plans.append({'id': plan['id'], 'name': plan['name'], 'dosage': plan['dosage'],
+                                  'timing': plan['timing'], 'times': plan['times_per_day'] or 1})
+
+        c.execute("SELECT plan_id, COUNT(*) as count FROM medication_logs WHERE user_id = ? AND log_date = ? GROUP BY plan_id",
+                  (current_user_id, date_str))
+        taken_logs = {row['plan_id']: row['count'] for row in c.fetchall()}
+
+        return jsonify({
+            'date': date_str,
+            'overview': overview,
+            'completion': {'measured': measured_count, 'predicted': predicted_count, 'total': len(today_schedule)},
+            'exercise': exercise,
+            'bp': bp,
+            'weight': weight,
+            'med_status': {'plans': med_plans, 'taken_details': taken_logs}
+        })
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
 def trigger_prediction():
     """
     手动触发预测

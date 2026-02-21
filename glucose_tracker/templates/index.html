@@ -1425,9 +1425,13 @@
             <div class="d-flex justify-content-between align-items-center mb-3">
                 <div class="d-flex align-items-center gap-2">
                     <i class="bi bi-calendar-check text-primary fs-4"></i>
-                    <div>
-                        <h5 class="mb-0">今日概览</h5>
-                        <small class="text-muted">{{ stats.today_str }}</small>
+                    <div class="d-flex align-items-center gap-1">
+                        <button class="btn btn-sm btn-outline-secondary border-0 p-0 px-1" onclick="overviewNav(-1)" title="前一天" id="overviewPrev">‹</button>
+                        <div class="text-center">
+                            <h5 class="mb-0" id="overviewTitle">今日概览</h5>
+                            <small class="text-muted" id="overviewDate">{{ stats.today_str }}</small>
+                        </div>
+                        <button class="btn btn-sm btn-outline-secondary border-0 p-0 px-1" onclick="overviewNav(1)" title="后一天" id="overviewNext" disabled>›</button>
                     </div>
                 </div>
                 <div class="d-flex align-items-center gap-2">
@@ -2560,6 +2564,139 @@
     }
 
     // ========== 今日概览功能 ==========
+
+    // 概览日期导航
+    let overviewDate = '{{ stats.today_str }}';
+    const todayStr = '{{ stats.today_str }}';
+
+    async function overviewNav(delta) {
+        const d = new Date(overviewDate);
+        d.setDate(d.getDate() + delta);
+        const newDate = d.toISOString().slice(0, 10);
+        if (newDate > todayStr) return;
+
+        try {
+            const res = await fetch(`/api/day_overview?date=${newDate}`);
+            const data = await res.json();
+            if (data.error) return;
+            overviewDate = newDate;
+            renderOverview(data);
+        } catch(e) { console.error(e); }
+    }
+
+    function renderOverview(data) {
+        const isToday = data.date === todayStr;
+        document.getElementById('overviewTitle').textContent = isToday ? '今日概览' : data.date;
+        document.getElementById('overviewDate').textContent = isToday ? data.date : weekdayLabel(data.date);
+        document.getElementById('overviewNext').disabled = isToday;
+
+        // 血糖时间轴
+        const slotsHtml = data.overview.map(s => {
+            let valueHtml = '<span class="text-muted">--</span>';
+            if (s.value) {
+                let cls = 'text-muted';
+                if (s.status === 'predicted') cls = 'text-info';
+                else if (s.compliance === 'optimal') cls = 'text-success';
+                else if (s.compliance === 'high' || s.compliance === 'low') cls = 'text-danger';
+                else cls = 'text-warning';
+                const badge = s.status === 'predicted' ? ' <small class="text-info" title="AI预测值">✦</small>'
+                            : s.status === 'measured' ? ' <small class="text-success" title="实测值">✓</small>' : '';
+                valueHtml = `<span class="${cls}">${s.value.toFixed(1)}</span>${badge}`;
+            }
+            return `<div class="text-center flex-fill glucose-slot slot-${s.status}" data-slot-key="${s.key}" style="cursor:pointer;" onclick="focusSlot('${s.key}')">
+                <div class="mb-1" style="font-size:1.1rem;">${s.icon}</div>
+                <div class="fw-bold" style="font-size:0.9rem;">${valueHtml}</div>
+                <div class="text-muted" style="font-size:0.7rem;">${s.name}</div>
+                <div class="text-muted" style="font-size:0.65rem;">${s.time}</div>
+            </div>`;
+        }).join('');
+        document.querySelector('.today-glucose-timeline .d-flex.justify-content-between.gap-1').innerHTML = slotsHtml;
+
+        // 进度条
+        const total = data.completion.total;
+        const mPct = (data.completion.measured / total * 100).toFixed(1);
+        const pPct = (data.completion.predicted / total * 100).toFixed(1);
+        const pending = total - data.completion.measured - data.completion.predicted;
+        let barHtml = '';
+        if (mPct > 0) barHtml += `<div class="progress-bar" style="width:${mPct}%;background:linear-gradient(90deg,#4CAF50,#81C784);"></div>`;
+        if (pPct > 0) barHtml += `<div class="progress-bar" style="width:${pPct}%;background:linear-gradient(90deg,#26C6DA,#80DEEA);"></div>`;
+        document.querySelector('.today-progress').innerHTML = barHtml;
+
+        // 完成计数
+        document.querySelector('#todayOverviewCard .fs-5.fw-bold').textContent = `${data.completion.measured}/${total}`;
+
+        // 进度条下方文字
+        let footHtml = `<small class="text-muted"><span style="color:#4CAF50;">✓</span> 实测 ${data.completion.measured}`;
+        if (data.completion.predicted > 0) footHtml += ` <span style="color:#26C6DA;" class="ms-2">✦</span> 预测 ${data.completion.predicted}`;
+        footHtml += `</small>`;
+        if (pending > 0) footHtml += `<small class="text-muted">待测 ${pending}</small>`;
+        document.querySelector('.today-progress').nextElementSibling.innerHTML = footHtml;
+
+        // 运动
+        const exEl = document.querySelector('#todayOverviewCard .col-md-3:nth-child(1) .p-2');
+        if (data.exercise) {
+            const e = data.exercise;
+            let exHtml = `<div class="d-flex align-items-center gap-1 mb-2"><span style="font-size:1rem;">🏃</span><span class="fw-bold" style="color:var(--md-primary);">运动</span></div>
+                <div style="font-size:0.75rem;" class="text-muted">
+                <div class="fw-semibold text-dark mb-1">${e.type}</div>
+                <div>📏 ${e.distance||0}km · ${e.duration||'--'}</div>`;
+            if (e.pace) exHtml += `<div>⏱️ 配速 ${e.pace}/km</div>`;
+            if (e.heart_rate) exHtml += `<div>💓 均心率 ${e.heart_rate}bpm</div>`;
+            if (e.cadence) exHtml += `<div>👟 步频 ${e.cadence}spm</div>`;
+            exHtml += `</div>`;
+            exEl.innerHTML = exHtml;
+        } else {
+            exEl.innerHTML = `<div class="d-flex align-items-center gap-1 mb-2"><span style="font-size:1rem;">🏃</span><span class="fw-bold" style="color:var(--md-primary);">运动</span></div><div class="text-muted small">暂无运动记录</div>`;
+        }
+
+        // 血压
+        const bpEl = document.querySelector('#todayOverviewCard .col-md-3:nth-child(2) .p-2');
+        if (data.bp) {
+            bpEl.innerHTML = `<div class="d-flex align-items-center gap-1 mb-2"><span style="font-size:1rem;">❤️</span><span class="fw-bold" style="color:var(--md-secondary);">血压</span></div>
+                <div style="font-size:0.75rem;" class="text-muted">
+                <div class="fw-semibold text-dark mb-1">${data.bp.systolic}/${data.bp.diastolic} mmHg</div>
+                ${data.bp.heart_rate ? `<div>💓 静息心率 ${data.bp.heart_rate}bpm</div>` : ''}
+                <div>🕐 测量时间 ${data.bp.time}</div></div>`;
+        } else {
+            bpEl.innerHTML = `<div class="d-flex align-items-center gap-1 mb-2"><span style="font-size:1rem;">❤️</span><span class="fw-bold" style="color:var(--md-secondary);">血压</span></div><div class="text-muted small">暂无血压记录</div>`;
+        }
+
+        // 体重
+        const wtEl = document.querySelector('#todayOverviewCard .col-md-3:nth-child(3) .p-2');
+        if (data.weight) {
+            let wtHtml = `<div class="d-flex align-items-center gap-1 mb-2"><span style="font-size:1rem;">⚖️</span><span class="fw-bold" style="color:#00897B;">体重</span></div>
+                <div style="font-size:0.75rem;" class="text-muted">
+                <div class="fw-semibold text-dark mb-1">${data.weight.weight.toFixed(1)} kg</div>`;
+            if (data.weight.bmi) wtHtml += `<div>📊 BMI ${data.weight.bmi.toFixed(1)} <span style="color:${data.weight.bmi_category.color};">${data.weight.bmi_category.label}</span></div>`;
+            wtHtml += `<div>🕐 ${data.weight.time}</div></div>`;
+            wtEl.innerHTML = wtHtml;
+        } else {
+            wtEl.innerHTML = `<div class="d-flex align-items-center gap-1 mb-2"><span style="font-size:1rem;">⚖️</span><span class="fw-bold" style="color:#00897B;">体重</span></div><div class="text-muted small">暂无体重记录</div>`;
+        }
+
+        // 用药
+        const medEl = document.querySelector('#todayOverviewCard .col-md-3:nth-child(4) .p-2');
+        if (data.med_status.plans && data.med_status.plans.length > 0) {
+            let medHtml = `<div class="d-flex align-items-center gap-1 mb-2"><span style="font-size:1rem;">💊</span><span class="fw-bold" style="color:var(--md-info);">用药</span></div>
+                <div style="font-size:0.7rem;" class="text-muted">
+                <div class="fw-semibold text-dark mb-1">当日 ${data.med_status.plans.length} 种药物</div>`;
+            data.med_status.plans.forEach(med => {
+                const taken = data.med_status.taken_details[med.id] || 0;
+                const icon = taken >= med.times ? '<span style="color:#4CAF50;">✓</span>' : '<span style="color:#ccc;">○</span>';
+                medHtml += `<div class="d-flex align-items-center gap-1">${icon}<span class="text-truncate">${med.name}</span></div>`;
+            });
+            medHtml += `</div>`;
+            medEl.innerHTML = medHtml;
+        } else {
+            medEl.innerHTML = `<div class="d-flex align-items-center gap-1 mb-2"><span style="font-size:1rem;">💊</span><span class="fw-bold" style="color:var(--md-info);">用药</span></div><div class="text-muted small">无用药计划</div>`;
+        }
+    }
+
+    function weekdayLabel(dateStr) {
+        const days = ['周日','周一','周二','周三','周四','周五','周六'];
+        return days[new Date(dateStr).getDay()];
+    }
+
     /**
      * 点击时间点槽位，滚动到输入区域并预填类型
      */
@@ -3960,6 +4097,14 @@
                                 const w = item.raw.y;
                                 const bmi = (w / (heightM * heightM)).toFixed(1);
                                 return `体重: ${w} kg · BMI: ${bmi}`;
+                            },
+                            afterLabel: (item) => {
+                                const w = item.raw.y;
+                                const bmi = w / (heightM * heightM);
+                                if (bmi < 18.5) return '偏瘦';
+                                if (w <= bmi22Weight) return '✓ 达标';
+                                if (bmi < 24) return `距目标 -${(w - bmi22Weight).toFixed(1)}kg`;
+                                return `需减重 ${(w - bmi24Weight).toFixed(1)}kg`;
                             }
                         }
                     },
