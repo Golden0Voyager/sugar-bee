@@ -660,26 +660,33 @@
             letter-spacing: 0.5px;
         }
         
-        /* Nav Pills Segmented Control */
+        /* Nav Pills Segmented Control — 胶囊描边风格 */
+        .nav-pills {
+            gap: 8px;
+        }
         .nav-pills .nav-link {
             color: var(--md-text-secondary);
             font-weight: 500;
-            transition: background 0.2s ease, color 0.2s ease;
+            transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
             min-height: var(--touch-target-min);
             font-size: 1rem;
             display: flex;
             align-items: center;
-            border-radius: 10px;
+            border-radius: 20px;
             padding: 8px 16px;
+            border: 1.5px solid transparent;
+            background: transparent;
         }
         .nav-pills .nav-link:hover {
             color: var(--md-primary-dark);
-            background: rgba(90,172,190,0.08);
+            background: rgba(90,172,190,0.06);
         }
         .nav-pills .nav-link.active {
-            background-color: var(--md-cta);
-            color: white;
-            box-shadow: 0 2px 6px rgba(46,98,119,0.25);
+            background-color: white;
+            color: var(--md-primary-dark);
+            font-weight: 600;
+            border: 1.5px solid var(--md-primary);
+            box-shadow: none;
         }
 
         /* Circular Icon Buttons */
