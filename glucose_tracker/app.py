@@ -5,6 +5,7 @@ import datetime
 import os
 import io
 import traceback
+from collections import defaultdict
 from werkzeug.utils import secure_filename
 from parser import parse_glucose_input
 import settings
@@ -143,6 +144,12 @@ def init_db():
             except sqlite3.OperationalError:
                 pass
 
+        # Migration: Add SpO2 (blood oxygen) column
+        try:
+            c.execute("ALTER TABLE records ADD COLUMN spo2 INTEGER")
+        except sqlite3.OperationalError:
+            pass
+
         # Migration: Add weight/BMI columns
         for col in ['weight REAL', 'bmi REAL']:
             try:
@@ -172,6 +179,12 @@ def init_db():
         except sqlite3.OperationalError:
             pass  # Column already exists
 
+        # Migration: Add medication_name to records (for ad-hoc/temp medication tracking)
+        try:
+            c.execute("ALTER TABLE records ADD COLUMN medication_name TEXT")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+
         # Create medication_plans table (药物方案)
         c.execute('''CREATE TABLE IF NOT EXISTS medication_plans
                      (id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -185,6 +198,14 @@ def init_db():
                       notes TEXT,
                       created_at DATETIME DEFAULT CURRENT_TIMESTAMP)''')
 
+        c.execute('''CREATE TABLE IF NOT EXISTS dosage_history
+                     (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                      plan_id INTEGER NOT NULL,
+                      old_dosage TEXT,
+                      new_dosage TEXT,
+                      changed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                      FOREIGN KEY (plan_id) REFERENCES medication_plans(id))''')
+
         # Migration: Add frequency fields to medication_plans
         try:
             c.execute("ALTER TABLE medication_plans ADD COLUMN frequency TEXT DEFAULT 'daily'")
@@ -193,6 +214,26 @@ def init_db():
 
         try:
             c.execute("ALTER TABLE medication_plans ADD COLUMN frequency_detail TEXT")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+
+        try:
+            c.execute("ALTER TABLE medication_plans ADD COLUMN category TEXT DEFAULT 'long_term'")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+
+        try:
+            c.execute("ALTER TABLE medication_plans ADD COLUMN dose_quantity TEXT DEFAULT '1'")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+
+        try:
+            c.execute("ALTER TABLE medication_plans ADD COLUMN dose_unit TEXT DEFAULT '片'")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+
+        try:
+            c.execute("ALTER TABLE medication_plans ADD COLUMN med_type TEXT DEFAULT ''")
         except sqlite3.OperationalError:
             pass  # Column already exists
 
@@ -516,7 +557,7 @@ def predict_morning_fpg(db, user_id=1):
 
         # 4.4 当前用药情况
         c.execute("""
-            SELECT medication_name, dosage, times_per_day, timing_notes
+            SELECT medication_name, dosage, dose_quantity, dose_unit, times_per_day, timing_notes
             FROM medication_plans
             WHERE user_id = ?
             AND is_active = 1
@@ -1316,7 +1357,7 @@ def generate_health_analysis(db, user_id=1, is_auto=False, days=7):
 
         # 2. 收集指定天数内的血压数据
         c.execute("""
-            SELECT systolic_pressure, diastolic_pressure, pulse_rate, timestamp
+            SELECT systolic_pressure, diastolic_pressure, pulse_rate, timestamp, spo2
             FROM records
             WHERE user_id = ?
             AND systolic_pressure IS NOT NULL
@@ -1351,7 +1392,7 @@ def generate_health_analysis(db, user_id=1, is_auto=False, days=7):
 
         # 5. 收集当前用药信息
         c.execute("""
-            SELECT medication_name, dosage, times_per_day, timing_notes
+            SELECT medication_name, dosage, dose_quantity, dose_unit, times_per_day, timing_notes
             FROM medication_plans
             WHERE user_id = ?
             AND is_active = 1
@@ -1398,6 +1439,7 @@ def generate_health_analysis(db, user_id=1, is_auto=False, days=7):
         if bp_records:
             sys_values = [r[0] for r in bp_records]
             dia_values = [r[1] for r in bp_records]
+            spo2_values = [r[4] for r in bp_records if r[4]]
             bp_summary = f"""
 近{days}天血压数据（共{len(bp_records)}次测量）：
 - 平均收缩压: {sum(sys_values)/len(sys_values):.0f} mmHg
@@ -1405,7 +1447,9 @@ def generate_health_analysis(db, user_id=1, is_auto=False, days=7):
 - 最高: {max(sys_values):.0f}/{max(dia_values):.0f} mmHg
 - 最低: {min(sys_values):.0f}/{min(dia_values):.0f} mmHg
 - 详细记录: {', '.join([f"{r[0]}/{r[1]} mmHg ({r[3]})" for r in bp_records[:5]])}
-            """
+"""
+            if spo2_values:
+                bp_summary += f"- 血氧饱和度: 平均 {sum(spo2_values)/len(spo2_values):.0f}%，最低 {min(spo2_values)}%\n"
         else:
             bp_summary = f"近{days}天无血压记录"
 
@@ -1682,6 +1726,209 @@ def auto_trigger_health_analysis(db, user_id=1):
         traceback.print_exc()
 
 
+def build_timeline(cursor, user_id, days=90):
+    """构建 timeline 数据，返回 (sorted_dates, records) 元组。
+    days: 加载最近多少天的数据，None 表示全部
+    """
+    # 1. Fetch records
+    if days is None:
+        cursor.execute("""SELECT *,
+                    CASE WHEN is_predicted = 1 AND verified_by_real_id IS NOT NULL THEN 1 ELSE 0 END as is_verified
+                    FROM records
+                    WHERE user_id = ?
+                    ORDER BY timestamp ASC""", (user_id,))
+    else:
+        cursor.execute("""SELECT *,
+                    CASE WHEN is_predicted = 1 AND verified_by_real_id IS NOT NULL THEN 1 ELSE 0 END as is_verified
+                    FROM records
+                    WHERE user_id = ?
+                    AND timestamp > datetime('now', ?)
+                    ORDER BY timestamp ASC""", (user_id, f'-{days} days'))
+    rows = cursor.fetchall()
+
+    records = [dict(row) for row in rows]
+
+    # 2. Calculate Trends
+    last_values = {}
+
+    for r in records:
+        if '空腹' in r['type']:
+            key = 'fasting'
+        elif '餐后' in r['type']:
+            key = 'post'
+        else:
+            key = 'other'
+
+        r['trend'] = 0
+        r['trend_dir'] = 'flat'
+
+        if key in last_values and r['value'] > 0:
+            diff = r['value'] - last_values[key]
+            r['trend'] = round(abs(diff), 1)
+            if diff > 0: r['trend_dir'] = 'up'
+            elif diff < 0: r['trend_dir'] = 'down'
+
+        if r['value'] > 0:
+            last_values[key] = r['value']
+
+    # 3. Group by Date for Timeline View
+    USER_BMR = settings.calculate_bmr()
+
+    grouped_records = defaultdict(lambda: {
+        'entries': [],
+        'medication_plans': [],
+        'stats': {
+            'cal_in': 0,
+            'cal_out_exercise': 0,
+            'cal_out_bmr': USER_BMR,
+            'avg_glucose': 0,
+            'glucose_count': 0
+        }
+    })
+
+    records.sort(key=lambda x: x['timestamp'], reverse=True)
+
+    for r in records:
+        date_str = r['timestamp'].split(' ')[0]
+        day_group = grouped_records[date_str]
+        day_group['entries'].append(r)
+
+        calories = r.get('calories') or 0
+        if calories > 0:
+            if r['type'] in ['跑步', '运动'] or r.get('distance'):
+                day_group['stats']['cal_out_exercise'] += calories
+            else:
+                day_group['stats']['cal_in'] += calories
+
+        value = r.get('value') or 0
+        if value > 0:
+            day_group['stats']['avg_glucose'] += value
+            day_group['stats']['glucose_count'] += 1
+
+    # 4. Fetch active medication plans
+    cursor.execute("""SELECT * FROM medication_plans
+                WHERE user_id = ?
+                AND is_active = 1
+                ORDER BY medication_name ASC""", (user_id,))
+    med_plan_rows = cursor.fetchall()
+    medication_plans = [dict(row) for row in med_plan_rows]
+
+    for date_str in grouped_records.keys():
+        for plan in medication_plans:
+            plan_start = plan['start_date']
+            plan_end = plan['end_date'] if plan['end_date'] else '9999-12-31'
+
+            if plan_start <= date_str <= plan_end:
+                frequency = plan.get('frequency', 'daily')
+                frequency_detail = plan.get('frequency_detail')
+
+                should_show = False
+
+                if frequency == 'daily':
+                    should_show = True
+                elif frequency == 'weekly' and frequency_detail:
+                    date_obj = datetime.datetime.strptime(date_str, '%Y-%m-%d')
+                    weekday_name = date_obj.strftime('%A')
+                    should_show = (weekday_name == frequency_detail)
+                elif frequency == 'monthly' and frequency_detail:
+                    day_of_month = int(date_str.split('-')[2])
+                    allowed_days = [int(d) for d in frequency_detail.split(',')]
+                    should_show = (day_of_month in allowed_days)
+                else:
+                    should_show = True
+
+                if should_show:
+                    grouped_records[date_str]['medication_plans'].append(plan)
+
+    # Post-process stats
+    now = datetime.datetime.now()
+    today_str = now.strftime('%Y-%m-%d')
+
+    user_config = settings.load_config()
+    default_meals = user_config.get('default_meals', {})
+
+    sorted_dates = []
+    for date_str, data in grouped_records.items():
+        stats = data['stats']
+
+        if date_str == today_str:
+            current_minutes = now.hour * 60 + now.minute
+            total_minutes = 24 * 60
+            stats['cal_out_bmr'] = int(USER_BMR * (current_minutes / total_minutes))
+
+        has_breakfast = False
+        has_lunch = False
+        has_dinner = False
+
+        for entry in data['entries']:
+            entry_type = entry['type'].lower() if entry['type'] else ''
+            entry_time = entry['timestamp'].split(' ')[1] if ' ' in entry['timestamp'] else ''
+
+            calories = entry.get('calories') or 0
+            if calories > 0 and entry['type'] not in ['跑步', '运动']:
+                if '早餐' in entry_type or '晨跑前' in entry_type:
+                    has_breakfast = True
+                elif '午餐' in entry_type:
+                    has_lunch = True
+                elif '晚餐' in entry_type:
+                    has_dinner = True
+                else:
+                    hour = int(entry_time.split(':')[0]) if ':' in entry_time else 0
+                    if 7 <= hour < 10:
+                        has_breakfast = True
+                    elif 11 <= hour < 14:
+                        has_lunch = True
+                    elif 17 <= hour < 21:
+                        has_dinner = True
+
+        added_default_calories = 0
+        if default_meals.get('breakfast', {}).get('enabled', True) and not has_breakfast:
+            cal = default_meals.get('breakfast', {}).get('calories') or 0
+            added_default_calories += cal
+        if default_meals.get('lunch', {}).get('enabled', True) and not has_lunch:
+            cal = default_meals.get('lunch', {}).get('calories') or 0
+            added_default_calories += cal
+        if default_meals.get('dinner', {}).get('enabled', True) and not has_dinner:
+            cal = default_meals.get('dinner', {}).get('calories') or 0
+            added_default_calories += cal
+
+        if added_default_calories > 0:
+            stats['cal_in'] += added_default_calories
+            stats['default_calories_added'] = added_default_calories
+        else:
+            stats['default_calories_added'] = 0
+
+        if stats['glucose_count'] > 0:
+            stats['avg_glucose'] = round(stats['avg_glucose'] / stats['glucose_count'], 1)
+
+        total_out = stats['cal_out_bmr'] + stats['cal_out_exercise']
+        net = stats['cal_in'] - total_out
+        stats['net_calories'] = int(net)
+        stats['is_deficit'] = net < 0
+
+        data['entries'].sort(key=lambda x: x['timestamp'])
+
+        sorted_dates.append({'date': date_str, 'data': data})
+
+    return sorted_dates, records
+
+
+@app.route('/api/timeline')
+def api_timeline():
+    """按需加载 timeline 数据，返回与 timelineData 相同格式的 JSON"""
+    try:
+        db = get_db()
+        c = db.cursor()
+        current_user_id = user_manager.get_current_user_id()
+
+        days = request.args.get('days', 90, type=int)
+        sorted_dates, _ = build_timeline(c, current_user_id, days=days)
+        return jsonify(sorted_dates)
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/')
 def index():
     try:
@@ -1705,221 +1952,8 @@ def index():
 
         threading.Thread(target=_run_predictions, args=(current_user_id,), daemon=True).start()
 
-        # 获取分页参数，默认显示最近 365 天（确保日历视图能看到全年数据）
-        days = request.args.get('days', 365, type=int)
-        page = request.args.get('page', 1, type=int)
-        show_all = request.args.get('all', False, type=bool)
-
-        # 1. Fetch records with pagination and user filter
-        # 返回所有记录（包括预测），前端根据 is_verified 决定如何显示
-        if show_all:
-            c.execute("""SELECT *,
-                        CASE WHEN is_predicted = 1 AND verified_by_real_id IS NOT NULL THEN 1 ELSE 0 END as is_verified
-                        FROM records
-                        WHERE user_id = ?
-                        ORDER BY timestamp ASC""", (current_user_id,))
-        else:
-            c.execute("""SELECT *,
-                        CASE WHEN is_predicted = 1 AND verified_by_real_id IS NOT NULL THEN 1 ELSE 0 END as is_verified
-                        FROM records
-                        WHERE user_id = ?
-                        AND timestamp > datetime('now', ?)
-                        ORDER BY timestamp ASC""", (current_user_id, f'-{days} days'))
-        rows = c.fetchall()
-
-        # Convert to list of dicts to allow modification
-        records = [dict(row) for row in rows]
-
-        # 2. Calculate Trends
-        last_values = {} # stores last value for each type key
-
-        for r in records:
-            # Simplify type for comparison
-            if '空腹' in r['type']:
-                key = 'fasting'
-            elif '餐后' in r['type']:
-                key = 'post'
-            else:
-                key = 'other'
-
-            r['trend'] = 0
-            r['trend_dir'] = 'flat'
-
-            if key in last_values and r['value'] > 0: # Only compare glucose values
-                diff = r['value'] - last_values[key]
-                r['trend'] = round(abs(diff), 1)
-                if diff > 0: r['trend_dir'] = 'up'
-                elif diff < 0: r['trend_dir'] = 'down'
-
-            if r['value'] > 0:
-                last_values[key] = r['value']
-
-        # 3. Group by Date for Timeline View
-        from collections import defaultdict
-
-        # 计算基础代谢 (使用 settings 中的配置)
-        USER_BMR = settings.calculate_bmr()
-
-        grouped_records = defaultdict(lambda: {
-            'entries': [],
-            'medication_plans': [],  # 当天应服用的药物方案
-            'stats': {
-                'cal_in': 0,
-                'cal_out_exercise': 0,  # 运动消耗
-                'cal_out_bmr': USER_BMR,  # 基础代谢
-                'avg_glucose': 0,
-                'glucose_count': 0
-            }
-        })
-
-        # Sort by timestamp DESC initially
-        records.sort(key=lambda x: x['timestamp'], reverse=True)
-
-        for r in records:
-            date_str = r['timestamp'].split(' ')[0] # YYYY-MM-DD
-            day_group = grouped_records[date_str]
-            day_group['entries'].append(r)
-
-            # Stats calculation
-            calories = r.get('calories') or 0
-            if calories > 0:
-                # 判断是摄入还是消耗：运动类型是消耗，其他是摄入
-                if r['type'] in ['跑步', '运动'] or r.get('distance'):
-                    day_group['stats']['cal_out_exercise'] += calories
-                else:
-                    day_group['stats']['cal_in'] += calories
-
-            value = r.get('value') or 0
-            if value > 0:
-                day_group['stats']['avg_glucose'] += value
-                day_group['stats']['glucose_count'] += 1
-
-        # 4. Fetch active medication plans (user-specific)
-        c.execute("""SELECT * FROM medication_plans
-                    WHERE user_id = ?
-                    AND is_active = 1
-                    ORDER BY medication_name ASC""", (current_user_id,))
-        med_plan_rows = c.fetchall()
-        medication_plans = [dict(row) for row in med_plan_rows]
-
-        # 为每个日期添加当天应服用的药物方案
-        for date_str in grouped_records.keys():
-            for plan in medication_plans:
-                # 检查日期是否在方案有效期内
-                plan_start = plan['start_date']
-                plan_end = plan['end_date'] if plan['end_date'] else '9999-12-31'
-
-                if plan_start <= date_str <= plan_end:
-                    # 根据频率判断是否在当天显示
-                    frequency = plan.get('frequency', 'daily')
-                    frequency_detail = plan.get('frequency_detail')
-
-                    should_show = False
-
-                    if frequency == 'daily':
-                        # 每天服用
-                        should_show = True
-                    elif frequency == 'weekly' and frequency_detail:
-                        # 每周特定日期服用
-                        date_obj = datetime.datetime.strptime(date_str, '%Y-%m-%d')
-                        weekday_name = date_obj.strftime('%A')  # Monday, Tuesday, etc.
-                        should_show = (weekday_name == frequency_detail)
-                    elif frequency == 'monthly' and frequency_detail:
-                        # 每月特定日期服用（如 "1,15" 表示1号和15号）
-                        day_of_month = int(date_str.split('-')[2])
-                        allowed_days = [int(d) for d in frequency_detail.split(',')]
-                        should_show = (day_of_month in allowed_days)
-                    else:
-                        # 默认每天显示
-                        should_show = True
-
-                    if should_show:
-                        grouped_records[date_str]['medication_plans'].append(plan)
-
-        # Post-process stats: BMR correction for today & Net Calories
-        now = datetime.datetime.now()
-        today_str = now.strftime('%Y-%m-%d')
-
-        # 加载默认餐食配置
-        user_config = settings.load_config()
-        default_meals = user_config.get('default_meals', {})
-
-        sorted_dates = []
-        for date_str, data in grouped_records.items():
-            stats = data['stats']
-
-            # 1. BMR Correction for Today
-            # 如果是今天，BMR 应该按当前时间比例计算
-            if date_str == today_str:
-                current_minutes = now.hour * 60 + now.minute
-                total_minutes = 24 * 60
-                stats['cal_out_bmr'] = int(USER_BMR * (current_minutes / total_minutes))
-
-            # 2. 检查并补充缺失的餐食摄入（默认基础摄入）
-            # 检查该天是否有早餐、午餐、晚餐的记录
-            has_breakfast = False
-            has_lunch = False
-            has_dinner = False
-
-            for entry in data['entries']:
-                entry_type = entry['type'].lower() if entry['type'] else ''
-                entry_time = entry['timestamp'].split(' ')[1] if ' ' in entry['timestamp'] else ''
-
-                # 检查是否是餐食记录（calories > 0 且不是运动）
-                calories = entry.get('calories') or 0
-                if calories > 0 and entry['type'] not in ['跑步', '运动']:
-                    # 根据类型或时间判断是哪一餐
-                    if '早餐' in entry_type or '晨跑前' in entry_type:
-                        has_breakfast = True
-                    elif '午餐' in entry_type:
-                        has_lunch = True
-                    elif '晚餐' in entry_type:
-                        has_dinner = True
-                    else:
-                        # 根据时间推断餐食类型
-                        hour = int(entry_time.split(':')[0]) if ':' in entry_time else 0
-                        if 7 <= hour < 10:
-                            has_breakfast = True
-                        elif 11 <= hour < 14:
-                            has_lunch = True
-                        elif 17 <= hour < 21:
-                            has_dinner = True
-
-            # 补充缺失的餐食默认摄入
-            added_default_calories = 0
-            if default_meals.get('breakfast', {}).get('enabled', True) and not has_breakfast:
-                cal = default_meals.get('breakfast', {}).get('calories') or 0
-                added_default_calories += cal
-            if default_meals.get('lunch', {}).get('enabled', True) and not has_lunch:
-                cal = default_meals.get('lunch', {}).get('calories') or 0
-                added_default_calories += cal
-            if default_meals.get('dinner', {}).get('enabled', True) and not has_dinner:
-                cal = default_meals.get('dinner', {}).get('calories') or 0
-                added_default_calories += cal
-
-            # 添加默认摄入到统计中
-            if added_default_calories > 0:
-                stats['cal_in'] += added_default_calories
-                stats['default_calories_added'] = added_default_calories
-            else:
-                stats['default_calories_added'] = 0
-
-            # 3. Glucose Average
-            if stats['glucose_count'] > 0:
-                stats['avg_glucose'] = round(stats['avg_glucose'] / stats['glucose_count'], 1)
-
-            # 4. Net Calories Calculation
-            # 摄入 - (基础代谢 + 运动消耗)
-            total_out = stats['cal_out_bmr'] + stats['cal_out_exercise']
-            net = stats['cal_in'] - total_out
-            stats['net_calories'] = int(net)
-            # is_deficit: True if Intake < Output (Green), False if Intake > Output (Red)
-            stats['is_deficit'] = net < 0
-
-            # Sort entries within the day ASCENDING (Morning -> Night) for a natural timeline flow
-            data['entries'].sort(key=lambda x: x['timestamp'])
-
-            sorted_dates.append({'date': date_str, 'data': data})
+        # 默认加载 90 天数据（覆盖图表默认范围），前端按需加载更多
+        sorted_dates, records = build_timeline(c, current_user_id, days=90)
 
         # 4. Calculate 7-Day Stats for Dashboard（合并查询优化）
 
@@ -1942,12 +1976,35 @@ def index():
         max_glucose_7d = glucose_stats[2]
         min_glucose_7d = glucose_stats[3]
 
+        # 最高/最低血糖的详细信息（时间+类型）
+        max_glucose_detail = {'timestamp': '', 'type': ''}
+        min_glucose_detail = {'timestamp': '', 'type': ''}
+        if max_glucose_7d:
+            c.execute("""SELECT timestamp, type FROM records
+                WHERE user_id = ? AND value = ? AND value > 0 AND is_predicted = 0
+                AND systolic_pressure IS NULL AND timestamp > ?
+                ORDER BY timestamp DESC LIMIT 1""",
+                (current_user_id, max_glucose_7d, seven_days_ago))
+            row = c.fetchone()
+            if row:
+                max_glucose_detail = {'timestamp': row[0], 'type': row[1]}
+        if min_glucose_7d:
+            c.execute("""SELECT timestamp, type FROM records
+                WHERE user_id = ? AND value = ? AND value > 0 AND is_predicted = 0
+                AND systolic_pressure IS NULL AND timestamp > ?
+                ORDER BY timestamp ASC LIMIT 1""",
+                (current_user_id, min_glucose_7d, seven_days_ago))
+            row = c.fetchone()
+            if row:
+                min_glucose_detail = {'timestamp': row[0], 'type': row[1]}
+
         # === 运动统计（3合1） ===
         c.execute("""
             SELECT
                 SUM(distance) as total_distance,
                 SUM(CASE WHEN (type = '跑步' OR type = '运动' OR distance IS NOT NULL) AND calories > 0 THEN calories END) as total_cal,
-                AVG(CASE WHEN heart_rate IS NOT NULL AND (type = '跑步' OR type = '运动') THEN heart_rate END) as avg_hr
+                AVG(CASE WHEN heart_rate IS NOT NULL AND (type = '跑步' OR type = '运动') THEN heart_rate END) as avg_hr,
+                COUNT(DISTINCT DATE(timestamp)) as exercise_count
             FROM records
             WHERE user_id = ? AND timestamp > ?
             AND (distance IS NOT NULL OR type IN ('跑步', '运动'))
@@ -1956,6 +2013,7 @@ def index():
         total_distance_7d = exercise_stats[0]
         total_exercise_cal_7d = exercise_stats[1]
         avg_heart_rate_7d = exercise_stats[2]
+        exercise_count_7d = exercise_stats[3]
 
         # === 血压统计（3合1） ===
         c.execute("""
@@ -1974,27 +2032,31 @@ def index():
         """, (current_user_id, seven_days_ago))
         bp_stats = c.fetchone()
 
-        # 获取最高/最低血压对应的日期
+        # 获取最高/最低血压对应的时间
         bp_max_date = '-'
         bp_min_date = '-'
+        bp_max_timestamp = ''
+        bp_min_timestamp = ''
         if bp_stats[3]:  # max_sys exists
             c.execute("""
-                SELECT DATE(timestamp) FROM records
+                SELECT timestamp FROM records
                 WHERE user_id = ? AND systolic_pressure = ? AND timestamp > ?
                 AND systolic_pressure IS NOT NULL LIMIT 1
             """, (current_user_id, bp_stats[3], seven_days_ago))
             row = c.fetchone()
             if row:
-                bp_max_date = row[0]
+                bp_max_timestamp = row[0]
+                bp_max_date = row[0][:10]
         if bp_stats[5]:  # min_sys exists
             c.execute("""
-                SELECT DATE(timestamp) FROM records
+                SELECT timestamp FROM records
                 WHERE user_id = ? AND systolic_pressure = ? AND timestamp > ?
                 AND systolic_pressure IS NOT NULL LIMIT 1
             """, (current_user_id, bp_stats[5], seven_days_ago))
             row = c.fetchone()
             if row:
-                bp_min_date = row[0]
+                bp_min_timestamp = row[0]
+                bp_min_date = row[0][:10]
 
         # === 用药情况 ===
         # 今日应服用的药物清单（根据频率筛选）
@@ -2070,12 +2132,19 @@ def index():
             }
 
         c.execute("""
-            SELECT id, medication_name, dosage, times_per_day, timing_notes, frequency, frequency_detail
+            SELECT id, medication_name, dosage, dose_quantity, dose_unit, times_per_day, timing_notes, frequency, frequency_detail, start_date, category, med_type
             FROM medication_plans
             WHERE user_id = ? AND is_active = 1
             AND (start_date IS NULL OR start_date <= ?)
             AND (end_date IS NULL OR end_date >= ?)
-            ORDER BY medication_name ASC
+            ORDER BY
+                CASE WHEN frequency = 'daily' THEN 0 ELSE 1 END,
+                CASE WHEN timing_notes LIKE '%早%' OR timing_notes LIKE '%晨%' THEN 0
+                     WHEN timing_notes LIKE '%午%' OR timing_notes LIKE '%中%' THEN 1
+                     WHEN timing_notes LIKE '%晚%' OR timing_notes LIKE '%餐后%' THEN 2
+                     WHEN timing_notes LIKE '%睡%' OR timing_notes LIKE '%夜%' THEN 3
+                     ELSE 4 END,
+                medication_name ASC
         """, (current_user_id, today_str, today_str))
         all_meds = c.fetchall()
 
@@ -2089,8 +2158,22 @@ def index():
             should_take_today = False
             if frequency == 'daily':
                 should_take_today = True
+            elif frequency == 'every_n_days' and frequency_detail:
+                try:
+                    n = int(frequency_detail)
+                    plan_start = datetime.datetime.strptime(
+                        row['start_date'] or today_str, '%Y-%m-%d').date()
+                    should_take_today = ((today - plan_start).days % n == 0)
+                except (ValueError, TypeError):
+                    should_take_today = True
             elif frequency == 'weekly' and frequency_detail:
                 should_take_today = (weekday_name in frequency_detail)
+            elif frequency == 'biweekly' and frequency_detail:
+                plan_start = datetime.datetime.strptime(
+                    row['start_date'] or today_str, '%Y-%m-%d').date()
+                weeks_diff = (today - plan_start).days // 7
+                is_target_weekday = (weekday_name == frequency_detail)
+                should_take_today = is_target_weekday and (weeks_diff % 2 == 0)
             elif frequency == 'monthly' and frequency_detail:
                 try:
                     allowed_days = [int(d.strip()) for d in frequency_detail.split(',')]
@@ -2103,18 +2186,33 @@ def index():
                 should_take_today = True  # 默认显示
 
             if should_take_today:
+                dq = row['dose_quantity'] or '1'
+                du = row['dose_unit'] or '片'
+                dosage_display = row['dosage']
+                if dosage_display:
+                    dosage_display = f"{dosage_display} ×{dq}{du}" if dq != '1' else dosage_display
                 active_medications.append({
                     'name': row['medication_name'],
-                    'dosage': row['dosage'],
+                    'dosage': dosage_display,
+                    'dose_quantity': dq,
+                    'dose_unit': du,
                     'times': row['times_per_day'],
-                    'timing': row['timing_notes']
+                    'timing': row['timing_notes'],
+                    'frequency': frequency,
+                    'frequency_detail': frequency_detail,
+                    'category': row['category'] or 'long_term'
                 })
                 today_med_plans.append({
                     'id': row['id'],
                     'name': row['medication_name'],
-                    'dosage': row['dosage'],
+                    'dosage': dosage_display,
+                    'dose_quantity': dq,
                     'times': row['times_per_day'],
-                    'timing': row['timing_notes']
+                    'timing': row['timing_notes'],
+                    'frequency': frequency,
+                    'frequency_detail': frequency_detail,
+                    'category': row['category'] or 'long_term',
+                    'med_type': row['med_type'] or ''
                 })
 
         # Calculate Compliance Rate (7 days)
@@ -2207,17 +2305,21 @@ def index():
                         record_hour = -1
 
                 matched = False
+                # 判断是否为泛用"餐后/餐前"类型（没有早/午/晚前缀）
+                is_generic_postmeal = '餐后' in record_type and not ('早餐后' in record_type or '午餐后' in record_type or '晚餐后' in record_type)
+                is_generic_premeal = '餐前' in record_type and not ('早餐前' in record_type or '午餐前' in record_type or '晚餐前' in record_type or '晚饭前' in record_type)
+
                 if slot['key'] == 'fasting' and '空腹' in record_type:
                     matched = True
                 elif slot['key'] == 'post_exercise' and '运动后' in record_type:
                     matched = True
-                elif slot['key'] == 'post_breakfast' and ('早餐后' in record_type or ('餐后' in record_type and 10 <= record_hour < 13)):
+                elif slot['key'] == 'post_breakfast' and ('早餐后' in record_type or (is_generic_postmeal and 10 <= record_hour < 13)):
                     matched = True
-                elif slot['key'] == 'post_lunch' and ('午餐后' in record_type or ('餐后' in record_type and 13 <= record_hour < 17)):
+                elif slot['key'] == 'post_lunch' and ('午餐后' in record_type or (is_generic_postmeal and 13 <= record_hour < 17)):
                     matched = True
-                elif slot['key'] == 'pre_dinner' and ('晚饭前' in record_type or '晚餐前' in record_type or ('餐前' in record_type and 16 <= record_hour < 19)):
+                elif slot['key'] == 'pre_dinner' and ('晚饭前' in record_type or '晚餐前' in record_type or (is_generic_premeal and 16 <= record_hour < 19)):
                     matched = True
-                elif slot['key'] == 'post_dinner' and ('晚餐后' in record_type or ('餐后' in record_type and 19 <= record_hour < 23)):
+                elif slot['key'] == 'post_dinner' and ('晚餐后' in record_type or (is_generic_postmeal and 19 <= record_hour < 23)):
                     matched = True
                 elif slot['key'] == 'bedtime' and '睡前' in record_type:
                     matched = True
@@ -2228,16 +2330,69 @@ def index():
                     elif is_pred and predicted_match is None:
                         predicted_match = record
 
-            # 优先使用实测值，其次使用预测值
-            chosen_record = measured_match if measured_match else predicted_match
-            if chosen_record:
-                slot_data['value'] = chosen_record['value']
-                slot_data['is_predicted'] = bool(chosen_record['is_predicted'])
-                slot_data['status'] = 'predicted' if chosen_record['is_predicted'] else 'measured'
-                result = settings.check_glucose_compliance(chosen_record['value'], chosen_record['type'])
+            # 优先级：CGM数据 > 手动实测 > AI预测
+            # 先检查 CGM 数据（3分钟内最近的读数）
+            cgm_match = None
+            cgm_min_diff = float('inf')
+            slot_target_minutes = int(slot['time'].split(':')[0]) * 60 + int(slot['time'].split(':')[1])
+            for record in today_glucose_records:
+                if (record['type'] or '') != 'CGM':
+                    continue
+                record_time = record['timestamp'].split(' ')[1][:5] if ' ' in record['timestamp'] else ''
+                if not record_time or ':' not in record_time:
+                    continue
+                try:
+                    parts = record_time.split(':')
+                    record_minutes = int(parts[0]) * 60 + int(parts[1])
+                except (ValueError, IndexError):
+                    continue
+                diff = abs(record_minutes - slot_target_minutes)
+                if diff < cgm_min_diff and diff <= 30:  # 30分钟内才匹配
+                    cgm_min_diff = diff
+                    cgm_match = record
+
+            if cgm_match:
+                # CGM 数据优先
+                slot_data['value'] = cgm_match['value']
+                slot_data['is_predicted'] = False
+                slot_data['status'] = 'measured'
+                slot_data['cgm'] = True
+                result = settings.check_glucose_compliance(cgm_match['value'], '空腹' if slot['key'] == 'fasting' else '餐后2小时')
+                slot_data['compliance'] = result['level']
+
+                # 如果手动记录与 CGM 在3分钟内有冲突，修正手动记录的值
+                if measured_match:
+                    m_time = measured_match['timestamp'].split(' ')[1][:5] if ' ' in measured_match['timestamp'] else ''
+                    cgm_time = cgm_match['timestamp'].split(' ')[1][:5] if ' ' in cgm_match['timestamp'] else ''
+                    if m_time and cgm_time:
+                        try:
+                            m_parts = m_time.split(':')
+                            c_parts = cgm_time.split(':')
+                            m_min = int(m_parts[0]) * 60 + int(m_parts[1])
+                            c_min = int(c_parts[0]) * 60 + int(c_parts[1])
+                            if abs(m_min - c_min) <= 3 and abs(measured_match['value'] - cgm_match['value']) > 0.05:
+                                # 修正手动记录的值为 CGM 值
+                                c.execute("UPDATE records SET value = ? WHERE user_id = ? AND timestamp = ? AND value = ? AND is_predicted = 0",
+                                          (cgm_match['value'], current_user_id, measured_match['timestamp'], measured_match['value']))
+                        except (ValueError, IndexError):
+                            pass
+            elif measured_match:
+                slot_data['value'] = measured_match['value']
+                slot_data['is_predicted'] = False
+                slot_data['status'] = 'measured'
+                result = settings.check_glucose_compliance(measured_match['value'], measured_match['type'])
+                slot_data['compliance'] = result['level']
+            elif predicted_match:
+                slot_data['value'] = predicted_match['value']
+                slot_data['is_predicted'] = True
+                slot_data['status'] = 'predicted'
+                result = settings.check_glucose_compliance(predicted_match['value'], predicted_match['type'])
                 slot_data['compliance'] = result['level']
 
             today_overview.append(slot_data)
+
+        # 提交 CGM 修正手动记录的改动
+        db.commit()
 
         # 计算今日完成率
         measured_count = sum(1 for s in today_overview if s['status'] == 'measured')
@@ -2276,7 +2431,7 @@ def index():
 
         # 今日血压数据
         c.execute("""
-            SELECT systolic_pressure, diastolic_pressure, pulse_rate, timestamp
+            SELECT systolic_pressure, diastolic_pressure, pulse_rate, spo2, timestamp
             FROM records
             WHERE user_id = ?
             AND timestamp BETWEEN ? AND ?
@@ -2291,6 +2446,7 @@ def index():
                 'systolic': today_bp_row['systolic_pressure'],
                 'diastolic': today_bp_row['diastolic_pressure'],
                 'heart_rate': today_bp_row['pulse_rate'],
+                'spo2': today_bp_row['spo2'],
                 'time': today_bp_row['timestamp'].split(' ')[1][:5] if ' ' in today_bp_row['timestamp'] else ''
             }
 
@@ -2308,8 +2464,26 @@ def index():
             'plans': today_med_plans,
             'taken_count': sum(taken_logs.values()) if taken_logs else 0,
             'total_required': sum(p['times'] for p in today_med_plans),
-            'taken_details': taken_logs
+            'taken_details': taken_logs,
+            'temp_medications': []
         }
+
+        # 查询当日临时用药（records 表中有 medication_name 的记录）
+        c.execute("""
+            SELECT medication_name, notes, timestamp
+            FROM records
+            WHERE user_id = ? AND DATE(timestamp) = ?
+            AND medication_name IS NOT NULL AND medication_name != ''
+            ORDER BY timestamp ASC
+        """, (current_user_id, today_str))
+        temp_meds = []
+        for r in c.fetchall():
+            temp_meds.append({
+                'name': r['medication_name'],
+                'notes': r['notes'],
+                'time': r['timestamp'].split(' ')[1][:5] if ' ' in r['timestamp'] else ''
+            })
+        today_med_status['temp_medications'] = temp_meds
 
         # 获取最新的健康分析
         c.execute("""
@@ -2329,12 +2503,14 @@ def index():
                 except (json.JSONDecodeError, TypeError, ValueError):
                     latest_analysis['recommendations'] = []
 
+        user_config = settings.load_config()
+
         stats = {
             'total_records': total_records,
-            'current_days': days,
-            'show_all': show_all,
+            'current_days': 90,
+            'show_all': False,
             'today_str': today_str,
-            'user': settings.load_config(),
+            'user': user_config,
             'compliance': compliance,
             'optimal_rate': optimal_rate,
             'compliance_badge': compliance_badge,
@@ -2353,11 +2529,14 @@ def index():
             'avg_post2h_7d': round(avg_post2h_7d, 1) if avg_post2h_7d else 0,
             'max_glucose_7d': round(max_glucose_7d, 1) if max_glucose_7d else 0,
             'min_glucose_7d': round(min_glucose_7d, 1) if min_glucose_7d else 0,
+            'max_glucose_detail': max_glucose_detail,
+            'min_glucose_detail': min_glucose_detail,
 
             # === 运动统计（7天） ===
             'total_distance_7d': round(total_distance_7d, 1) if total_distance_7d else 0,
             'total_exercise_cal_7d': int(total_exercise_cal_7d) if total_exercise_cal_7d else 0,
             'avg_heart_rate_7d': round(avg_heart_rate_7d) if avg_heart_rate_7d else 0,
+            'exercise_count_7d': exercise_count_7d or 0,
 
             # === 血压统计（7天） ===
             'avg_systolic_7d': round(bp_stats[0]) if bp_stats[0] else 0,
@@ -2366,9 +2545,11 @@ def index():
             'bp_max_sys': bp_stats[3] if bp_stats[3] else 0,
             'bp_max_dia': bp_stats[4] if bp_stats[4] else 0,
             'bp_max_date': bp_max_date,
+            'bp_max_timestamp': bp_max_timestamp,
             'bp_min_sys': bp_stats[5] if bp_stats[5] else 0,
             'bp_min_dia': bp_stats[6] if bp_stats[6] else 0,
             'bp_min_date': bp_min_date,
+            'bp_min_timestamp': bp_min_timestamp,
 
             # === 用药情况 ===
             'active_medications': active_medications,
@@ -2380,6 +2561,7 @@ def index():
             'avg_weight_7d': round(avg_weight_7d, 1) if avg_weight_7d else None,
             'weight_change_30d': weight_change_30d,
             'bmi_category': bmi_category,
+            'target_weight': user_config.get('target_weight'),
             'today_weight': today_weight,
 
             # === 健康分析 ===
@@ -2448,6 +2630,7 @@ def add_record():
             systolic_pressure = data.get('systolic_pressure')
             diastolic_pressure = data.get('diastolic_pressure')
             pulse_rate = data.get('pulse_rate')
+            spo2 = data.get('spo2')
             carbs_grams = data.get('carbs_grams')
             gi_value = data.get('gi_value')
             weight = data.get('weight')
@@ -2473,6 +2656,7 @@ def add_record():
             systolic_pressure = request.form.get('systolic_pressure')
             diastolic_pressure = request.form.get('diastolic_pressure')
             pulse_rate = request.form.get('pulse_rate')
+            spo2 = request.form.get('spo2')
             carbs_grams = request.form.get('carbs_grams')
             gi_value = request.form.get('gi_value')
             weight = request.form.get('weight')
@@ -2512,11 +2696,11 @@ def add_record():
         c.execute("""INSERT INTO records
                      (user_id, value, unit, type, notes, timestamp, calories, diet_analysis, is_predicted,
                       distance, duration, heart_rate, systolic_pressure, diastolic_pressure, pulse_rate,
-                      carbs_grams, gi_value, weight, bmi)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                      carbs_grams, gi_value, weight, bmi, spo2)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                   (current_user_id, value, unit, r_type, notes, timestamp, calories, diet_analysis, is_predicted,
                    distance, duration, heart_rate, systolic_pressure, diastolic_pressure, pulse_rate,
-                   carbs_grams, gi_value, weight, bmi))
+                   carbs_grams, gi_value, weight, bmi, spo2))
 
         # 如果是真实血糖记录，尝试关联当天的预测记录
         real_record_id = c.lastrowid
@@ -2752,12 +2936,15 @@ def batch_add():
             systolic = r.get('systolic_pressure')
             diastolic = r.get('diastolic_pressure')
             pulse = r.get('pulse_rate')
+            spo2 = r.get('spo2')
             if systolic == 0:
                 systolic = None
             if diastolic == 0:
                 diastolic = None
             if pulse == 0:
                 pulse = None
+            if spo2 == 0:
+                spo2 = None
 
             # 处理体重/BMI字段
             weight = r.get('weight')
@@ -2779,15 +2966,16 @@ def batch_add():
             c.execute("""INSERT INTO records
                       (user_id, value, unit, type, notes, timestamp, calories, diet_analysis, is_predicted,
                        distance, duration, heart_rate, pace, cadence,
-                       systolic_pressure, diastolic_pressure, pulse_rate,
-                       carbs_grams, gi_value, weight, bmi)
-                      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                       systolic_pressure, diastolic_pressure, pulse_rate, spo2,
+                       carbs_grams, gi_value, weight, bmi, medication_name)
+                      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                       (current_user_id, r['value'], r.get('unit', 'mmol/L'), r['type'], r.get('notes', ''),
                        r.get('datetime'), cal, da, is_pred,
                        r.get('distance'), r.get('duration'), r.get('heart_rate'),
                        r.get('pace'), r.get('cadence'),
-                       systolic, diastolic, pulse,
-                       r.get('carbs_grams'), r.get('gi_value'), weight, bmi))
+                       systolic, diastolic, pulse, spo2,
+                       r.get('carbs_grams'), r.get('gi_value'), weight, bmi,
+                       r.get('medication_name')))
 
             inserted_records.append({
                 'id': c.lastrowid,
@@ -2808,6 +2996,57 @@ def batch_add():
                 except (ValueError, TypeError) as e:
                     print(f"Warning: Could not link prediction for batch record {record['id']}: {e}")
 
+        # ========== 第三阶段：处理药物停用/恢复动作 ==========
+        deactivated_plans = []
+        reactivated_plans = []
+        today_str = datetime.date.today().isoformat()
+
+        for r in data:
+            med_action = r.get('medication_action', 'take')
+            med_name = r.get('medication_name', '')
+            if not med_name or med_action == 'take':
+                continue
+
+            if med_action == 'stop':
+                # 查找匹配的活跃用药方案（模糊匹配药物名称）
+                c.execute("""SELECT id, medication_name, dosage FROM medication_plans
+                            WHERE user_id = ? AND is_active = 1""", (current_user_id,))
+                active_plans = c.fetchall()
+
+                for plan in active_plans:
+                    plan_name = plan[1]
+                    # 模糊匹配：输入名包含方案名 或 方案名包含输入名
+                    if med_name in plan_name or plan_name in med_name:
+                        c.execute("""UPDATE medication_plans
+                                    SET is_active = 0, end_date = ?
+                                    WHERE id = ?""", (today_str, plan[0]))
+                        deactivated_plans.append({
+                            'id': plan[0],
+                            'name': plan_name,
+                            'dosage': plan[2],
+                            'reason': r.get('notes', '')
+                        })
+                        print(f"停用药物方案: {plan_name} (ID: {plan[0]}), 原因: {r.get('notes', '')}")
+
+            elif med_action == 'resume':
+                # 查找匹配的已停用方案并恢复
+                c.execute("""SELECT id, medication_name, dosage FROM medication_plans
+                            WHERE user_id = ? AND is_active = 0""", (current_user_id,))
+                inactive_plans = c.fetchall()
+
+                for plan in inactive_plans:
+                    plan_name = plan[1]
+                    if med_name in plan_name or plan_name in med_name:
+                        c.execute("""UPDATE medication_plans
+                                    SET is_active = 1, end_date = NULL
+                                    WHERE id = ?""", (plan[0],))
+                        reactivated_plans.append({
+                            'id': plan[0],
+                            'name': plan_name,
+                            'dosage': plan[2]
+                        })
+                        print(f"恢复药物方案: {plan_name} (ID: {plan[0]})")
+
         db.commit()
 
         # 检查是否有运动记录被插入，如果有则触发运动后血糖预测更新
@@ -2827,7 +3066,26 @@ def batch_add():
             except Exception as e:
                 print(f"Warning: Failed to update post-exercise prediction: {e}")
 
-        return api_success(message="Records saved successfully")
+        # 构建响应消息
+        med_action_msg = ''
+        if deactivated_plans:
+            names = '、'.join([p['name'] for p in deactivated_plans])
+            med_action_msg += f'已停用药物方案: {names}。'
+        if reactivated_plans:
+            names = '、'.join([p['name'] for p in reactivated_plans])
+            med_action_msg += f'已恢复药物方案: {names}。'
+
+        msg = "Records saved successfully"
+        if med_action_msg:
+            msg += ' ' + med_action_msg
+
+        return api_success(
+            message=msg,
+            data={
+                'deactivated_plans': deactivated_plans,
+                'reactivated_plans': reactivated_plans
+            } if (deactivated_plans or reactivated_plans) else None
+        )
     except Exception as e:
         traceback.print_exc()
         return api_error(str(e), status_code=500, error_type="batch_add_error")
@@ -2954,24 +3212,27 @@ def import_csv():
         if file.filename == '':
             return api_error("没有选择文件", error_type="upload_error")
 
-        if not file.filename.endswith('.csv'):
-            return api_error("请上传 CSV 文件", error_type="format_error")
+        if not file.filename.endswith(('.csv', '.xlsx', '.xls')):
+            return api_error("请上传 CSV 或 Excel 文件", error_type="format_error")
 
         # 获取导入模式（普通模式或CGM模式）
         import_mode = request.form.get('mode', 'normal')  # 'normal' or 'cgm'
         source_unit = request.form.get('unit', 'mmol/L')  # 数据源单位
 
-        # 读取 CSV
-        df = pd.read_csv(file, encoding='utf-8-sig')
+        # 读取文件（根据后缀选择读取方式）
+        if file.filename.endswith(('.xlsx', '.xls')):
+            df = pd.read_excel(file)
+        else:
+            df = pd.read_csv(file, encoding='utf-8-sig')
 
         # 列名映射（支持不同的列名格式，增强对CGM设备的支持）
         column_mapping = {
-            'value': ['value', '血糖值', '数值', '血糖', 'Glucose', 'CGM值', '葡萄糖', 'BG',
+            'value': ['value', '血糖值', '血糖值 mmol/L', '数值', '血糖', 'Glucose', 'CGM值', '葡萄糖', 'BG',
                       'mg/dL', 'mmol/L', '测量值', 'glucose_value', 'reading'],
             'unit': ['unit', '单位'],
             'type': ['type', '类型', '测量类型', '记录类型'],
             'notes': ['notes', '备注', '说明', '注释', 'memo', 'remark'],
-            'timestamp': ['timestamp', '时间', '测量时间', 'datetime', '日期时间', 'Date Time',
+            'timestamp': ['timestamp', '时间', '血糖时间', '测量时间', 'datetime', '日期时间', 'Date Time',
                           'Time', '记录时间', 'date_time', '采集时间'],
             'calories': ['calories', '热量', '卡路里'],
             'diet_analysis': ['diet_analysis', '饮食分析'],
@@ -2992,13 +3253,31 @@ def import_csv():
 
         # 必须有 timestamp 列
         if 'timestamp' not in df.columns:
-            return api_error("CSV 缺少时间列 (timestamp/时间/日期时间)", error_type="format_error")
+            return api_error("缺少时间列 (timestamp/时间/血糖时间/日期时间)", error_type="format_error")
 
         db = get_db()
         c = db.cursor()
         current_user_id = user_manager.get_current_user_id()
         imported_count = 0
         skipped_count = 0
+        deleted_count = 0
+
+        # CGM模式：导入前批量删除时间范围内的手动血糖记录
+        if import_mode == 'cgm' and 'timestamp' in df.columns:
+            timestamps = pd.to_datetime(df['timestamp'], errors='coerce').dropna()
+            if len(timestamps) > 0:
+                min_ts = timestamps.min().strftime('%Y-%m-%d %H:%M:%S')
+                max_ts = timestamps.max().strftime('%Y-%m-%d %H:%M:%S')
+                # 删除该时间段内的手动血糖记录（保留运动、饮食等非血糖记录和CGM记录）
+                glucose_types = ('空腹', '餐后2小时', '餐后1小时', '早餐后2小时', '午餐后2小时',
+                                 '晚餐后2小时', '晚饭前', '睡前', '运动后', '餐前')
+                placeholders = ','.join('?' * len(glucose_types))
+                c.execute(f"""DELETE FROM records WHERE user_id = ?
+                              AND timestamp BETWEEN ? AND ?
+                              AND type IN ({placeholders})
+                              AND is_predicted = 0""",
+                          (current_user_id, min_ts, max_ts, *glucose_types))
+                deleted_count = c.rowcount
 
         for _, row in df.iterrows():
             try:
@@ -3064,10 +3343,12 @@ def import_csv():
                 continue
 
         db.commit()
-        return api_success(
-            data={"imported": imported_count, "skipped": skipped_count},
-            message=f"成功导入 {imported_count} 条记录，跳过 {skipped_count} 条"
-        )
+        result_data = {"imported": imported_count, "skipped": skipped_count}
+        msg = f"成功导入 {imported_count} 条记录，跳过 {skipped_count} 条"
+        if deleted_count > 0:
+            result_data["deleted_manual"] = deleted_count
+            msg += f"，已覆盖 {deleted_count} 条手动记录"
+        return api_success(data=result_data, message=msg)
     except Exception as e:
         traceback.print_exc()
         return api_error(str(e), status_code=500, error_type="import_error")
@@ -3075,7 +3356,7 @@ def import_csv():
 
 @app.route('/preview_import', methods=['POST'])
 def preview_import():
-    """预览 CSV 文件内容，返回前几行数据和列名"""
+    """预览导入文件内容，返回前几行数据和列名"""
     try:
         if 'file' not in request.files:
             return api_error("没有上传文件", error_type="upload_error")
@@ -3084,8 +3365,11 @@ def preview_import():
         if file.filename == '':
             return api_error("没有选择文件", error_type="upload_error")
 
-        # 读取 CSV 前10行预览
-        df = pd.read_csv(file, encoding='utf-8-sig', nrows=10)
+        # 根据后缀选择读取方式，预览前10行
+        if file.filename.endswith(('.xlsx', '.xls')):
+            df = pd.read_excel(file, nrows=10)
+        else:
+            df = pd.read_csv(file, encoding='utf-8-sig', nrows=10)
 
         return api_success(data={
             "columns": list(df.columns),
@@ -3109,8 +3393,8 @@ def add_medication_plan():
         current_user_id = user_manager.get_current_user_id()
 
         c.execute("""INSERT INTO medication_plans
-                    (user_id, medication_name, dosage, times_per_day, timing_notes, start_date, end_date, is_active, notes, frequency, frequency_detail)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (user_id, medication_name, dosage, times_per_day, timing_notes, start_date, end_date, is_active, notes, frequency, frequency_detail, category, dose_quantity, dose_unit, med_type)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                  (current_user_id,
                   data.get('medication_name'),
                   data.get('dosage'),
@@ -3121,7 +3405,11 @@ def add_medication_plan():
                   data.get('is_active', 1),
                   data.get('notes', ''),
                   data.get('frequency', 'daily'),
-                  data.get('frequency_detail')))
+                  data.get('frequency_detail'),
+                  data.get('category', 'long_term'),
+                  data.get('dose_quantity', '1'),
+                  data.get('dose_unit', '片'),
+                  data.get('med_type', '')))
 
         db.commit()
         return api_success(data={"id": c.lastrowid}, message="Medication plan added successfully")
@@ -3139,6 +3427,9 @@ def get_medication_plans():
         c.execute("SELECT * FROM medication_plans WHERE user_id = ? ORDER BY is_active DESC, medication_name ASC", (current_user_id,))
         rows = c.fetchall()
         plans = [dict(row) for row in rows]
+        for plan in plans:
+            c.execute("SELECT old_dosage, new_dosage, changed_at FROM dosage_history WHERE plan_id = ? ORDER BY changed_at DESC", (plan['id'],))
+            plan['dosage_history'] = [dict(r) for r in c.fetchall()]
         return jsonify(plans)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -3167,6 +3458,22 @@ def update_medication_plan(plan_id):
         db = get_db()
         c = db.cursor()
 
+        # 记录剂量变更历史
+        new_dosage = data.get('dosage')
+        new_dq = data.get('dose_quantity', '1')
+        new_du = data.get('dose_unit', '片')
+        c.execute("SELECT dosage, dose_quantity, dose_unit FROM medication_plans WHERE id = ?", (plan_id,))
+        old = c.fetchone()
+        if old:
+            old_dosage = old['dosage']
+            old_dq = old['dose_quantity'] or '1'
+            old_du = old['dose_unit'] or '片'
+            if old_dosage != new_dosage or old_dq != new_dq or old_du != new_du:
+                old_str = f"{old_dosage} ×{old_dq}{old_du}" if old_dq != '1' else (old_dosage or '')
+                new_str = f"{new_dosage} ×{new_dq}{new_du}" if new_dq != '1' else (new_dosage or '')
+                c.execute("INSERT INTO dosage_history (plan_id, old_dosage, new_dosage) VALUES (?, ?, ?)",
+                          (plan_id, old_str, new_str))
+
         c.execute("""UPDATE medication_plans SET
                     medication_name = ?,
                     dosage = ?,
@@ -3175,7 +3482,13 @@ def update_medication_plan(plan_id):
                     start_date = ?,
                     end_date = ?,
                     is_active = ?,
-                    notes = ?
+                    notes = ?,
+                    frequency = ?,
+                    frequency_detail = ?,
+                    category = ?,
+                    dose_quantity = ?,
+                    dose_unit = ?,
+                    med_type = ?
                     WHERE id = ?""",
                  (data.get('medication_name'),
                   data.get('dosage'),
@@ -3185,6 +3498,12 @@ def update_medication_plan(plan_id):
                   data.get('end_date'),
                   data.get('is_active', 1),
                   data.get('notes', ''),
+                  data.get('frequency', 'daily'),
+                  data.get('frequency_detail'),
+                  data.get('category', 'long_term'),
+                  data.get('dose_quantity', '1'),
+                  data.get('dose_unit', '片'),
+                  data.get('med_type', ''),
                   plan_id))
 
         db.commit()
@@ -3199,6 +3518,7 @@ def delete_medication_plan(plan_id):
     try:
         db = get_db()
         c = db.cursor()
+        c.execute("DELETE FROM dosage_history WHERE plan_id = ?", (plan_id,))
         c.execute("DELETE FROM medication_plans WHERE id = ?", (plan_id,))
         db.commit()
         return api_success(message="Medication plan deleted successfully")
@@ -3612,6 +3932,164 @@ def prediction_comparison():
         return jsonify({"error": str(e)}), 500
 
 
+@app.route('/api/health_stats')
+def api_health_stats():
+    """返回指定天数范围的健康数据统计"""
+    try:
+        days = int(request.args.get('days', 7))
+        db = get_db()
+        c = db.cursor()
+        current_user_id = user_manager.get_current_user_id()
+        user_config = settings.load_config()
+        cutoff = (datetime.datetime.now() - datetime.timedelta(days=days)).strftime('%Y-%m-%d %H:%M:%S')
+
+        # 血糖统计
+        c.execute("""
+            SELECT
+                AVG(CASE WHEN (type LIKE '%空腹%') THEN value END),
+                AVG(CASE WHEN type LIKE '%餐后2小时%' THEN value END),
+                MAX(value), MIN(value)
+            FROM records
+            WHERE user_id = ? AND value > 0 AND is_predicted = 0
+            AND systolic_pressure IS NULL AND timestamp > ?
+        """, (current_user_id, cutoff))
+        gs = c.fetchone()
+
+        # 最高/最低血糖的详细信息（时间+类型）
+        max_glucose_detail = {'timestamp': '', 'type': ''}
+        min_glucose_detail = {'timestamp': '', 'type': ''}
+        if gs[2]:
+            c.execute("""SELECT timestamp, type FROM records
+                WHERE user_id = ? AND value = ? AND value > 0 AND is_predicted = 0
+                AND systolic_pressure IS NULL AND timestamp > ?
+                ORDER BY timestamp DESC LIMIT 1""",
+                (current_user_id, gs[2], cutoff))
+            row = c.fetchone()
+            if row:
+                max_glucose_detail = {'timestamp': row[0], 'type': row[1]}
+        if gs[3]:
+            c.execute("""SELECT timestamp, type FROM records
+                WHERE user_id = ? AND value = ? AND value > 0 AND is_predicted = 0
+                AND systolic_pressure IS NULL AND timestamp > ?
+                ORDER BY timestamp ASC LIMIT 1""",
+                (current_user_id, gs[3], cutoff))
+            row = c.fetchone()
+            if row:
+                min_glucose_detail = {'timestamp': row[0], 'type': row[1]}
+
+        # 达标率
+        c.execute("""
+            SELECT value, type FROM records
+            WHERE user_id = ? AND value > 0 AND is_predicted = 0
+            AND systolic_pressure IS NULL AND timestamp > ?
+        """, (current_user_id, cutoff))
+        ok_count = total_g = 0
+        for r in c.fetchall():
+            total_g += 1
+            result = settings.check_glucose_compliance(r['value'], r['type'])
+            if result['is_compliant']:
+                ok_count += 1
+        compliance = int((ok_count / total_g * 100)) if total_g > 0 else 0
+
+        # 运动统计
+        c.execute("""
+            SELECT SUM(distance), SUM(CASE WHEN calories > 0 THEN calories END),
+                   AVG(CASE WHEN heart_rate IS NOT NULL THEN heart_rate END),
+                   COUNT(DISTINCT DATE(timestamp))
+            FROM records
+            WHERE user_id = ? AND timestamp > ?
+            AND (distance IS NOT NULL OR type IN ('跑步', '运动'))
+        """, (current_user_id, cutoff))
+        es = c.fetchone()
+
+        # 血压统计
+        c.execute("""
+            SELECT AVG(systolic_pressure), AVG(diastolic_pressure), COUNT(*),
+                   MAX(systolic_pressure), MAX(diastolic_pressure),
+                   MIN(systolic_pressure), MIN(diastolic_pressure)
+            FROM records
+            WHERE user_id = ? AND systolic_pressure IS NOT NULL
+            AND systolic_pressure > 0 AND diastolic_pressure > 0
+            AND timestamp > ?
+        """, (current_user_id, cutoff))
+        bs = c.fetchone()
+
+        bp_max_date = bp_min_date = '-'
+        bp_max_timestamp = ''
+        bp_min_timestamp = ''
+        if bs[3]:
+            c.execute("SELECT timestamp FROM records WHERE user_id = ? AND systolic_pressure = ? AND timestamp > ? AND systolic_pressure IS NOT NULL LIMIT 1",
+                      (current_user_id, bs[3], cutoff))
+            row = c.fetchone()
+            if row:
+                bp_max_timestamp = row[0]
+                bp_max_date = row[0][:10]
+        if bs[5]:
+            c.execute("SELECT timestamp FROM records WHERE user_id = ? AND systolic_pressure = ? AND timestamp > ? AND systolic_pressure IS NOT NULL LIMIT 1",
+                      (current_user_id, bs[5], cutoff))
+            row = c.fetchone()
+            if row:
+                bp_min_timestamp = row[0]
+                bp_min_date = row[0][:10]
+
+        # 体重统计
+        c.execute("SELECT weight, bmi, timestamp FROM records WHERE user_id = ? AND weight > 0 ORDER BY timestamp DESC LIMIT 1", (current_user_id,))
+        lw = c.fetchone()
+        latest_weight_ts = lw[2] if lw else ''
+        c.execute("SELECT AVG(weight) FROM records WHERE user_id = ? AND weight > 0 AND timestamp > ?", (current_user_id, cutoff))
+        aw = c.fetchone()[0]
+
+        weight_change = None
+        if lw and lw[0]:
+            old_cutoff = (datetime.datetime.now() - datetime.timedelta(days=days)).strftime('%Y-%m-%d %H:%M:%S')
+            c.execute("SELECT weight FROM records WHERE user_id = ? AND weight > 0 AND timestamp <= ? ORDER BY timestamp DESC LIMIT 1",
+                      (current_user_id, old_cutoff))
+            ow = c.fetchone()
+            if ow: weight_change = round(lw[0] - ow[0], 1)
+
+        bmi_cat = settings.get_bmi_category(lw[1]) if lw and lw[1] else {'label': '-', 'color': '#999'}
+
+        return jsonify({
+            'days': days,
+            'glucose': {
+                'avg_fasting': round(gs[0], 1) if gs[0] else 0,
+                'avg_post2h': round(gs[1], 1) if gs[1] else 0,
+                'max': round(gs[2], 1) if gs[2] else 0,
+                'min': round(gs[3], 1) if gs[3] else 0,
+                'max_detail': max_glucose_detail,
+                'min_detail': min_glucose_detail,
+                'compliance': compliance
+            },
+            'exercise': {
+                'total_distance': round(es[0], 1) if es[0] else 0,
+                'total_calories': int(es[1]) if es[1] else 0,
+                'avg_heart_rate': round(es[2]) if es[2] else 0,
+                'count': es[3] if es[3] else 0
+            },
+            'bp': {
+                'avg_sys': round(bs[0]) if bs[0] else 0,
+                'avg_dia': round(bs[1]) if bs[1] else 0,
+                'count': bs[2] if bs[2] else 0,
+                'max_sys': bs[3] if bs[3] else 0, 'max_dia': bs[4] if bs[4] else 0,
+                'max_date': bp_max_date, 'max_timestamp': bp_max_timestamp,
+                'min_sys': bs[5] if bs[5] else 0, 'min_dia': bs[6] if bs[6] else 0,
+                'min_date': bp_min_date, 'min_timestamp': bp_min_timestamp
+            },
+            'weight': {
+                'latest': round(lw[0], 1) if lw and lw[0] else None,
+                'bmi': round(lw[1], 1) if lw and lw[1] else None,
+                'latest_timestamp': latest_weight_ts,
+                'bmi_label': bmi_cat['label'], 'bmi_color': bmi_cat['color'],
+                'avg': round(aw, 1) if aw else None,
+                'change': weight_change,
+                'target_weight': user_config.get('target_weight')
+            }
+        })
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route('/api/day_overview')
 def api_day_overview():
     """返回指定日期的概览数据（血糖时间轴 + 运动/血压/体重/用药）"""
@@ -3661,18 +4139,48 @@ def api_day_overview():
                     try: rh = int(rt_time.split(':')[0])
                     except: rh = -1
                 matched = False
+                is_generic_post = '餐后' in rt and not ('早餐后' in rt or '午餐后' in rt or '晚餐后' in rt)
+                is_generic_pre = '餐前' in rt and not ('早餐前' in rt or '午餐前' in rt or '晚餐前' in rt or '晚饭前' in rt)
                 if slot['key'] == 'fasting' and '空腹' in rt: matched = True
                 elif slot['key'] == 'post_exercise' and '运动后' in rt: matched = True
-                elif slot['key'] == 'post_breakfast' and ('早餐后' in rt or ('餐后' in rt and 10 <= rh < 13)): matched = True
-                elif slot['key'] == 'post_lunch' and ('午餐后' in rt or ('餐后' in rt and 13 <= rh < 17)): matched = True
-                elif slot['key'] == 'pre_dinner' and ('晚饭前' in rt or '晚餐前' in rt or ('餐前' in rt and 16 <= rh < 19)): matched = True
-                elif slot['key'] == 'post_dinner' and ('晚餐后' in rt or ('餐后' in rt and 19 <= rh < 23)): matched = True
+                elif slot['key'] == 'post_breakfast' and ('早餐后' in rt or (is_generic_post and 10 <= rh < 13)): matched = True
+                elif slot['key'] == 'post_lunch' and ('午餐后' in rt or (is_generic_post and 13 <= rh < 17)): matched = True
+                elif slot['key'] == 'pre_dinner' and ('晚饭前' in rt or '晚餐前' in rt or (is_generic_pre and 16 <= rh < 19)): matched = True
+                elif slot['key'] == 'post_dinner' and ('晚餐后' in rt or (is_generic_post and 19 <= rh < 23)): matched = True
                 elif slot['key'] == 'bedtime' and '睡前' in rt: matched = True
                 if matched:
                     if not r['is_predicted'] and not measured_match: measured_match = r
                     elif r['is_predicted'] and not predicted_match: predicted_match = r
             chosen = measured_match or predicted_match
-            if chosen:
+
+            # CGM 优先：查找该时间点30分钟内最近的CGM读数
+            cgm_match = None
+            cgm_min_diff = float('inf')
+            slot_target_minutes = int(slot['time'].split(':')[0]) * 60 + int(slot['time'].split(':')[1])
+            for r in records:
+                if (r['type'] or '') != 'CGM':
+                    continue
+                rt_time = r['timestamp'].split(' ')[1][:5] if ' ' in r['timestamp'] else ''
+                if not rt_time or ':' not in rt_time:
+                    continue
+                try:
+                    parts = rt_time.split(':')
+                    r_minutes = int(parts[0]) * 60 + int(parts[1])
+                except (ValueError, IndexError):
+                    continue
+                diff = abs(r_minutes - slot_target_minutes)
+                if diff < cgm_min_diff and diff <= 30:
+                    cgm_min_diff = diff
+                    cgm_match = r
+
+            if cgm_match:
+                slot_data['value'] = cgm_match['value']
+                slot_data['status'] = 'measured'
+                slot_data['cgm'] = True
+                result = settings.check_glucose_compliance(cgm_match['value'], '空腹' if slot['key'] == 'fasting' else '餐后2小时')
+                slot_data['compliance'] = result['level']
+                measured_count += 1
+            elif chosen:
                 slot_data['value'] = chosen['value']
                 slot_data['status'] = 'predicted' if chosen['is_predicted'] else 'measured'
                 result = settings.check_glucose_compliance(chosen['value'], chosen['type'])
@@ -3696,7 +4204,7 @@ def api_day_overview():
 
         # 血压
         c.execute("""
-            SELECT systolic_pressure, diastolic_pressure, pulse_rate, timestamp
+            SELECT systolic_pressure, diastolic_pressure, pulse_rate, spo2, timestamp
             FROM records WHERE user_id = ? AND timestamp BETWEEN ? AND ?
             AND systolic_pressure IS NOT NULL ORDER BY timestamp DESC LIMIT 1
         """, (current_user_id, day_start, day_end))
@@ -3704,7 +4212,7 @@ def api_day_overview():
         bp = None
         if bp_row:
             bp = {'systolic': bp_row['systolic_pressure'], 'diastolic': bp_row['diastolic_pressure'],
-                  'heart_rate': bp_row['pulse_rate'],
+                  'heart_rate': bp_row['pulse_rate'], 'spo2': bp_row['spo2'],
                   'time': bp_row['timestamp'].split(' ')[1][:5] if ' ' in bp_row['timestamp'] else ''}
 
         # 体重
@@ -3723,40 +4231,102 @@ def api_day_overview():
         # 用药
         med_plans = []
         c.execute("""
-            SELECT id, medication_name, dosage, times_per_day, timing_notes, frequency, frequency_detail
+            SELECT id, medication_name, dosage, dose_quantity, dose_unit, times_per_day, timing_notes, frequency, frequency_detail, start_date, category
             FROM medication_plans WHERE user_id = ? AND is_active = 1
             AND (start_date IS NULL OR start_date <= ?)
             AND (end_date IS NULL OR end_date >= ?)
-            ORDER BY medication_name ASC
+            ORDER BY
+                CASE WHEN frequency = 'daily' THEN 0 ELSE 1 END,
+                CASE WHEN timing_notes LIKE '%早%' OR timing_notes LIKE '%晨%' THEN 0
+                     WHEN timing_notes LIKE '%午%' OR timing_notes LIKE '%中%' THEN 1
+                     WHEN timing_notes LIKE '%晚%' OR timing_notes LIKE '%餐后%' THEN 2
+                     WHEN timing_notes LIKE '%睡%' OR timing_notes LIKE '%夜%' THEN 3
+                     ELSE 4 END,
+                medication_name ASC
         """, (current_user_id, date_str, date_str))
         for row in c.fetchall():
             freq = row['frequency'] or 'daily'
             freq_detail = row['frequency_detail'] or ''
             include = False
             if freq == 'daily': include = True
+            elif freq == 'every_n_days' and freq_detail:
+                try:
+                    n = int(freq_detail)
+                    plan_start = datetime.datetime.strptime(
+                        row['start_date'] or date_str, '%Y-%m-%d').date()
+                    t_date = target_date.date() if hasattr(target_date, 'date') else target_date
+                    include = ((t_date - plan_start).days % n == 0)
+                except (ValueError, TypeError):
+                    include = True
             elif freq == 'weekdays': include = weekday_name not in ('Saturday', 'Sunday')
             elif freq == 'weekly': include = weekday_name == freq_detail if freq_detail else weekday_name == 'Monday'
-            elif freq == 'monthly': include = day_of_month == 1
+            elif freq == 'biweekly' and freq_detail:
+                plan_start = datetime.datetime.strptime(
+                    row['start_date'] or date_str, '%Y-%m-%d').date()
+                weeks_diff = (target_date.date() - plan_start).days // 7 if hasattr(target_date, 'date') else (target_date - plan_start).days // 7
+                include = (weekday_name == freq_detail) and (weeks_diff % 2 == 0)
+            elif freq == 'monthly':
+                try:
+                    allowed_days = [int(d.strip()) for d in freq_detail.split(',')]
+                    include = day_of_month in allowed_days
+                except (ValueError, AttributeError):
+                    include = day_of_month == 1
             if include:
-                med_plans.append({'id': row['id'], 'name': row['medication_name'], 'dosage': row['dosage'],
-                                  'timing': row['timing_notes'], 'times': row['times_per_day'] or 1})
+                dq = row['dose_quantity'] or '1'
+                du = row['dose_unit'] or '片'
+                dosage_display = row['dosage']
+                if dosage_display:
+                    dosage_display = f"{dosage_display} ×{dq}{du}" if dq != '1' else dosage_display
+                med_plans.append({'id': row['id'], 'name': row['medication_name'], 'dosage': dosage_display,
+                                  'dose_quantity': dq, 'dose_unit': du,
+                                  'timing': row['timing_notes'], 'times': row['times_per_day'] or 1,
+                                  'frequency': freq, 'frequency_detail': freq_detail,
+                                  'category': row['category'] or 'long_term'})
 
         c.execute("SELECT plan_id, COUNT(*) as count FROM medication_logs WHERE user_id = ? AND log_date = ? GROUP BY plan_id",
                   (current_user_id, date_str))
         taken_logs = {row['plan_id']: row['count'] for row in c.fetchall()}
 
+        # 查询当日临时用药
+        c.execute("""
+            SELECT medication_name, notes, timestamp
+            FROM records
+            WHERE user_id = ? AND DATE(timestamp) = ?
+            AND medication_name IS NOT NULL AND medication_name != ''
+            ORDER BY timestamp ASC
+        """, (current_user_id, date_str))
+        temp_meds = []
+        for r in c.fetchall():
+            temp_meds.append({
+                'name': r['medication_name'],
+                'notes': r['notes'],
+                'time': r['timestamp'].split(' ')[1][:5] if ' ' in r['timestamp'] else ''
+            })
+
+        # 计算达标率
+        ok_count = 0
+        for s in overview:
+            if s['value'] and s['status'] == 'measured' and s['compliance'] in ('optimal', 'acceptable'):
+                ok_count += 1
+        compliance = int((ok_count / measured_count * 100)) if measured_count > 0 else 0
+        compliance_badge = settings.get_badge_for_rate(compliance)
+
         return jsonify({
             'date': date_str,
             'overview': overview,
             'completion': {'measured': measured_count, 'predicted': predicted_count, 'total': len(today_schedule)},
+            'compliance': compliance,
+            'compliance_badge': compliance_badge,
             'exercise': exercise,
             'bp': bp,
             'weight': weight,
-            'med_status': {'plans': med_plans, 'taken_details': taken_logs}
+            'med_status': {'plans': med_plans, 'taken_details': taken_logs, 'temp_medications': temp_meds}
         })
     except Exception as e:
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
+
+@app.route('/trigger_prediction', methods=['POST'])
 def trigger_prediction():
     """
     手动触发预测
@@ -4041,7 +4611,51 @@ def get_current_user_api():
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
-# ========== Auto Daily Backup ==========
+@app.route('/create_user', methods=['POST'])
+def create_user():
+    """创建新用户"""
+    try:
+        data = request.json
+        username = data.get('username', '').strip()
+        display_name = data.get('display_name', '').strip()
+        if not username or not display_name:
+            return api_error("用户名和显示名称不能为空", status_code=400, error_type="validation_error")
+
+        profile_data = {
+            'name': display_name,
+            'gender': data.get('gender', 'male'),
+            'birth_year': data.get('birth_year', 1990),
+            'height': data.get('height', 170),
+            'weight': data.get('weight', 65),
+        }
+        user_id = user_manager.create_user(username, display_name, profile_data)
+        return api_success(data={"id": user_id}, message="用户创建成功")
+    except Exception as e:
+        traceback.print_exc()
+        return api_error(str(e), status_code=500, error_type="user_error")
+
+@app.route('/delete_user/<int:user_id>', methods=['POST'])
+def delete_user(user_id):
+    """删除用户（软删除）"""
+    try:
+        current_id = user_manager.get_current_user_id()
+        if user_id == current_id:
+            return api_error("不能删除当前登录用户", status_code=400, error_type="validation_error")
+
+        db = get_db()
+        c = db.cursor()
+        # 检查用户是否存在
+        c.execute("SELECT id FROM app_users WHERE id = ? AND is_active = 1", (user_id,))
+        if not c.fetchone():
+            return api_error("用户不存在", status_code=404, error_type="not_found")
+
+        # 软删除
+        c.execute("UPDATE app_users SET is_active = 0 WHERE id = ?", (user_id,))
+        db.commit()
+        return api_success(message="用户已删除")
+    except Exception as e:
+        traceback.print_exc()
+        return api_error(str(e), status_code=500, error_type="user_error")
 
 AUTO_BACKUP_DIR = os.path.join(BASE_DIR, 'backups')
 AUTO_BACKUP_KEEP_DAYS = 30
