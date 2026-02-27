@@ -113,10 +113,19 @@ def parse_glucose_input(text, history_context=None, images_data=None, mime_type=
       - medication_dosage: 剂量（如"500mg"）
       - medication_timing: 服用时机（如"餐前30分钟"）
       - medication_is_new_plan: true/false (true表示这是长期用药方案，false表示临时用药)
+      - medication_action: "take"(默认,服用) / "stop"(停药/暂停/停用) / "resume"(恢复用药)
+    - **停药/恢复识别规则（重要！）**:
+      - 关键词：停药/停用/暂停/不吃了/不再服用/取消用药 → medication_action: "stop"
+      - 关键词：恢复/重新服用/继续吃 → medication_action: "resume"
+      - 停药时每种药物生成一条独立记录，每条记录的 medication_action 都是 "stop"
+      - notes 中记录停药原因（如有）
     - 示例：
-      - "今天开始服用二甲双胍，每天两次，早晚餐前" → medication_is_new_plan: true
-      - "刚吃了一片二甲双胍" → medication_is_new_plan: false
-      - "医生开了新药：阿卡波糖100mg，三餐餐中服用" → medication_is_new_plan: true
+      - "今天开始服用二甲双胍，每天两次，早晚餐前" → medication_is_new_plan: true, medication_action: "take"
+      - "刚吃了一片二甲双胍" → medication_is_new_plan: false, medication_action: "take"
+      - "医生开了新药：阿卡波糖100mg，三餐餐中服用" → medication_is_new_plan: true, medication_action: "take"
+      - "今天因流感停药了达格列净、二甲双胍" → 生成2条记录，每条 medication_action: "stop", notes: "因流感停药"
+      - "暂停立普妥" → medication_action: "stop", notes: "暂停用药"
+      - "恢复服用二甲双胍" → medication_action: "resume"
 
     **血压识别规则**:
     - 识别格式：137/73、"高压137低压73"、"收缩压137舒张压73"
@@ -124,11 +133,13 @@ def parse_glucose_input(text, history_context=None, images_data=None, mime_type=
       - systolic_pressure: 收缩压/高压（正常范围90-140 mmHg）
       - diastolic_pressure: 舒张压/低压（正常范围60-90 mmHg）
       - pulse_rate: 脉搏（可选，正常范围60-100 bpm）
+      - spo2: 血氧饱和度（可选，正常范围95-100%）
       - type: "血压测量"、"空腹血压"、"餐后血压"等
     - 示例：
       - "早晨空腹基础血压137/73" → type="空腹血压", systolic_pressure=137, diastolic_pressure=73, datetime=今天07:15
       - "中午13:10测的124/68" → type="血压测量", systolic_pressure=124, diastolic_pressure=68, datetime=今天13:10
       - "餐后血压130/75，脉搏82" → type="餐后血压", systolic_pressure=130, diastolic_pressure=75, pulse_rate=82
+      - "血压137/73 血氧98" → type="血压测量", systolic_pressure=137, diastolic_pressure=73, spo2=98
 
     **体重识别规则**:
     - 识别关键词：体重/称了/称重/秤/重了/kg/公斤
@@ -210,10 +221,12 @@ def parse_glucose_input(text, history_context=None, images_data=None, mime_type=
             "systolic_pressure": int (收缩压/高压，可选),
             "diastolic_pressure": int (舒张压/低压，可选),
             "pulse_rate": int (脉搏，可选),
+            "spo2": int (血氧饱和度%，可选),
             "medication_name": "string (药物名称，可选)",
             "medication_dosage": "string (剂量，可选)",
             "medication_timing": "string (服用时机，可选)",
             "medication_is_new_plan": boolean (是否为新的长期用药方案),
+            "medication_action": "string (take/stop/resume，默认take，可选)",
             "weight": float (体重值kg，仅体重记录需要)
         }}
     ]

@@ -225,7 +225,7 @@ def load_config():
         with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
             return json.load(f)
     return {
-        "name": "用户", "weight": 75, "height": 170, "birth_year": 1964, "gender": "male",
+        "name": "用户", "weight": 75, "height": 170, "birth_year": 1964, "gender": "male", "target_weight": None,
         "target": {"fasting_min": 3.9, "fasting_max": 7.0, "postmeal_max": 7.8, "premeal_max": 6.5},
         "glucose_pattern": {"fasting_range": "6.0-7.2", "postmeal_range": "6.5-8.0"},
         "default_meals": {
