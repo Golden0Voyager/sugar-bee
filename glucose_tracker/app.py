@@ -185,6 +185,12 @@ def init_db():
         except sqlite3.OperationalError:
             pass  # Column already exists
 
+        # Migration: Add VO2max column for exercise records
+        try:
+            c.execute("ALTER TABLE records ADD COLUMN vo2max REAL")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+
         # Create medication_plans table (药物方案)
         c.execute('''CREATE TABLE IF NOT EXISTS medication_plans
                      (id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2015,6 +2021,25 @@ def index():
         avg_heart_rate_7d = exercise_stats[2]
         exercise_count_7d = exercise_stats[3]
 
+        # === 最新VO2max ===
+        c.execute("""SELECT vo2max, timestamp FROM records
+            WHERE user_id = ? AND vo2max IS NOT NULL AND vo2max > 0
+            ORDER BY timestamp DESC LIMIT 1""", (current_user_id,))
+        vo2max_row = c.fetchone()
+        latest_vo2max = vo2max_row[0] if vo2max_row else None
+        latest_vo2max_date = vo2max_row[1] if vo2max_row else None
+
+        # VO2max 前一次值（用于计算变化）
+        prev_vo2max = None
+        if vo2max_row:
+            c.execute("""SELECT vo2max FROM records
+                WHERE user_id = ? AND vo2max IS NOT NULL AND vo2max > 0
+                AND timestamp < ?
+                ORDER BY timestamp DESC LIMIT 1""", (current_user_id, vo2max_row[1]))
+            prev_row = c.fetchone()
+            if prev_row:
+                prev_vo2max = prev_row[0]
+
         # === 血压统计（3合1） ===
         c.execute("""
             SELECT
@@ -2406,13 +2431,13 @@ def index():
 
         # 今日运动数据 - 支持多种运动类型
         c.execute("""
-            SELECT type, distance, calories, duration, heart_rate, pace, cadence, timestamp
+            SELECT type, distance, calories, duration, heart_rate, pace, cadence, vo2max, timestamp
             FROM records
             WHERE user_id = ?
             AND timestamp BETWEEN ? AND ?
             AND (type IN ('运动', '跑步', '走路', '骑行', '游泳', '健身')
                  OR type LIKE '%跑%' OR type LIKE '%走%' OR type LIKE '%骑%')
-            ORDER BY timestamp DESC
+            ORDER BY timestamp DESC, vo2max DESC
             LIMIT 1
         """, (current_user_id, today_start, today_end))
         today_exercise_row = c.fetchone()
@@ -2426,6 +2451,7 @@ def index():
                 'heart_rate': today_exercise_row['heart_rate'],
                 'pace': today_exercise_row['pace'],
                 'cadence': today_exercise_row['cadence'],
+                'vo2max': today_exercise_row['vo2max'],
                 'time': today_exercise_row['timestamp'].split(' ')[1][:5] if ' ' in today_exercise_row['timestamp'] else ''
             }
 
@@ -2537,6 +2563,9 @@ def index():
             'total_exercise_cal_7d': int(total_exercise_cal_7d) if total_exercise_cal_7d else 0,
             'avg_heart_rate_7d': round(avg_heart_rate_7d) if avg_heart_rate_7d else 0,
             'exercise_count_7d': exercise_count_7d or 0,
+            'latest_vo2max': latest_vo2max,
+            'latest_vo2max_date': latest_vo2max_date,
+            'prev_vo2max': prev_vo2max,
 
             # === 血压统计（7天） ===
             'avg_systolic_7d': round(bp_stats[0]) if bp_stats[0] else 0,
@@ -2635,6 +2664,7 @@ def add_record():
             gi_value = data.get('gi_value')
             weight = data.get('weight')
             bmi = data.get('bmi')
+            vo2max = data.get('vo2max')
         else:
             value = request.form.get('value')
             unit = request.form.get('unit')
@@ -2661,6 +2691,7 @@ def add_record():
             gi_value = request.form.get('gi_value')
             weight = request.form.get('weight')
             bmi = request.form.get('bmi')
+            vo2max = request.form.get('vo2max')
 
         # Auto-calculate BMI if weight is provided but BMI is not
         if weight and not bmi:
@@ -2696,11 +2727,11 @@ def add_record():
         c.execute("""INSERT INTO records
                      (user_id, value, unit, type, notes, timestamp, calories, diet_analysis, is_predicted,
                       distance, duration, heart_rate, systolic_pressure, diastolic_pressure, pulse_rate,
-                      carbs_grams, gi_value, weight, bmi, spo2)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                      carbs_grams, gi_value, weight, bmi, spo2, vo2max)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                   (current_user_id, value, unit, r_type, notes, timestamp, calories, diet_analysis, is_predicted,
                    distance, duration, heart_rate, systolic_pressure, diastolic_pressure, pulse_rate,
-                   carbs_grams, gi_value, weight, bmi, spo2))
+                   carbs_grams, gi_value, weight, bmi, spo2, vo2max))
 
         # 如果是真实血糖记录，尝试关联当天的预测记录
         real_record_id = c.lastrowid
@@ -2967,15 +2998,15 @@ def batch_add():
                       (user_id, value, unit, type, notes, timestamp, calories, diet_analysis, is_predicted,
                        distance, duration, heart_rate, pace, cadence,
                        systolic_pressure, diastolic_pressure, pulse_rate, spo2,
-                       carbs_grams, gi_value, weight, bmi, medication_name)
-                      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                       carbs_grams, gi_value, weight, bmi, medication_name, vo2max)
+                      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                       (current_user_id, r['value'], r.get('unit', 'mmol/L'), r['type'], r.get('notes', ''),
                        r.get('datetime'), cal, da, is_pred,
                        r.get('distance'), r.get('duration'), r.get('heart_rate'),
                        r.get('pace'), r.get('cadence'),
                        systolic, diastolic, pulse, spo2,
                        r.get('carbs_grams'), r.get('gi_value'), weight, bmi,
-                       r.get('medication_name')))
+                       r.get('medication_name'), r.get('vo2max')))
 
             inserted_records.append({
                 'id': c.lastrowid,
@@ -3160,7 +3191,7 @@ def update_record(id):
                      calories = ?, diet_analysis = ?, is_predicted = ?,
                      distance = ?, duration = ?, heart_rate = ?, pace = ?, cadence = ?,
                      systolic_pressure = ?, diastolic_pressure = ?, pulse_rate = ?,
-                     weight = ?, bmi = ?
+                     weight = ?, bmi = ?, vo2max = ?
                      WHERE id = ?""",
                   (data.get('value', 0), data.get('unit', 'mmol/L'), data.get('type', ''),
                    data.get('notes', ''), data.get('timestamp', ''),
@@ -3169,7 +3200,7 @@ def update_record(id):
                    data.get('distance'), data.get('duration'), data.get('heart_rate'),
                    data.get('pace'), data.get('cadence'),
                    data.get('systolic_pressure'), data.get('diastolic_pressure'), data.get('pulse_rate'),
-                   data.get('weight'), data.get('bmi'),
+                   data.get('weight'), data.get('bmi'), data.get('vo2max'),
                    id))
         db.commit()
         return api_success(message="Record updated successfully")
@@ -3936,12 +3967,16 @@ def prediction_comparison():
 def api_health_stats():
     """返回指定天数范围的健康数据统计"""
     try:
-        days = int(request.args.get('days', 7))
+        days_param = request.args.get('days', '7')
+        days = None if days_param in ('null', 'all', '') else int(days_param)
         db = get_db()
         c = db.cursor()
         current_user_id = user_manager.get_current_user_id()
         user_config = settings.load_config()
-        cutoff = (datetime.datetime.now() - datetime.timedelta(days=days)).strftime('%Y-%m-%d %H:%M:%S')
+        if days:
+            cutoff = (datetime.datetime.now() - datetime.timedelta(days=days)).strftime('%Y-%m-%d %H:%M:%S')
+        else:
+            cutoff = '2000-01-01 00:00:00'
 
         # 血糖统计
         c.execute("""
@@ -4041,13 +4076,35 @@ def api_health_stats():
 
         weight_change = None
         if lw and lw[0]:
-            old_cutoff = (datetime.datetime.now() - datetime.timedelta(days=days)).strftime('%Y-%m-%d %H:%M:%S')
-            c.execute("SELECT weight FROM records WHERE user_id = ? AND weight > 0 AND timestamp <= ? ORDER BY timestamp DESC LIMIT 1",
-                      (current_user_id, old_cutoff))
-            ow = c.fetchone()
-            if ow: weight_change = round(lw[0] - ow[0], 1)
+            old_cutoff = cutoff
+            if days:
+                c.execute("SELECT weight FROM records WHERE user_id = ? AND weight > 0 AND timestamp <= ? ORDER BY timestamp DESC LIMIT 1",
+                          (current_user_id, old_cutoff))
+                ow = c.fetchone()
+                if ow: weight_change = round(lw[0] - ow[0], 1)
+            else:
+                # 全部数据：用最早的体重记录计算变化
+                c.execute("SELECT weight FROM records WHERE user_id = ? AND weight > 0 ORDER BY timestamp ASC LIMIT 1",
+                          (current_user_id,))
+                ow = c.fetchone()
+                if ow: weight_change = round(lw[0] - ow[0], 1)
 
         bmi_cat = settings.get_bmi_category(lw[1]) if lw and lw[1] else {'label': '-', 'color': '#999'}
+
+        # 最新 VO2max
+        c.execute("""SELECT vo2max, timestamp FROM records
+            WHERE user_id = ? AND vo2max IS NOT NULL AND vo2max > 0
+            ORDER BY timestamp DESC LIMIT 1""", (current_user_id,))
+        vo2row = c.fetchone()
+        latest_vo2max = vo2row[0] if vo2row else None
+        latest_vo2max_date = vo2row[1] if vo2row else None
+        prev_vo2max = None
+        if vo2row:
+            c.execute("""SELECT vo2max FROM records
+                WHERE user_id = ? AND vo2max IS NOT NULL AND vo2max > 0
+                AND timestamp < ? ORDER BY timestamp DESC LIMIT 1""", (current_user_id, vo2row[1]))
+            pv = c.fetchone()
+            if pv: prev_vo2max = pv[0]
 
         return jsonify({
             'days': days,
@@ -4064,7 +4121,10 @@ def api_health_stats():
                 'total_distance': round(es[0], 1) if es[0] else 0,
                 'total_calories': int(es[1]) if es[1] else 0,
                 'avg_heart_rate': round(es[2]) if es[2] else 0,
-                'count': es[3] if es[3] else 0
+                'count': es[3] if es[3] else 0,
+                'latest_vo2max': latest_vo2max,
+                'latest_vo2max_date': latest_vo2max_date,
+                'prev_vo2max': prev_vo2max
             },
             'bp': {
                 'avg_sys': round(bs[0]) if bs[0] else 0,
@@ -4191,15 +4251,15 @@ def api_day_overview():
 
         # 运动
         c.execute("""
-            SELECT type, distance, calories, duration, heart_rate, pace, cadence, timestamp
+            SELECT type, distance, calories, duration, heart_rate, pace, cadence, vo2max, timestamp
             FROM records WHERE user_id = ? AND timestamp BETWEEN ? AND ?
             AND (type IN ('运动','跑步','走路','骑行','游泳','健身') OR type LIKE '%跑%' OR type LIKE '%走%' OR type LIKE '%骑%')
-            ORDER BY timestamp DESC LIMIT 1
+            ORDER BY timestamp DESC, vo2max DESC LIMIT 1
         """, (current_user_id, day_start, day_end))
         ex_row = c.fetchone()
         exercise = None
         if ex_row:
-            exercise = {k: ex_row[k] for k in ['type','distance','calories','duration','heart_rate','pace','cadence']}
+            exercise = {k: ex_row[k] for k in ['type','distance','calories','duration','heart_rate','pace','cadence','vo2max']}
             exercise['time'] = ex_row['timestamp'].split(' ')[1][:5] if ' ' in ex_row['timestamp'] else ''
 
         # 血压
@@ -4231,7 +4291,7 @@ def api_day_overview():
         # 用药
         med_plans = []
         c.execute("""
-            SELECT id, medication_name, dosage, dose_quantity, dose_unit, times_per_day, timing_notes, frequency, frequency_detail, start_date, category
+            SELECT id, medication_name, dosage, dose_quantity, dose_unit, times_per_day, timing_notes, frequency, frequency_detail, start_date, category, med_type
             FROM medication_plans WHERE user_id = ? AND is_active = 1
             AND (start_date IS NULL OR start_date <= ?)
             AND (end_date IS NULL OR end_date >= ?)
@@ -4281,7 +4341,8 @@ def api_day_overview():
                                   'dose_quantity': dq, 'dose_unit': du,
                                   'timing': row['timing_notes'], 'times': row['times_per_day'] or 1,
                                   'frequency': freq, 'frequency_detail': freq_detail,
-                                  'category': row['category'] or 'long_term'})
+                                  'category': row['category'] or 'long_term',
+                                  'med_type': row['med_type'] or ''})
 
         c.execute("SELECT plan_id, COUNT(*) as count FROM medication_logs WHERE user_id = ? AND log_date = ? GROUP BY plan_id",
                   (current_user_id, date_str))

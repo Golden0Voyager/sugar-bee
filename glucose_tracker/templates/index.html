@@ -184,7 +184,19 @@
         .today-progress .progress-segment.seg-predicted {
             background: #4DD0E1;
         }
+        .today-progress .progress-segment.seg-missed {
+            background: repeating-linear-gradient(
+                135deg,
+                rgba(0,0,0,0.08),
+                rgba(0,0,0,0.08) 2px,
+                rgba(0,0,0,0.16) 2px,
+                rgba(0,0,0,0.16) 4px
+            );
+        }
         /* 光带扫过动画 */
+        .today-progress.past-day::after {
+            display: none;
+        }
         .today-progress::after {
             content: '';
             position: absolute;
@@ -1174,6 +1186,47 @@
             color: white;
         }
 
+        /* 用药列表折叠 */
+        .med-list-collapse {
+            max-height: 120px;
+            overflow: hidden;
+            position: relative;
+            transition: max-height 0.3s ease;
+        }
+        .med-list-collapse.expanded {
+            max-height: none;
+        }
+        .med-list-expand-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 2px;
+            width: 100%;
+            padding: 2px 0;
+            margin-top: 2px;
+            border: none;
+            background: none;
+            color: #1976d2;
+            font-size: 0.7rem;
+            cursor: pointer;
+        }
+        .med-list-expand-btn:hover {
+            text-decoration: underline;
+        }
+        .med-list-fade {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 28px;
+            background: linear-gradient(transparent, white);
+            pointer-events: none;
+        }
+        .med-list-collapse.expanded + .med-list-expand-btn .expand-text { display: none; }
+        .med-list-collapse.expanded + .med-list-expand-btn .collapse-text { display: inline; }
+        .med-list-collapse:not(.expanded) + .med-list-expand-btn .expand-text { display: inline; }
+        .med-list-collapse:not(.expanded) + .med-list-expand-btn .collapse-text { display: none; }
+
         /* 配色方案选择器 */
         .med-color-picker {
             display: flex;
@@ -1821,7 +1874,7 @@
                 <!-- 进度条：每个slot对应一个等宽分段 -->
                 <div class="today-progress" style="margin-top: 15px;">
                     {% for slot in stats.today_overview %}
-                    <div class="progress-segment {% if slot.status == 'measured' %}seg-measured{% elif slot.status == 'predicted' %}seg-predicted{% endif %}"></div>
+                    <div class="progress-segment {% if slot.status == 'measured' %}seg-measured{% elif slot.status == 'predicted' %}seg-predicted{% endif %}" data-time="{{ slot.time }}"></div>
                     {% endfor %}
                 </div>
                 <div class="d-flex justify-content-between align-items-center" style="margin-top: 15px; margin-bottom: 15px;">
@@ -1873,13 +1926,16 @@
                             <div class="fw-semibold text-dark mb-1">{{ stats.today_exercise.type }}</div>
                             <div>📏 {{ stats.today_exercise.distance or 0 }}km · {{ stats.today_exercise.duration or '--' }}</div>
                             {% if stats.today_exercise.pace %}
-                            <div>⏱️ 配速 {{ stats.today_exercise.pace }}/km</div>
+                            <div>⏱️ 平均配速 {{ stats.today_exercise.pace }}/km</div>
                             {% endif %}
                             {% if stats.today_exercise.heart_rate %}
-                            <div>💓 均心率 {{ stats.today_exercise.heart_rate }}bpm</div>
+                            <div>💓 平均心率 {{ stats.today_exercise.heart_rate }}bpm</div>
                             {% endif %}
                             {% if stats.today_exercise.cadence %}
                             <div>👟 步频 {{ stats.today_exercise.cadence }}spm</div>
+                            {% endif %}
+                            {% if stats.today_exercise.vo2max %}
+                            <div>🫁 VO₂max {{ stats.today_exercise.vo2max }}</div>
                             {% endif %}
                         </div>
                         {% else %}
@@ -1953,11 +2009,13 @@
                             </div>
                             {# === 药物 tab === #}
                             <div id="card-med-list">
+                              <div class="med-list-collapse" id="med-list-inner">
                                 {% if med_plans_daily %}
-                                <div style="margin: 0 0 4px;">
-                                    <span style="font-size: 0.65rem; color: #1565c0; background: #e3f2fd; padding: 1px 6px; border-radius: 3px;">长期用药</span>
+                                {% for group_type, group_meds in med_plans_daily|groupby('med_type') %}
+                                <div style="margin: {{ '0' if loop.first else '6px' }} 0 4px;">
+                                    <span style="font-size: 0.65rem; color: #1565c0; background: #e3f2fd; padding: 1px 6px; border-radius: 3px;">{{ group_type or '未分类' }}</span>
                                 </div>
-                                {% for med in med_plans_daily %}
+                                {% for med in group_meds %}
                                 <div class="d-flex align-items-start gap-1 mb-1">
                                     {% set taken = stats.today_med_status.taken_details[med.id] if med.id in stats.today_med_status.taken_details else 0 %}
                                     {% if taken >= med.times %}
@@ -1981,6 +2039,7 @@
                                         {% if med.timing %}<div style="font-size: 0.7rem; color: #999;">{{ med.timing }}</div>{% endif %}
                                     </div>
                                 </div>
+                                {% endfor %}
                                 {% endfor %}
                                 {% endif %}
                                 {% if temp_plan_list or stats.today_med_status.temp_medications %}
@@ -2016,9 +2075,16 @@
                                 {% if not med_plans_daily and not temp_plan_list and not stats.today_med_status.temp_medications %}
                                 <div class="text-center text-muted py-2" style="font-size: 0.8rem;">暂无药物</div>
                                 {% endif %}
+                                <div class="med-list-fade" id="med-list-fade"></div>
+                              </div>
+                              <button class="med-list-expand-btn" onclick="toggleMedListCollapse('med-list-inner', 'med-list-fade')">
+                                <span class="expand-text">展开更多 ▾</span>
+                                <span class="collapse-text">收起 ▴</span>
+                              </button>
                             </div>
                             {# === 补剂 tab === #}
                             <div id="card-supp-list" style="display: none;">
+                              <div class="med-list-collapse" id="supp-list-inner">
                                 {% if supp_plans %}
                                 {% for group_type, group_meds in supp_plans|groupby('med_type') %}
                                 <div style="margin: {{ '0' if loop.first else '6px' }} 0 4px;">
@@ -2053,6 +2119,12 @@
                                 {% else %}
                                 <div class="text-center text-muted py-2" style="font-size: 0.8rem;">暂无补剂</div>
                                 {% endif %}
+                                <div class="med-list-fade" id="supp-list-fade"></div>
+                              </div>
+                              <button class="med-list-expand-btn" onclick="toggleMedListCollapse('supp-list-inner', 'supp-list-fade')">
+                                <span class="expand-text">展开更多 ▾</span>
+                                <span class="collapse-text">收起 ▴</span>
+                              </button>
                             </div>
                         </div>
                         {% else %}
@@ -2096,7 +2168,9 @@
                         <li><a class="dropdown-item active" href="#" onclick="changeStatsRange(7);return false;" data-days="7" style="border-radius: 18px; font-size: 0.85rem; padding: 6px 16px;">近 7 天</a></li>
                         <li><a class="dropdown-item" href="#" onclick="changeStatsRange(14);return false;" data-days="14" style="border-radius: 18px; font-size: 0.85rem; padding: 6px 16px;">近 14 天</a></li>
                         <li><a class="dropdown-item" href="#" onclick="changeStatsRange(30);return false;" data-days="30" style="border-radius: 18px; font-size: 0.85rem; padding: 6px 16px;">近 30 天</a></li>
+                        <li><a class="dropdown-item" href="#" onclick="changeStatsRange(60);return false;" data-days="60" style="border-radius: 18px; font-size: 0.85rem; padding: 6px 16px;">近 60 天</a></li>
                         <li><a class="dropdown-item" href="#" onclick="changeStatsRange(90);return false;" data-days="90" style="border-radius: 18px; font-size: 0.85rem; padding: 6px 16px;">近 90 天</a></li>
+                        <li><a class="dropdown-item" href="#" onclick="changeStatsRange(null);return false;" data-days="all" style="border-radius: 18px; font-size: 0.85rem; padding: 6px 16px;">全部数据</a></li>
                     </ul>
                 </div>
             </div>
@@ -2193,7 +2267,7 @@
                         <span class="badge" style="background: rgba(25,135,84,0.1); color: #198754;">{{ stats.exercise_count_7d }}次运动</span>
                     </div>
                     <div class="row g-2">
-                        <div class="col-4">
+                        <div class="col-6 col-md-3">
                             <div class="text-center p-3 bg-light rounded">
                                 <small class="text-muted d-block fw-semibold">跑步总里程</small>
                                 <div class="fs-4 fw-bold text-success">
@@ -2203,7 +2277,7 @@
                                 <small class="text-muted d-block exercise-detail" style="font-size: 0.7rem; line-height: 1.3; margin-top: 2px;">近7天累计<br><span class="stats-date-range"></span></small>
                             </div>
                         </div>
-                        <div class="col-4">
+                        <div class="col-6 col-md-3">
                             <div class="text-center p-3 bg-light rounded">
                                 <small class="text-muted d-block fw-semibold">消耗热量</small>
                                 <div class="fs-4 fw-bold" style="color: #FF7043;">
@@ -2213,7 +2287,7 @@
                                 <small class="text-muted d-block exercise-detail" style="font-size: 0.7rem; line-height: 1.3; margin-top: 2px;">近7天累计<br><span class="stats-date-range"></span></small>
                             </div>
                         </div>
-                        <div class="col-4">
+                        <div class="col-6 col-md-3">
                             <div class="text-center p-3 bg-light rounded">
                                 <small class="text-muted d-block fw-semibold">平均心率</small>
                                 <div class="fs-4 fw-bold" style="color: #EC407A;">
@@ -2221,6 +2295,16 @@
                                     <small class="text-muted fw-normal" style="font-size: 0.7rem;">bpm</small>
                                 </div>
                                 <small class="text-muted d-block exercise-detail" style="font-size: 0.7rem; line-height: 1.3; margin-top: 2px;">近7天均值<br><span class="stats-date-range"></span></small>
+                            </div>
+                        </div>
+                        <div class="col-6 col-md-3">
+                            <div class="text-center p-3 bg-light rounded">
+                                <small class="text-muted d-block fw-semibold">最大摄氧量</small>
+                                <div class="fs-4 fw-bold" style="color: #5C6BC0;">
+                                    {{ "%.1f"|format(stats.latest_vo2max) if stats.latest_vo2max else '-' }}
+                                    <small class="text-muted fw-normal" style="font-size: 0.7rem;">ml/kg/min</small>
+                                </div>
+                                <small class="text-muted d-block exercise-detail" style="font-size: 0.7rem; line-height: 1.3; margin-top: 2px;">{% if stats.latest_vo2max and stats.prev_vo2max %}{% set diff = stats.latest_vo2max - stats.prev_vo2max %}{{ "%+.1f"|format(diff) }} 较上次{% elif stats.latest_vo2max_date %}测量于<br>{{ stats.latest_vo2max_date[5:16] }}{% else %}&nbsp;<br>&nbsp;{% endif %}</small>
                             </div>
                         </div>
                     </div>
@@ -2628,6 +2712,7 @@
                         <li><a class="dropdown-item" href="#" onclick="changeBPRange(7);return false;" data-days="7" style="border-radius: 18px; font-size: 0.85rem; padding: 6px 16px;">近 7 天</a></li>
                         <li><a class="dropdown-item" href="#" onclick="changeBPRange(14);return false;" data-days="14" style="border-radius: 18px; font-size: 0.85rem; padding: 6px 16px;">近 14 天</a></li>
                         <li><a class="dropdown-item active" href="#" onclick="changeBPRange(30);return false;" data-days="30" style="border-radius: 18px; font-size: 0.85rem; padding: 6px 16px;">近 30 天</a></li>
+                        <li><a class="dropdown-item" href="#" onclick="changeBPRange(60);return false;" data-days="60" style="border-radius: 18px; font-size: 0.85rem; padding: 6px 16px;">近 60 天</a></li>
                         <li><a class="dropdown-item" href="#" onclick="changeBPRange(90);return false;" data-days="90" style="border-radius: 18px; font-size: 0.85rem; padding: 6px 16px;">近 90 天</a></li>
                         <li><a class="dropdown-item" href="#" onclick="changeBPRange(null);return false;" data-days="all" style="border-radius: 18px; font-size: 0.85rem; padding: 6px 16px;">全部数据</a></li>
                     </ul>
@@ -2708,6 +2793,7 @@
                         <li><a class="dropdown-item" href="#" onclick="changeWeightRange(7);return false;" data-days="7" style="border-radius: 18px; font-size: 0.85rem; padding: 6px 16px;">近 7 天</a></li>
                         <li><a class="dropdown-item" href="#" onclick="changeWeightRange(14);return false;" data-days="14" style="border-radius: 18px; font-size: 0.85rem; padding: 6px 16px;">近 14 天</a></li>
                         <li><a class="dropdown-item active" href="#" onclick="changeWeightRange(30);return false;" data-days="30" style="border-radius: 18px; font-size: 0.85rem; padding: 6px 16px;">近 30 天</a></li>
+                        <li><a class="dropdown-item" href="#" onclick="changeWeightRange(60);return false;" data-days="60" style="border-radius: 18px; font-size: 0.85rem; padding: 6px 16px;">近 60 天</a></li>
                         <li><a class="dropdown-item" href="#" onclick="changeWeightRange(90);return false;" data-days="90" style="border-radius: 18px; font-size: 0.85rem; padding: 6px 16px;">近 90 天</a></li>
                         <li><a class="dropdown-item" href="#" onclick="changeWeightRange(null);return false;" data-days="all" style="border-radius: 18px; font-size: 0.85rem; padding: 6px 16px;">全部数据</a></li>
                     </ul>
@@ -2830,6 +2916,10 @@
                     <div class="col-md-6">
                         <label class="form-label" style="font-size: 1rem;">距离 (km)</label>
                         <input type="number" step="0.1" id="editDistance" class="form-control" style="font-size: 1.1rem; padding: 12px;">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label" style="font-size: 1rem;">最大摄氧量 (ml/kg/min)</label>
+                        <input type="number" step="0.1" id="editVo2max" class="form-control" style="font-size: 1.1rem; padding: 12px;" placeholder="如 42.5">
                     </div>
                 </div>
             </div>
@@ -3440,13 +3530,14 @@
     function changeStatsRange(days) {
         // 更新dropdown active状态
         document.querySelectorAll('#statsRangeDropdown .dropdown-item').forEach(b => b.classList.remove('active'));
-        const activeItem = document.querySelector(`#statsRangeDropdown .dropdown-item[data-days="${days}"]`);
+        const daysAttr = days === null ? 'all' : days;
+        const activeItem = document.querySelector(`#statsRangeDropdown .dropdown-item[data-days="${daysAttr}"]`);
         if (activeItem) activeItem.classList.add('active');
         // 更新按钮文字和日历icon
-        const labelMap = {7: '近7天', 14: '近14天', 30: '近30天', 90: '近90天'};
-        document.getElementById('statsRangeLabel').textContent = labelMap[days] || '';
+        const labelMap = {7: '近7天', 14: '近14天', 30: '近30天', 60: '近60天', 90: '近90天'};
+        document.getElementById('statsRangeLabel').textContent = days ? (labelMap[days] || `近${days}天`) : '全部';
         const calLabel = document.getElementById('statsCalLabel');
-        if (calLabel) calLabel.textContent = days + 'd';
+        if (calLabel) calLabel.textContent = days ? days + 'd' : '全部';
         // 加载数据
         loadHealthStats(days);
     }
@@ -3484,7 +3575,8 @@
             const d = await res.json();
             if (d.error) return;
 
-            const label = `近${days}天`;
+            const label = days ? `近${days}天` : '全部';
+            const dateRange = days ? formatStatsDateRange(days) : '全部数据';
 
             // 血糖
             document.querySelector('#glucose-stats h6').innerHTML = `<i class="bi bi-droplet-fill me-2"></i>血糖监测（${label}）`;
@@ -3514,8 +3606,7 @@
                 const ts = detail.timestamp.substring(5, 16);
                 return detail.type + '<br>' + ts;
             }
-            const labelShort = `近${days}天均值`;
-            const dateRange = formatStatsDateRange(days);
+            const labelShort = days ? `近${days}天均值` : '全部均值';
             gCols[0].querySelector('.glucose-detail').innerHTML = labelShort + '<br>' + dateRange;
             gCols[1].querySelector('.glucose-detail').innerHTML = labelShort + '<br>' + dateRange;
             gCols[2].querySelector('.glucose-detail').innerHTML = formatGlucoseDetail(d.glucose.max_detail);
@@ -3535,10 +3626,21 @@
             setValueKeepUnit(eCards[0], d.exercise.total_distance || '0');
             setValueKeepUnit(eCards[1], d.exercise.total_calories || '0');
             setValueKeepUnit(eCards[2], d.exercise.avg_heart_rate || '-');
+            setValueKeepUnit(eCards[3], d.exercise.latest_vo2max || '-');
             const eDetails = document.querySelectorAll('#exercise-stats .exercise-detail');
-            if (eDetails[0]) eDetails[0].innerHTML = `近${days}天累计<br>${dateRange}`;
-            if (eDetails[1]) eDetails[1].innerHTML = `近${days}天累计<br>${dateRange}`;
-            if (eDetails[2]) eDetails[2].innerHTML = `近${days}天均值<br>${dateRange}`;
+            if (eDetails[0]) eDetails[0].innerHTML = `${days ? '近'+days+'天' : ''}累计<br>${dateRange}`;
+            if (eDetails[1]) eDetails[1].innerHTML = `${days ? '近'+days+'天' : ''}累计<br>${dateRange}`;
+            if (eDetails[2]) eDetails[2].innerHTML = `${days ? '近'+days+'天' : ''}均值<br>${dateRange}`;
+            if (eDetails[3]) {
+                if (d.exercise.latest_vo2max && d.exercise.prev_vo2max) {
+                    const diff = (d.exercise.latest_vo2max - d.exercise.prev_vo2max).toFixed(1);
+                    eDetails[3].innerHTML = `${diff > 0 ? '+' : ''}${diff} 较上次`;
+                } else if (d.exercise.latest_vo2max_date) {
+                    eDetails[3].innerHTML = `测量于<br>${d.exercise.latest_vo2max_date.substring(5, 16)}`;
+                } else {
+                    eDetails[3].innerHTML = '&nbsp;<br>&nbsp;';
+                }
+            }
 
             // 血压 — 更新数值（保留内嵌单位）+ 详情
             document.querySelector('#bp-stats h6').innerHTML = `<i class="bi bi-heart-pulse-fill me-2"></i>血压监测（${label}）`;
@@ -3548,7 +3650,7 @@
             setValueKeepUnit(bCards[1], d.bp.max_sys > 0 ? `${d.bp.max_sys}/${d.bp.max_dia}` : '-/-');
             setValueKeepUnit(bCards[2], d.bp.min_sys > 0 ? `${d.bp.min_sys}/${d.bp.min_dia}` : '-/-');
             const bDetails = document.querySelectorAll('#bp-stats .bp-detail');
-            if (bDetails[0]) bDetails[0].innerHTML = `近${days}天均值<br>${dateRange}`;
+            if (bDetails[0]) bDetails[0].innerHTML = `${labelShort}<br>${dateRange}`;
             if (bDetails[1]) bDetails[1].innerHTML = d.bp.max_timestamp ? `发生于<br>${d.bp.max_timestamp.substring(5, 16)}` : '&nbsp;<br>&nbsp;';
             if (bDetails[2]) bDetails[2].innerHTML = d.bp.min_timestamp ? `发生于<br>${d.bp.min_timestamp.substring(5, 16)}` : '&nbsp;<br>&nbsp;';
 
@@ -3570,12 +3672,12 @@
                     wDetails[1].innerHTML = bmiDetail;
                     if (d.weight.bmi_color) wDetails[1].style.color = d.weight.bmi_color;
                 }
-                wCards[2].querySelector('small:first-child').textContent = `${label.replace('近','').replace('天','')}天均值`;
+                wCards[2].querySelector('small:first-child').textContent = days ? `${days}天均值` : '全部均值';
                 setValueKeepUnit(wCards[2], d.weight.avg || '-');
-                if (wDetails[2]) wDetails[2].innerHTML = `近${days}天均值<br>${dateRange}`;
-                wCards[3].querySelector('small:first-child').textContent = `${days}天变化`;
+                if (wDetails[2]) wDetails[2].innerHTML = `${labelShort}<br>${dateRange}`;
+                wCards[3].querySelector('small:first-child').textContent = days ? `${days}天变化` : '总变化';
                 setValueKeepUnit(wCards[3], d.weight.change !== null ? (d.weight.change > 0 ? '+' : '') + d.weight.change : '-');
-                if (wDetails[3]) wDetails[3].innerHTML = `对比${days}天前<br>&nbsp;`;
+                if (wDetails[3]) wDetails[3].innerHTML = days ? `对比${days}天前<br>&nbsp;` : `对比最早记录<br>&nbsp;`;
             }
         } catch(e) { console.error('loadHealthStats error:', e); }
     }
@@ -3635,21 +3737,35 @@
         // 重新绑定长按事件
         initSlotLongPress();
 
-        // 进度条：每个slot对应一个等宽分段
+        // 进度条：每个slot对应一个等宽分段（时间感知）
         const total = data.completion.total;
         const pending = total - data.completion.measured - data.completion.predicted;
-        let barHtml = data.slots.map(s => {
+        const now = new Date();
+        const nowMinutes = now.getHours() * 60 + now.getMinutes();
+        let missedCount = 0;
+        let barHtml = data.overview.map(s => {
             let cls = '';
             if (s.status === 'measured') cls = 'seg-measured';
             else if (s.status === 'predicted') cls = 'seg-predicted';
+            else {
+                const [h, m] = s.time.split(':').map(Number);
+                if (!isToday || nowMinutes >= h * 60 + m) {
+                    cls = 'seg-missed';
+                    missedCount++;
+                }
+            }
             return `<div class="progress-segment ${cls}"></div>`;
         }).join('');
-        document.querySelector('.today-progress').innerHTML = barHtml;
+        const progressEl = document.querySelector('.today-progress');
+        progressEl.innerHTML = barHtml;
+        progressEl.classList.toggle('past-day', !isToday);
 
         // 进度条下方文字 + 状态胶囊
+        const futurePending = pending - missedCount;
         let footLeft = `<div class="overview-status"><div class="status-inner"><div class="status-label">实测</div><div class="status-count"><span class="count-measured">${data.completion.measured}</span></div></div>`;
         if (data.completion.predicted > 0) footLeft += `<span class="status-badge" style="background:rgba(6,182,212,0.12);color:#0891B2;">✦ 预测 ${data.completion.predicted}</span>`;
-        if (pending > 0) footLeft += `<span class="status-badge" style="background:rgba(0,0,0,0.06);color:#6c757d;">待测 ${pending}</span>`;
+        if (missedCount > 0) footLeft += `<span class="status-badge" style="background:rgba(239,83,80,0.10);color:#EF5350;">未测 ${missedCount}</span>`;
+        if (futurePending > 0) footLeft += `<span class="status-badge" style="background:rgba(0,0,0,0.06);color:#6c757d;">待测 ${futurePending}</span>`;
         footLeft += `</div>`;
 
         let footRight = `<div class="overview-status"><div class="status-inner"><div class="status-label">已测量</div><div class="status-count"><span class="count-measured">${data.completion.measured}</span><span class="count-sep">/</span><span>${total}</span></div></div>`;
@@ -3668,9 +3784,10 @@
                 <div style="font-size:0.75rem;" class="text-muted">
                 <div class="fw-semibold text-dark mb-1">${e.type}</div>
                 <div>📏 ${e.distance||0}km · ${e.duration||'--'}</div>`;
-            if (e.pace) exHtml += `<div>⏱️ 配速 ${e.pace}/km</div>`;
-            if (e.heart_rate) exHtml += `<div>💓 均心率 ${e.heart_rate}bpm</div>`;
+            if (e.pace) exHtml += `<div>⏱️ 平均配速 ${e.pace}/km</div>`;
+            if (e.heart_rate) exHtml += `<div>💓 平均心率 ${e.heart_rate}bpm</div>`;
             if (e.cadence) exHtml += `<div>👟 步频 ${e.cadence}spm</div>`;
+            if (e.vo2max) exHtml += `<div>🫁 VO₂max ${e.vo2max}</div>`;
             exHtml += `</div>`;
             exEl.innerHTML = exHtml;
         } else {
@@ -3712,26 +3829,37 @@
             const tempMeds = data.med_status.temp_medications || [];
 
             let medHtml = `<div class="d-flex align-items-center gap-1 mb-2"><span style="font-size:1rem;">💊</span><span class="fw-bold" style="color:var(--md-info);">用药</span></div>
-                <div style="font-size:0.7rem;" class="text-muted">
-                <div class="fw-semibold text-dark mb-1">当日 ${data.med_status.plans.length} 种药物</div>`;
+                <div id="render-med-wrap" style="font-size:0.7rem;" class="text-muted">
+                <div class="fw-semibold text-dark mb-1">当日 ${data.med_status.plans.length} 种药物</div>
+                <div class="med-list-collapse" id="render-med-inner">`;
 
-            // 长期用药
+            // 长期用药（按 med_type 分组）
             if (longTermMeds.length > 0) {
-                medHtml += `<div style="margin:0 0 4px;"><span style="font-size:0.65rem; color:#1565c0; background:#e3f2fd; padding:1px 6px; border-radius:3px;">日常用药</span></div>`;
+                const groups = {};
+                longTermMeds.forEach(med => {
+                    const t = med.med_type || '';
+                    if (!groups[t]) groups[t] = [];
+                    groups[t].push(med);
+                });
+                let first = true;
+                Object.keys(groups).sort().forEach(groupType => {
+                    medHtml += `<div style="margin:${first ? '0' : '6px'} 0 4px;"><span style="font-size:0.65rem; color:#1565c0; background:#e3f2fd; padding:1px 6px; border-radius:3px;">${groupType || '未分类'}</span></div>`;
+                    first = false;
+                    groups[groupType].forEach(med => {
+                        const taken = data.med_status.taken_details[med.id] || 0;
+                        const icon = taken >= med.times ? '<span style="color:#4CAF50; flex-shrink:0;">✓</span>' : '<span style="color:#ccc; flex-shrink:0;">○</span>';
+                        const dosageStr = med.dosage ? ` <span class="text-muted">${med.dosage}</span>` : '';
+                        let badge = '';
+                        const freq = med.frequency || 'daily';
+                        const fd = med.frequency_detail || '';
+                        if (freq === 'weekly') badge = `<span style="font-size:0.65rem; background:#e3f2fd; color:#1976d2; padding:0 4px; border-radius:3px; margin-left:3px;">每周${weekdayMap[fd] || fd}</span>`;
+                        else if (freq === 'biweekly') badge = `<span style="font-size:0.65rem; background:#f3e5f5; color:#7b1fa2; padding:0 4px; border-radius:3px; margin-left:3px;">每两周·${weekdayMap[fd] || fd}</span>`;
+                        else if (freq === 'monthly') badge = `<span style="font-size:0.65rem; background:#fff3e0; color:#e65100; padding:0 4px; border-radius:3px; margin-left:3px;">每月${fd}号</span>`;
+                        const timingStr = med.timing ? `<div style="font-size:0.7rem; color:#999;">${med.timing}</div>` : '';
+                        medHtml += `<div class="d-flex align-items-start gap-1 mb-1">${icon}<div style="line-height:1.3;"><span class="text-dark">${med.name}</span>${dosageStr}${badge}${timingStr}</div></div>`;
+                    });
+                });
             }
-            longTermMeds.forEach(med => {
-                const taken = data.med_status.taken_details[med.id] || 0;
-                const icon = taken >= med.times ? '<span style="color:#4CAF50; flex-shrink:0;">✓</span>' : '<span style="color:#ccc; flex-shrink:0;">○</span>';
-                const dosageStr = med.dosage ? ` <span class="text-muted">${med.dosage}</span>` : '';
-                let badge = '';
-                const freq = med.frequency || 'daily';
-                const fd = med.frequency_detail || '';
-                if (freq === 'weekly') badge = `<span style="font-size:0.65rem; background:#e3f2fd; color:#1976d2; padding:0 4px; border-radius:3px; margin-left:3px;">每周${weekdayMap[fd] || fd}</span>`;
-                else if (freq === 'biweekly') badge = `<span style="font-size:0.65rem; background:#f3e5f5; color:#7b1fa2; padding:0 4px; border-radius:3px; margin-left:3px;">每两周·${weekdayMap[fd] || fd}</span>`;
-                else if (freq === 'monthly') badge = `<span style="font-size:0.65rem; background:#fff3e0; color:#e65100; padding:0 4px; border-radius:3px; margin-left:3px;">每月${fd}号</span>`;
-                const timingStr = med.timing ? `<div style="font-size:0.7rem; color:#999;">${med.timing}</div>` : '';
-                medHtml += `<div class="d-flex align-items-start gap-1 mb-1">${icon}<div style="line-height:1.3;"><span class="text-dark">${med.name}</span>${dosageStr}${badge}${timingStr}</div></div>`;
-            });
 
             // 临时用药
             if (tempPlanMeds.length > 0 || tempMeds.length > 0) {
@@ -3750,8 +3878,11 @@
                 });
             }
 
+            medHtml += `<div class="med-list-fade" id="render-med-fade"></div></div>`;
+            medHtml += `<button class="med-list-expand-btn" onclick="toggleMedListCollapse('render-med-inner', 'render-med-fade')"><span class="expand-text">展开更多 ▾</span><span class="collapse-text">收起 ▴</span></button>`;
             medHtml += `</div>`;
             medEl.innerHTML = medHtml;
+            setTimeout(() => checkMedListOverflow('render-med-wrap'), 0);
         } else {
             medEl.innerHTML = `<div class="d-flex align-items-center gap-1 mb-2"><span style="font-size:1rem;">💊</span><span class="fw-bold" style="color:var(--md-info);">用药</span></div><div class="text-muted small">无用药计划</div>`;
         }
@@ -3829,12 +3960,14 @@
         let modal = document.getElementById('glucoseInputModal');
         if (modal) modal.remove();
 
+        const dateHint = overviewDate === todayStr ? '' : ` (${overviewDate.substring(5)})`;
+
         const modalHtml = `
             <div class="modal fade" id="glucoseInputModal" tabindex="-1">
                 <div class="modal-dialog modal-sm modal-dialog-centered">
                     <div class="modal-content">
                         <div class="modal-header py-2">
-                            <h6 class="modal-title mb-0">${icon} 录入${typeName}血糖</h6>
+                            <h6 class="modal-title mb-0">${icon} 录入${typeName}血糖${dateHint}</h6>
                             <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                         </div>
                         <div class="modal-body py-3">
@@ -3900,12 +4033,9 @@
         btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
 
         try {
-            // 使用当前日期 + 槽位的目标时间，避免因录入时间造成的匹配错误
-            const now = new Date();
-            const dateStr = now.getFullYear() + '-' +
-                String(now.getMonth() + 1).padStart(2, '0') + '-' +
-                String(now.getDate()).padStart(2, '0');
-            const targetTime = slotTimeMap[slotKey] || (String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0'));
+            // 使用当前概览日期 + 槽位的目标时间，避免因录入时间造成的匹配错误
+            const dateStr = overviewDate;
+            const targetTime = slotTimeMap[slotKey] || (String(new Date().getHours()).padStart(2, '0') + ':' + String(new Date().getMinutes()).padStart(2, '0'));
             const timestamp = dateStr + ' ' + targetTime + ':00';
 
             const res = await fetch('/add', {
@@ -4017,7 +4147,7 @@
 
     // 血压时间范围切换
     async function changeBPRange(days) {
-        const labelMap = {7: '近7天', 14: '近14天', 30: '近30天', 90: '近90天'};
+        const labelMap = {7: '近7天', 14: '近14天', 30: '近30天', 60: '近60天', 90: '近90天'};
         document.querySelectorAll('#bpRangeDropdown .dropdown-item').forEach(b => b.classList.remove('active'));
         const daysAttr = days === null ? 'all' : days;
         const activeItem = document.querySelector(`#bpRangeDropdown .dropdown-item[data-days="${daysAttr}"]`);
@@ -4033,7 +4163,7 @@
 
     // 体重时间范围切换
     async function changeWeightRange(days) {
-        const labelMap = {7: '近7天', 14: '近14天', 30: '近30天', 90: '近90天'};
+        const labelMap = {7: '近7天', 14: '近14天', 30: '近30天', 60: '近60天', 90: '近90天'};
         document.querySelectorAll('#weightRangeDropdown .dropdown-item').forEach(b => b.classList.remove('active'));
         const daysAttr = days === null ? 'all' : days;
         const activeItem = document.querySelector(`#weightRangeDropdown .dropdown-item[data-days="${daysAttr}"]`);
@@ -4435,6 +4565,24 @@
 
         // 初始化长按录入
         initSlotLongPress();
+
+        // 检查用药列表是否需要折叠按钮
+        checkMedListOverflow('card-med-list');
+        checkMedListOverflow('card-supp-list');
+
+        // 初始进度条：为今天已过时间但未测的slot添加seg-missed
+        (function() {
+            const segs = document.querySelectorAll('.today-progress .progress-segment');
+            const now = new Date();
+            const nowMin = now.getHours() * 60 + now.getMinutes();
+            segs.forEach(seg => {
+                if (seg.classList.contains('seg-measured') || seg.classList.contains('seg-predicted')) return;
+                const t = seg.dataset.time;
+                if (!t) return;
+                const [h, m] = t.split(':').map(Number);
+                if (nowMin >= h * 60 + m) seg.classList.add('seg-missed');
+            });
+        })();
 
         // Initialize dayModal after DOM is ready
         dayModal = new bootstrap.Modal(document.getElementById('dayDetailsModal'));
@@ -6763,6 +6911,7 @@
                             | ⏱️ ${item.duration || '--'}
                             | ❤️ ${item.heart_rate || '--'} bpm
                             ${item.pace ? `| 配速 ${item.pace}` : ''}
+                            ${item.vo2max ? `| 🫁 VO₂max ${item.vo2max}` : ''}
                         </div>
                         ${item.notes ? `<p class="mb-0 small text-secondary">${item.notes}</p>` : ''}
                     </div>
@@ -7257,6 +7406,7 @@
             document.getElementById('editNotes').value = data.notes || '';
             document.getElementById('editCalories').value = data.calories || '';
             document.getElementById('editDistance').value = data.distance || '';
+            document.getElementById('editVo2max').value = data.vo2max || '';
 
             if (data.timestamp) {
                 const ts = data.timestamp.replace(' ', 'T').slice(0, 16);
@@ -7283,7 +7433,8 @@
             notes: document.getElementById('editNotes').value,
             timestamp: timestamp,
             calories: parseInt(document.getElementById('editCalories').value) || 0,
-            distance: parseFloat(document.getElementById('editDistance').value) || null
+            distance: parseFloat(document.getElementById('editDistance').value) || null,
+            vo2max: parseFloat(document.getElementById('editVo2max').value) || null
         };
 
         try {
@@ -8130,7 +8281,40 @@
             }
             sibling = sibling.nextElementSibling;
         }
-        document.getElementById(showId).style.display = '';
+        const shown = document.getElementById(showId);
+        shown.style.display = '';
+        // 重置折叠状态
+        const collapse = shown.querySelector('.med-list-collapse');
+        if (collapse) {
+            collapse.classList.remove('expanded');
+            const fade = collapse.querySelector('.med-list-fade');
+            if (fade) fade.style.display = '';
+        }
+        checkMedListOverflow(showId);
+    }
+
+    // ========== 用药列表折叠 ==========
+    function toggleMedListCollapse(innerId, fadeId) {
+        const inner = document.getElementById(innerId);
+        const fade = document.getElementById(fadeId);
+        inner.classList.toggle('expanded');
+        if (fade) fade.style.display = inner.classList.contains('expanded') ? 'none' : '';
+    }
+
+    function checkMedListOverflow(containerId) {
+        const container = document.getElementById(containerId);
+        if (!container) return;
+        const inner = container.querySelector('.med-list-collapse');
+        if (!inner) return;
+        const fade = inner.querySelector('.med-list-fade');
+        const btn = container.querySelector('.med-list-expand-btn');
+        if (inner.scrollHeight <= inner.clientHeight) {
+            if (fade) fade.style.display = 'none';
+            if (btn) btn.style.display = 'none';
+        } else {
+            if (fade) fade.style.display = '';
+            if (btn) btn.style.display = '';
+        }
     }
 
     // ========== 药物/补剂 Tab 切换 ==========

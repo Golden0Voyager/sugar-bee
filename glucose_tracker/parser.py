@@ -77,6 +77,7 @@ def parse_glucose_input(text, history_context=None, images_data=None, mime_type=
 
        - **情况 A：运动/健康App截图**
          - 提取：距离(km)、时长、心率、配速、步频、消耗卡路里。
+         - **最大摄氧量(VO2max)**：如截图中有最大摄氧量/VO2max数值，务必提取到 vo2max 字段。
          - **时间**：务必提取截图中的运动开始时间。
          - 类型设为 "跑步" 或 "运动"。
          - **重要**：运动记录只记录运动数据本身，不要生成运动后血糖预测！血糖预测由系统统一处理。
@@ -218,6 +219,7 @@ def parse_glucose_input(text, history_context=None, images_data=None, mime_type=
             "heart_rate": int,
             "pace": "string",
             "cadence": int,
+            "vo2max": float (最大摄氧量 ml/kg/min，仅运动记录，可选),
             "systolic_pressure": int (收缩压/高压，可选),
             "diastolic_pressure": int (舒张压/低压，可选),
             "pulse_rate": int (脉搏，可选),
