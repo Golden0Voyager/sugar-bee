@@ -5,8 +5,31 @@ import settings
 from ai_client import call_ai
 
 
+def _preprocess_relative_dates(text):
+    """将相对日期（如"60天前"、"昨天"）预计算为绝对日期，避免小模型算术错误"""
+    now = datetime.datetime.now()
+
+    # "X天前" → 绝对日期
+    def replace_days_ago(match):
+        days = int(match.group(1))
+        target = now - datetime.timedelta(days=days)
+        return target.strftime('%Y年%m月%d日')
+
+    text = re.sub(r'(\d+)\s*天前', replace_days_ago, text)
+    text = re.sub(r'昨天', (now - datetime.timedelta(days=1)).strftime('%Y年%m月%d日'), text)
+    text = re.sub(r'前天', (now - datetime.timedelta(days=2)).strftime('%Y年%m月%d日'), text)
+    text = re.sub(r'大前天', (now - datetime.timedelta(days=3)).strftime('%Y年%m月%d日'), text)
+    text = re.sub(r'上周', (now - datetime.timedelta(days=7)).strftime('%Y年%m月%d日'), text)
+    text = re.sub(r'上个月', (now - datetime.timedelta(days=30)).strftime('%Y年%m月%d日'), text)
+    return text
+
+
 def parse_glucose_input(text, history_context=None, images_data=None, mime_type=None):
     current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    # 预处理：将相对日期转为绝对日期
+    if text:
+        text = _preprocess_relative_dates(text)
 
     context_str = "无历史数据参考，请使用通用医疗标准。"
     if history_context:
@@ -76,7 +99,7 @@ def parse_glucose_input(text, history_context=None, images_data=None, mime_type=
          - 纠正信息："不是午餐，是早餐" → 按早餐处理
 
        - **情况 A：运动/健康App截图**
-         - 提取：距离(km)、时长、心率、配速、步频、消耗卡路里。
+         - 提取：距离(km)、时长、心率(平均+最大)、配速、步频、步数、消耗卡路里。
          - **最大摄氧量(VO2max)**：如截图中有最大摄氧量/VO2max数值，务必提取到 vo2max 字段。
          - **时间**：务必提取截图中的运动开始时间。
          - 类型设为 "跑步" 或 "运动"。
@@ -141,6 +164,7 @@ def parse_glucose_input(text, history_context=None, images_data=None, mime_type=
       - "中午13:10测的124/68" → type="血压测量", systolic_pressure=124, diastolic_pressure=68, datetime=今天13:10
       - "餐后血压130/75，脉搏82" → type="餐后血压", systolic_pressure=130, diastolic_pressure=75, pulse_rate=82
       - "血压137/73 血氧98" → type="血压测量", systolic_pressure=137, diastolic_pressure=73, spo2=98
+      - "血压119/70、68" → type="血压测量", systolic_pressure=119, diastolic_pressure=70, pulse_rate=68（血压后紧跟的第三个数字为脉搏/心率）
 
     **体重识别规则**:
     - 识别关键词：体重/称了/称重/秤/重了/kg/公斤
@@ -198,6 +222,14 @@ def parse_glucose_input(text, history_context=None, images_data=None, mime_type=
     4. 日期时间 (`datetime`):
        - 图片优先：使用图片中的时间。
        - 文本推断：基于作息时间表。
+       - **相对日期计算**（基于当前时间 {current_time}）：
+         - "昨天" → 当前日期 - 1天
+         - "前天" → 当前日期 - 2天
+         - "3天前" / "三天前" → 当前日期 - 3天
+         - "X天前" → 当前日期 - X天（X为任意数字，如"90天前"→当前日期-90天）
+         - "上周" → 当前日期 - 7天
+         - "上个月" → 当前日期 - 30天
+         - 必须准确计算日期，不要默认使用今天！
        - 格式必须是 "YYYY-MM-DD HH:MM:SS"。
 
     JSON 结构要求:
@@ -209,16 +241,18 @@ def parse_glucose_input(text, history_context=None, images_data=None, mime_type=
             "type": "string",
             "datetime": "YYYY-MM-DD HH:MM:SS",
             "notes": "string",
-            "calories": int,
+            "calories": int (热量kcal，餐食记录为食物热量，运动记录为消耗热量),
             "carbs_grams": float (碳水化合物含量，单位g，仅餐食记录需要),
             "gi_value": float (升糖指数0-100，仅餐食记录需要),
             "diet_analysis": "string",
             "is_predicted": boolean,
             "distance": float,
             "duration": "string",
-            "heart_rate": int,
+            "heart_rate": int (平均心率，仅运动记录),
+            "max_heart_rate": int (最大心率，仅运动记录，可选),
             "pace": "string",
             "cadence": int,
+            "steps": int (步数，仅运动记录，可选),
             "vo2max": float (最大摄氧量 ml/kg/min，仅运动记录，可选),
             "systolic_pressure": int (收缩压/高压，可选),
             "diastolic_pressure": int (舒张压/低压，可选),

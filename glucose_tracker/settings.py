@@ -5,15 +5,37 @@ import os
 CONFIG_FILE = "user_config.json"
 
 # ========== AI 模型配置 ==========
-# Gemini 模型链（按优先级排列，全部失败时自动降级到 ZhipuAI）
-GEMINI_MODELS = ['gemini-3-flash-preview', 'gemini-2.5-flash']
+# 降级链：ModelScope → 火山引擎 → OpenRouter → Gemini（保底）
+# 应用内置 API Key，用户无需自行配置
 
-# ZhipuAI 模型配置（国内可用，免费）
-ZHIPUAI_MODELS = {
-    'text': ['glm-4.7-flash'],          # 文本生成（免费，200K上下文）
-    'vision': ['glm-4.6v-flash'],      # 图片识别（免费，base64支持）
+# ModelScope 模型配置（国内可用，免费2000次/天，单模型500次/天，OpenAI 兼容接口）
+# 三类任务使用不同模型，有效容量翻3倍（每模型独立500次/天）
+MODELSCOPE_MODELS = {
+    'text': ['Qwen/Qwen3-32B'],               # JSON解析/预测（32B结构化输出稳定，复杂口语理解强）
+    'vision': ['Qwen/Qwen3-VL-8B-Thinking'],   # 截图识别（带思考过程，数字识别极其精准）
+    'report': ['deepseek-ai/DeepSeek-R1-0528'], # 报告分析（最强推理，医学逻辑天花板）
+    'extra_body': {'enable_thinking': False},    # 仅对 text 任务生效（Qwen3 标准模型需关闭思考模式）
 }
-ZHIPUAI_BASE_URL = 'https://open.bigmodel.cn/api/paas/v4/'
+MODELSCOPE_BASE_URL = 'https://api-inference.modelscope.cn/v1/'
+
+# 火山引擎/豆包 模型配置（国内可用，免费50万tokens/模型，OpenAI 兼容接口）
+VOLC_MODELS = {
+    'text': ['doubao-seed-1-6-250615'],
+    'vision': ['doubao-1-5-vision-pro-250328'],
+    'report': ['doubao-seed-1-6-250615'],
+}
+VOLC_BASE_URL = 'https://ark.cn-beijing.volces.com/api/v3'
+
+# OpenRouter 模型配置（全球可用，OpenAI 兼容接口）
+OPENROUTER_MODELS = {
+    'text': ['google/gemini-2.5-flash'],
+    'vision': ['google/gemini-2.5-flash'],
+    'report': ['google/gemini-2.5-flash'],
+}
+OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1'
+
+# Gemini 直连（保底，海外可用）
+GEMINI_MODELS = ['gemini-3-flash-preview', 'gemini-2.5-flash']
 
 # ========== 血糖值验证范围常量 ==========
 # 用于数据验证和预测值范围检查，单位：mmol/L

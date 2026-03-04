@@ -191,6 +191,13 @@ def init_db():
         except sqlite3.OperationalError:
             pass  # Column already exists
 
+        # Migration: Add max_heart_rate and steps columns for exercise records
+        for col in ['max_heart_rate INTEGER', 'steps INTEGER']:
+            try:
+                c.execute(f"ALTER TABLE records ADD COLUMN {col}")
+            except sqlite3.OperationalError:
+                pass
+
         # Create medication_plans table (药物方案)
         c.execute('''CREATE TABLE IF NOT EXISTS medication_plans
                      (id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -286,6 +293,13 @@ def init_db():
         c.execute('CREATE INDEX IF NOT EXISTS idx_records_bp ON records(user_id, systolic_pressure, timestamp DESC)')
         # 健康分析报告
         c.execute('CREATE INDEX IF NOT EXISTS idx_analyses_user ON health_analyses(user_id, created_at DESC)')
+
+        # Migration: Add days column to health_analyses
+        try:
+            c.execute("ALTER TABLE health_analyses ADD COLUMN days INTEGER DEFAULT 7")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+
         # 药物日志
         c.execute('CREATE INDEX IF NOT EXISTS idx_medlogs_plan ON medication_logs(plan_id, log_date)')
 
@@ -561,6 +575,21 @@ def predict_morning_fpg(db, user_id=1):
         """, (user_id,))
         recent_fpg = c.fetchall()
 
+        # 4.3b 历史预测反馈：近 14 天预测 vs 真实值对照
+        c.execute("""
+            SELECT p.value AS predicted, r.value AS actual, p.prediction_error,
+                   r.timestamp AS actual_time
+            FROM records p
+            JOIN records r ON p.verified_by_real_id = r.id
+            WHERE p.user_id = ?
+            AND p.is_predicted = 1
+            AND p.prediction_error IS NOT NULL
+            AND p.type LIKE '%空腹%'
+            AND r.timestamp > datetime('now', '-14 days')
+            ORDER BY r.timestamp DESC
+        """, (user_id,))
+        prediction_history = c.fetchall()
+
         # 4.4 当前用药情况
         c.execute("""
             SELECT medication_name, dosage, dose_quantity, dose_unit, times_per_day, timing_notes
@@ -630,6 +659,32 @@ def predict_morning_fpg(db, user_id=1):
         else:
             nutrition_summary = "前一天无详细营养数据"
 
+        # 历史预测反馈
+        if prediction_history:
+            errors = [r[2] for r in prediction_history]
+            avg_error = sum(errors) / len(errors)
+            abs_errors = [abs(e) for e in errors]
+            avg_abs_error = sum(abs_errors) / len(abs_errors)
+            bias_direction = "偏高" if avg_error > 0.2 else ("偏低" if avg_error < -0.2 else "无明显偏差")
+
+            # 具体预测-实际对照（few-shot）
+            pairs = '\n'.join([
+                f"  - {r[3].split(' ')[0]}: 预测 {r[0]:.1f} → 实际 {r[1]:.1f}（误差 {r[2]:+.1f}）"
+                for r in prediction_history[:7]
+            ])
+
+            prediction_feedback = f"""
+历史预测反馈（近14天，{len(prediction_history)}次空腹预测）：
+- 平均绝对误差: {avg_abs_error:.2f} mmol/L
+- 系统性偏差: {bias_direction}（平均误差 {avg_error:+.2f} mmol/L）
+- 近期预测对照:
+{pairs}
+
+⚠️ 校准要求：请根据上述历史偏差调整你的预测。如果过去预测持续偏高，本次应适当下调；反之亦然。具体案例比统计数字更重要——关注近几天的误差模式。
+            """
+        else:
+            prediction_feedback = ""
+
         # 用药情况
         if medications:
             med_summary = "当前用药方案：\n"
@@ -661,6 +716,8 @@ def predict_morning_fpg(db, user_id=1):
 
 {nutrition_summary}
 
+{prediction_feedback}
+
 {med_summary}
 
 **预测任务**：
@@ -671,6 +728,7 @@ def predict_morning_fpg(db, user_id=1):
   3. 前一天营养结构（高碳水+高GI通常导致晨起血糖偏高）
   4. 近期空腹血糖趋势
   5. 当前用药控制效果
+  6. 历史预测反馈（如有，据此校准预测偏差）
 - 预测值应在合理范围内（3.5-10.0 mmol/L）
 - 给出简短的预测依据说明（1-2句话）
 
@@ -845,6 +903,44 @@ def predict_post_exercise_glucose(db, user_id=1, target_date=None, force_update=
         else:
             avg_diff = -0.5  # 默认运动后血糖比空腹低 0.5 mmol/L
 
+        # 4b. 历史预测反馈：运动后血糖预测 vs 真实值
+        c.execute("""
+            SELECT p.value AS predicted, r.value AS actual, p.prediction_error,
+                   r.timestamp AS actual_time
+            FROM records p
+            JOIN records r ON p.verified_by_real_id = r.id
+            WHERE p.user_id = ?
+            AND p.is_predicted = 1
+            AND p.prediction_error IS NOT NULL
+            AND p.type = '运动后'
+            AND r.timestamp > datetime(?, '-30 days')
+            ORDER BY r.timestamp DESC
+        """, (user_id, target_date,))
+        exercise_pred_history = c.fetchall()
+
+        exercise_feedback = ""
+        if exercise_pred_history:
+            ex_errors = [r[2] for r in exercise_pred_history]
+            ex_avg_error = sum(ex_errors) / len(ex_errors)
+            ex_abs_errors = [abs(e) for e in ex_errors]
+            ex_avg_abs_error = sum(ex_abs_errors) / len(ex_abs_errors)
+            ex_bias = "偏高" if ex_avg_error > 0.2 else ("偏低" if ex_avg_error < -0.2 else "无明显偏差")
+
+            ex_pairs = '\n'.join([
+                f"  - {r[3].split(' ')[0]}: 预测 {r[0]:.1f} → 实际 {r[1]:.1f}（误差 {r[2]:+.1f}）"
+                for r in exercise_pred_history[:7]
+            ])
+
+            exercise_feedback = f"""
+### 历史预测反馈（近30天，{len(exercise_pred_history)}次运动后预测）
+- 平均绝对误差: {ex_avg_abs_error:.2f} mmol/L
+- 系统性偏差: {ex_bias}（平均误差 {ex_avg_error:+.2f} mmol/L）
+- 近期预测对照:
+{ex_pairs}
+
+⚠️ 校准要求：请根据上述历史偏差调整你的预测。关注近几天的误差模式。
+"""
+
         # 5. 构建 AI 预测提示词
         user_profile = settings.get_ai_system_prompt()
 
@@ -869,6 +965,8 @@ def predict_post_exercise_glucose(db, user_id=1, target_date=None, force_update=
 - 历史运动后与空腹血糖平均差值: {avg_diff:.2f} mmol/L
 - 历史数据点数: {len(historical_data)}
 
+{exercise_feedback}
+
 ## 预测任务
 
 请预测 {target_date} 运动后血糖值（约 08:45）。
@@ -877,7 +975,8 @@ def predict_post_exercise_glucose(db, user_id=1, target_date=None, force_update=
 1. 运动强度和时长对血糖的消耗影响
 2. 空腹血糖基线
 3. 历史差值规律
-4. 运动后血糖通常比空腹低，但不会低于正常范围
+4. 历史预测反馈（如有，据此校准预测偏差）
+5. 运动后血糖通常比空腹低，但不会低于正常范围
 
 **预测范围**：3.5-8.0 mmol/L（运动后的合理范围）
 
@@ -1348,16 +1447,18 @@ def generate_health_analysis(db, user_id=1, is_auto=False, days=7):
                 print("Today's auto analysis already exists, skipping...")
                 return {"skipped": True, "message": "今日已生成分析"}
 
-        # 1. 收集指定天数内的血糖数据
+        # 1. 收集指定天数内的血糖数据（含关联的预测值和预测误差）
         c = db.cursor()
         c.execute("""
-            SELECT value, type, timestamp FROM records
-            WHERE user_id = ?
-            AND value > 0
-            AND is_predicted = 0
-            AND timestamp > datetime('now', ? || ' days')
-            AND type NOT IN ('跑步', '运动', '血压')
-            ORDER BY timestamp DESC
+            SELECT r.value, r.type, r.timestamp, p.value AS predicted_value, p.prediction_error
+            FROM records r
+            LEFT JOIN records p ON p.verified_by_real_id = r.id AND p.is_predicted = 1
+            WHERE r.user_id = ?
+            AND r.value > 0
+            AND r.is_predicted = 0
+            AND r.timestamp > datetime('now', ? || ' days')
+            AND r.type NOT IN ('跑步', '运动', '血压')
+            ORDER BY r.timestamp DESC
         """, (user_id, f'-{days}',))
         glucose_records = c.fetchall()
 
@@ -1373,9 +1474,10 @@ def generate_health_analysis(db, user_id=1, is_auto=False, days=7):
         """, (user_id, f'-{days}',))
         bp_records = c.fetchall()
 
-        # 3. 收集指定天数内的运动数据
+        # 3. 收集指定天数内的运动数据（含详细指标）
         c.execute("""
-            SELECT distance, duration, heart_rate, calories, timestamp
+            SELECT distance, duration, heart_rate, max_heart_rate, calories,
+                   pace, cadence, steps, vo2max, timestamp
             FROM records
             WHERE user_id = ?
             AND (type IN ('跑步', '运动') OR distance IS NOT NULL)
@@ -1384,9 +1486,9 @@ def generate_health_analysis(db, user_id=1, is_auto=False, days=7):
         """, (user_id, f'-{days}',))
         exercise_records = c.fetchall()
 
-        # 4. 收集指定天数内的饮食数据
+        # 4. 收集指定天数内的饮食数据（含碳水、GI值、食物记录）
         c.execute("""
-            SELECT calories, diet_analysis, timestamp
+            SELECT calories, carbs_grams, gi_value, diet_analysis, notes, type, timestamp
             FROM records
             WHERE user_id = ?
             AND calories > 0
@@ -1396,14 +1498,38 @@ def generate_health_analysis(db, user_id=1, is_auto=False, days=7):
         """, (user_id, f'-{days}',))
         diet_records = c.fetchall()
 
-        # 5. 收集当前用药信息
+        # 5. 收集当前用药信息（含分类、起始时间、类型）
         c.execute("""
-            SELECT medication_name, dosage, dose_quantity, dose_unit, times_per_day, timing_notes
+            SELECT medication_name, dosage, dose_quantity, dose_unit, times_per_day, timing_notes,
+                   category, start_date, med_type
             FROM medication_plans
             WHERE user_id = ?
             AND is_active = 1
         """, (user_id,))
         medications = c.fetchall()
+
+        # 5b. 查询分析期内的临时用药记录
+        c.execute("""
+            SELECT medication_name, notes, timestamp
+            FROM records
+            WHERE user_id = ?
+            AND medication_name IS NOT NULL AND medication_name != ''
+            AND timestamp > datetime('now', ? || ' days')
+            ORDER BY timestamp DESC
+        """, (user_id, f'-{days}',))
+        temp_med_records = c.fetchall()
+
+        # 5c. 查询服药依从性（分析期内的打卡记录）
+        c.execute("""
+            SELECT ml.plan_id, mp.medication_name, COUNT(*) as taken_count
+            FROM medication_logs ml
+            JOIN medication_plans mp ON ml.plan_id = mp.id
+            WHERE ml.user_id = ?
+            AND ml.log_date > date('now', ? || ' days')
+            AND ml.taken = 1
+            GROUP BY ml.plan_id
+        """, (user_id, f'-{days}',))
+        adherence_records = c.fetchall()
 
         # 6. 收集指定天数内的体重数据
         c.execute("""
@@ -1438,6 +1564,19 @@ def generate_health_analysis(db, user_id=1, is_auto=False, days=7):
 - 餐后平均: {postmeal_avg_str}
 - 详细记录: {', '.join([f"{r[0]:.1f} mmol/L ({r[1]}, {r[2]})" for r in glucose_records[:10]])}
             """
+
+            # AI 预测准确度分析
+            predictions_with_error = [(r[3], r[4]) for r in glucose_records if r[3] is not None and r[4] is not None]
+            if predictions_with_error:
+                errors = [p[1] for p in predictions_with_error]
+                avg_error = sum(errors) / len(errors)
+                abs_errors = [abs(e) for e in errors]
+                avg_abs_error = sum(abs_errors) / len(abs_errors)
+                bias_direction = "偏高" if avg_error > 0.2 else ("偏低" if avg_error < -0.2 else "无明显偏差")
+                glucose_summary += f"""- AI预测准确度（{len(predictions_with_error)}次有预测值）：
+  - 平均绝对误差: {avg_abs_error:.2f} mmol/L
+  - 预测偏差趋势: {bias_direction}（平均误差 {avg_error:+.2f}）
+"""
         else:
             glucose_summary = f"近{days}天无血糖记录"
 
@@ -1462,34 +1601,60 @@ def generate_health_analysis(db, user_id=1, is_auto=False, days=7):
         # 运动摘要
         if exercise_records:
             total_distance = sum([r[0] for r in exercise_records if r[0]])
-            total_calories = sum([r[3] for r in exercise_records if r[3]])
+            total_calories = sum([r[4] for r in exercise_records if r[4]])
 
             # 分离今天和历史数据
             today_str = now.strftime('%Y-%m-%d')
-            today_exercises = [r for r in exercise_records if r[4] and r[4].startswith(today_str)]
+            today_exercises = [r for r in exercise_records if r[9] and r[9].startswith(today_str)]
             today_distance = sum([r[0] for r in today_exercises if r[0]]) if today_exercises else 0
-            today_calories = sum([r[3] for r in today_exercises if r[3]]) if today_exercises else 0
+            today_calories = sum([r[4] for r in today_exercises if r[4]]) if today_exercises else 0
 
             exercise_summary = f"""
 近{days}天运动数据（共{len(exercise_records)}次）：
 - 总里程: {total_distance:.1f} km，总消耗: {total_calories} kcal
 - 平均每次: {total_distance/len(exercise_records):.1f} km, {total_calories/len(exercise_records):.0f} kcal
 - 今日运动: {today_distance:.1f} km，消耗 {today_calories} kcal
-- 详细记录: {', '.join([f"{r[0]:.1f}km, {r[1]}, {r[2]}bpm ({r[4]})" for r in exercise_records[:5] if r[0]])}
+- 详细记录: {', '.join([f"{r[0]:.1f}km, {r[1]}, {r[2]}bpm ({r[9]})" for r in exercise_records[:5] if r[0]])}
             """
+
+            # 心率分析
+            hr_values = [r[2] for r in exercise_records if r[2]]
+            max_hr_values = [r[3] for r in exercise_records if r[3]]
+            if hr_values:
+                exercise_summary += f"- 平均心率: {sum(hr_values)/len(hr_values):.0f} bpm\n"
+            if max_hr_values:
+                exercise_summary += f"- 最大心率: {max(max_hr_values)} bpm\n"
+
+            # VO2max 趋势
+            vo2max_values = [(r[8], r[9]) for r in exercise_records if r[8]]
+            if vo2max_values:
+                latest_vo2 = vo2max_values[0][0]
+                exercise_summary += f"- 最新VO2max: {latest_vo2:.1f} mL/kg/min"
+                if len(vo2max_values) > 1:
+                    oldest_vo2 = vo2max_values[-1][0]
+                    vo2_change = latest_vo2 - oldest_vo2
+                    exercise_summary += f"（{days}天变化: {vo2_change:+.1f}）"
+                exercise_summary += "\n"
+
+            # 配速/步频趋势
+            pace_values = [r[5] for r in exercise_records if r[5]]
+            cadence_values = [r[6] for r in exercise_records if r[6]]
+            steps_values = [r[7] for r in exercise_records if r[7]]
+            if pace_values:
+                exercise_summary += f"- 配速记录: {', '.join(pace_values[:5])}\n"
+            if cadence_values:
+                avg_cadence = sum(cadence_values) / len(cadence_values)
+                exercise_summary += f"- 平均步频: {avg_cadence:.0f} spm\n"
+            if steps_values:
+                exercise_summary += f"- 总步数: {sum(steps_values)} 步，平均每次 {sum(steps_values)/len(steps_values):.0f} 步\n"
         else:
             exercise_summary = f"近{days}天无运动记录"
 
-        # 饮食摘要（考虑默认餐食）
-        # 加载用户配置
-        user_config = settings.load_config()
-        default_meals = user_config.get('default_meals', {})
-
+        # 饮食摘要（如实报告，不做预设补足）
         # 计算实际记录的摄入
         recorded_intake = sum([r[0] for r in diet_records]) if diet_records else 0
 
-        # 统计每天的餐食记录情况，补齐默认值
-        # 生成分析范围内的所有日期
+        # 统计每天的餐食记录情况，计算缺失餐数
         from datetime import timedelta
         start_date = now - timedelta(days=days)
         all_dates = [(start_date + timedelta(days=i)).strftime('%Y-%m-%d') for i in range(days)]
@@ -1498,12 +1663,11 @@ def generate_health_analysis(db, user_id=1, is_auto=False, days=7):
         daily_meals = {date: {'breakfast': False, 'lunch': False, 'dinner': False, 'recorded_cal': 0} for date in all_dates}
 
         for record in diet_records:
-            date_str = record[2].split(' ')[0]  # timestamp -> date
+            date_str = record[6].split(' ')[0]  # timestamp -> date
             if date_str not in daily_meals:
-                continue  # 不在分析范围内
+                continue
 
-            # 判断是哪一餐（简单判断，基于时间或类型）
-            time_str = record[2].split(' ')[1] if ' ' in record[2] else '00:00:00'
+            time_str = record[6].split(' ')[1] if ' ' in record[6] else '00:00:00'
             hour = int(time_str.split(':')[0])
 
             if 6 <= hour < 10:
@@ -1515,43 +1679,102 @@ def generate_health_analysis(db, user_id=1, is_auto=False, days=7):
 
             daily_meals[date_str]['recorded_cal'] += record[0]
 
-        # 计算补齐的默认卡路里
-        estimated_default_cal = 0
-        for date_str in daily_meals:
-            if not daily_meals[date_str]['breakfast'] and default_meals.get('breakfast', {}).get('enabled', True):
-                estimated_default_cal += default_meals.get('breakfast', {}).get('calories', 300)
-            if not daily_meals[date_str]['lunch'] and default_meals.get('lunch', {}).get('enabled', True):
-                estimated_default_cal += default_meals.get('lunch', {}).get('calories', 500)
-            if not daily_meals[date_str]['dinner'] and default_meals.get('dinner', {}).get('enabled', True):
-                estimated_default_cal += default_meals.get('dinner', {}).get('calories', 500)
+        # 统计缺失餐数
+        missing_breakfast = sum(1 for d in daily_meals.values() if not d['breakfast'])
+        missing_lunch = sum(1 for d in daily_meals.values() if not d['lunch'])
+        missing_dinner = sum(1 for d in daily_meals.values() if not d['dinner'])
+        total_missing = missing_breakfast + missing_lunch + missing_dinner
 
-        # 总摄入 = 实际记录 + 估计默认值
-        total_estimated_intake = recorded_intake + estimated_default_cal
-
-        if diet_records or estimated_default_cal > 0:
+        if diet_records:
             diet_summary = f"""
-近{days}天饮食数据：
-- 实际记录摄入: {recorded_intake} kcal（{len(diet_records)}次记录）
-- 估算默认摄入: {estimated_default_cal} kcal（未记录的餐食按默认值计）
-- 估算总摄入: {total_estimated_intake} kcal
-- 平均每天: {total_estimated_intake/days:.0f} kcal
-注：未记录的餐食按配置的默认卡路里估算（早餐{default_meals.get('breakfast', {}).get('calories', 300)}，午餐{default_meals.get('lunch', {}).get('calories', 500)}，晚餐{default_meals.get('dinner', {}).get('calories', 500)}大卡）
-            """
+近{days}天饮食数据（共{len(diet_records)}次记录）：
+- 实际记录摄入: {recorded_intake} kcal
+- 日均记录摄入: {recorded_intake/days:.0f} kcal
+- 记录完整性: {days}天中有{total_missing}顿未记录（早餐缺{missing_breakfast}天、午餐缺{missing_lunch}天、晚餐缺{missing_dinner}天）
+"""
+            # 碳水摄入分析
+            carbs_values = [r[1] for r in diet_records if r[1]]
+            if carbs_values:
+                total_carbs = sum(carbs_values)
+                diet_summary += f"- 总碳水摄入: {total_carbs:.0f}g，日均 {total_carbs/days:.0f}g\n"
+
+            # GI 值分析
+            gi_values = [r[2] for r in diet_records if r[2]]
+            if gi_values:
+                avg_gi = sum(gi_values) / len(gi_values)
+                high_gi_count = len([gi for gi in gi_values if gi >= 70])
+                high_gi_ratio = high_gi_count / len(gi_values) * 100
+                diet_summary += f"- 平均GI值: {avg_gi:.0f}，高GI餐比例: {high_gi_ratio:.0f}%（{high_gi_count}/{len(gi_values)}次）\n"
+
+            # 具体食物记录
+            food_details = []
+            for r in diet_records[:8]:
+                detail = f"{r[6].split(' ')[0]} {r[5]}: {r[0]}kcal"
+                if r[1]:
+                    detail += f", 碳水{r[1]:.0f}g"
+                if r[2]:
+                    detail += f", GI{r[2]:.0f}"
+                if r[4]:
+                    detail += f" ({r[4][:30]})"
+                food_details.append(detail)
+            if food_details:
+                diet_summary += f"- 近期记录: {'; '.join(food_details)}\n"
+
+            diet_summary += "注意：未记录的餐食热量未知，请勿假设或估算。\n"
         else:
             diet_summary = f"近{days}天无饮食记录"
 
-        # 用药摘要
+        # 用药摘要（分三部分：长期方案、临时用药、依从性）
+        med_summary = ""
+
+        # 5d-1. 长期用药方案
         if medications:
-            med_summary = "当前用药方案：\n"
+            med_summary += "【长期用药方案】\n"
             for med in medications:
-                med_summary += f"- {med[0]}"
+                category_label = "补剂" if med[6] == 'supplement' else "处方药"
+                med_summary += f"- [{category_label}] {med[0]}"
                 if med[1]:
                     med_summary += f" {med[1]}"
-                med_summary += f"，{med[2]}次/天"
-                if med[3]:
-                    med_summary += f"，{med[3]}"
+                if med[2] and med[3]:
+                    med_summary += f"（每次{med[2]}{med[3]}）"
+                med_summary += f"，{med[4]}次/天"
+                if med[5]:
+                    med_summary += f"，{med[5]}"
+                if med[7]:
+                    med_summary += f"，起始日期: {med[7]}"
+                if med[8]:
+                    med_summary += f"，{med[8]}"
                 med_summary += "\n"
         else:
+            med_summary += "【长期用药方案】无\n"
+
+        # 5d-2. 临时用药记录
+        if temp_med_records:
+            med_summary += f"\n【近{days}天临时用药记录】（共{len(temp_med_records)}条）\n"
+            for rec in temp_med_records[:10]:
+                med_summary += f"- {rec[2]}: {rec[0]}"
+                if rec[1]:
+                    med_summary += f"（{rec[1]}）"
+                med_summary += "\n"
+
+        # 5d-3. 服药依从性
+        if medications and adherence_records:
+            adherence_map = {r[0]: r[2] for r in adherence_records}
+            med_summary += f"\n【近{days}天服药依从性】\n"
+            for med in medications:
+                plan_name = med[0]
+                times_per_day = med[4] or 1
+                expected_total = days * times_per_day
+                # 查找对应的打卡记录
+                actual_count = 0
+                for ar in adherence_records:
+                    if ar[1] == plan_name:
+                        actual_count = ar[2]
+                        break
+                adherence_rate = (actual_count / expected_total * 100) if expected_total > 0 else 0
+                med_summary += f"- {plan_name}: {actual_count}/{expected_total}次（{adherence_rate:.0f}%）\n"
+
+        if not med_summary.strip():
             med_summary = "当前无用药"
 
         # 体重/BMI 摘要
@@ -1605,13 +1828,14 @@ def generate_health_analysis(db, user_id=1, is_auto=False, days=7):
 
 请从以下维度进行综合分析：
 
-1. **健康评分**（0-100分）：基于血糖控制、血压水平、运动频率、能量平衡、体重管理的综合评分
-2. **血糖控制评估**：达标率、波动性、趋势分析
+1. **健康评分**（0-100分）：基于血糖控制、血压水平、运动频率、饮食结构、体重管理的综合评分
+2. **血糖控制评估**：达标率、波动性、趋势分析。若有AI预测数据，分析预测准确度和偏差趋势（持续偏高/偏低意味着什么）
 3. **血压健康状况**：是否在正常范围、异常预警
-4. **运动与能量平衡**：运动量是否充足、能量平衡情况
-5. **体重/BMI评估**：BMI分类、体重变化趋势、体重管理建议
-6. **用药依从性**：用药效果评估
-7. **个性化建议**：
+4. **运动与有氧能力评估**：运动量是否充足；若有VO2max/心率/配速数据，评估有氧能力变化趋势和运动强度适宜性
+5. **饮食结构分析**：若有碳水/GI值数据，分析饮食结构对血糖的影响。注意：未记录的餐食热量未知，不要估算或假设，应指出记录不完整
+6. **体重/BMI评估**：BMI分类、体重变化趋势、体重管理建议
+7. **用药评估**：长期用药效果评估、服药依从性分析。若存在临时用药，评估与长期方案的关系和合理性
+8. **个性化建议**：
    - 饮食建议（具体到食物种类和份量）
    - 运动建议（强度、频率、时间）
    - 用药建议（如有需要）
@@ -1634,8 +1858,8 @@ def generate_health_analysis(db, user_id=1, is_auto=False, days=7):
 }}
         """
 
-        # 8. 调用 Gemini API
-        raw_text = call_ai(prompt)
+        # 8. 调用 AI（报告分析任务，使用更强的模型）
+        raw_text = call_ai(prompt, task_type='report')
 
         print(f"DEBUG Health Analysis: Raw AI response: {raw_text[:500]}...")
 
@@ -1651,8 +1875,8 @@ def generate_health_analysis(db, user_id=1, is_auto=False, days=7):
         c.execute("""
             INSERT INTO health_analyses
             (user_id, analysis_date, health_score, glucose_summary, blood_pressure_summary,
-             exercise_summary, medication_summary, recommendations, full_analysis, is_auto_generated)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             exercise_summary, medication_summary, recommendations, full_analysis, is_auto_generated, days)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             user_id,
             today_str,
@@ -1663,7 +1887,8 @@ def generate_health_analysis(db, user_id=1, is_auto=False, days=7):
             result.get('medication_summary'),
             json.dumps(result.get('recommendations', []), ensure_ascii=False),
             result.get('full_analysis'),
-            1 if is_auto else 0
+            1 if is_auto else 0,
+            days
         ))
         db.commit()
 
@@ -2117,8 +2342,9 @@ def index():
         """, (current_user_id, seven_days_ago))
         avg_weight_7d = c.fetchone()[0]
 
-        # 30天体重变化（最近 vs 30天前）
-        twenty_five_days_ago = (datetime.datetime.now() - datetime.timedelta(days=25)).strftime('%Y-%m-%d %H:%M:%S')
+        # 默认7天体重变化（与前端默认时间区间一致）
+        default_days = 7
+        weight_change_cutoff = (datetime.datetime.now() - datetime.timedelta(days=default_days)).strftime('%Y-%m-%d %H:%M:%S')
         c.execute("""
             SELECT weight FROM records
             WHERE user_id = ?
@@ -2127,11 +2353,11 @@ def index():
             AND timestamp <= ?
             ORDER BY timestamp DESC
             LIMIT 1
-        """, (current_user_id, twenty_five_days_ago))
+        """, (current_user_id, weight_change_cutoff))
         old_weight_row = c.fetchone()
-        weight_change_30d = None
+        weight_change_default = None
         if old_weight_row and latest_weight:
-            weight_change_30d = round(latest_weight - old_weight_row[0], 1)
+            weight_change_default = round(latest_weight - old_weight_row[0], 1)
 
         # BMI 分类
         bmi_category = settings.get_bmi_category(latest_bmi)
@@ -2431,7 +2657,7 @@ def index():
 
         # 今日运动数据 - 支持多种运动类型
         c.execute("""
-            SELECT type, distance, calories, duration, heart_rate, pace, cadence, vo2max, timestamp
+            SELECT type, distance, calories, duration, heart_rate, pace, cadence, vo2max, max_heart_rate, steps, timestamp
             FROM records
             WHERE user_id = ?
             AND timestamp BETWEEN ? AND ?
@@ -2452,6 +2678,8 @@ def index():
                 'pace': today_exercise_row['pace'],
                 'cadence': today_exercise_row['cadence'],
                 'vo2max': today_exercise_row['vo2max'],
+                'max_heart_rate': today_exercise_row['max_heart_rate'],
+                'steps': today_exercise_row['steps'],
                 'time': today_exercise_row['timestamp'].split(' ')[1][:5] if ' ' in today_exercise_row['timestamp'] else ''
             }
 
@@ -2528,6 +2756,21 @@ def index():
                     latest_analysis['recommendations'] = json.loads(latest_analysis['recommendations'])
                 except (json.JSONDecodeError, TypeError, ValueError):
                     latest_analysis['recommendations'] = []
+            # 评分评价文案
+            score = latest_analysis.get('health_score', 0) or 0
+            if score >= 90:
+                latest_analysis['score_label'] = '优秀'
+            elif score >= 80:
+                latest_analysis['score_label'] = '良好'
+            elif score >= 70:
+                latest_analysis['score_label'] = '一般'
+            elif score >= 60:
+                latest_analysis['score_label'] = '需改善'
+            else:
+                latest_analysis['score_label'] = '需关注'
+            # 时间范围标签
+            days_val = latest_analysis.get('days') or 7
+            latest_analysis['days_label'] = f'近{days_val}天'
 
         user_config = settings.load_config()
 
@@ -2588,7 +2831,7 @@ def index():
             'latest_bmi': round(latest_bmi, 1) if latest_bmi else None,
             'latest_weight_date': latest_weight_date,
             'avg_weight_7d': round(avg_weight_7d, 1) if avg_weight_7d else None,
-            'weight_change_30d': weight_change_30d,
+            'weight_change_default': weight_change_default,
             'bmi_category': bmi_category,
             'target_weight': user_config.get('target_weight'),
             'today_weight': today_weight,
@@ -2665,6 +2908,8 @@ def add_record():
             weight = data.get('weight')
             bmi = data.get('bmi')
             vo2max = data.get('vo2max')
+            max_heart_rate = data.get('max_heart_rate')
+            steps = data.get('steps')
         else:
             value = request.form.get('value')
             unit = request.form.get('unit')
@@ -2692,6 +2937,8 @@ def add_record():
             weight = request.form.get('weight')
             bmi = request.form.get('bmi')
             vo2max = request.form.get('vo2max')
+            max_heart_rate = request.form.get('max_heart_rate')
+            steps = request.form.get('steps')
 
         # Auto-calculate BMI if weight is provided but BMI is not
         if weight and not bmi:
@@ -2727,11 +2974,11 @@ def add_record():
         c.execute("""INSERT INTO records
                      (user_id, value, unit, type, notes, timestamp, calories, diet_analysis, is_predicted,
                       distance, duration, heart_rate, systolic_pressure, diastolic_pressure, pulse_rate,
-                      carbs_grams, gi_value, weight, bmi, spo2, vo2max)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                      carbs_grams, gi_value, weight, bmi, spo2, vo2max, max_heart_rate, steps)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                   (current_user_id, value, unit, r_type, notes, timestamp, calories, diet_analysis, is_predicted,
                    distance, duration, heart_rate, systolic_pressure, diastolic_pressure, pulse_rate,
-                   carbs_grams, gi_value, weight, bmi, spo2, vo2max))
+                   carbs_grams, gi_value, weight, bmi, spo2, vo2max, max_heart_rate, steps))
 
         # 如果是真实血糖记录，尝试关联当天的预测记录
         real_record_id = c.lastrowid
@@ -2998,15 +3245,17 @@ def batch_add():
                       (user_id, value, unit, type, notes, timestamp, calories, diet_analysis, is_predicted,
                        distance, duration, heart_rate, pace, cadence,
                        systolic_pressure, diastolic_pressure, pulse_rate, spo2,
-                       carbs_grams, gi_value, weight, bmi, medication_name, vo2max)
-                      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                       carbs_grams, gi_value, weight, bmi, medication_name, vo2max,
+                       max_heart_rate, steps)
+                      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                       (current_user_id, r['value'], r.get('unit', 'mmol/L'), r['type'], r.get('notes', ''),
                        r.get('datetime'), cal, da, is_pred,
                        r.get('distance'), r.get('duration'), r.get('heart_rate'),
                        r.get('pace'), r.get('cadence'),
                        systolic, diastolic, pulse, spo2,
                        r.get('carbs_grams'), r.get('gi_value'), weight, bmi,
-                       r.get('medication_name'), r.get('vo2max')))
+                       r.get('medication_name'), r.get('vo2max'),
+                       r.get('max_heart_rate'), r.get('steps')))
 
             inserted_records.append({
                 'id': c.lastrowid,
@@ -3191,7 +3440,7 @@ def update_record(id):
                      calories = ?, diet_analysis = ?, is_predicted = ?,
                      distance = ?, duration = ?, heart_rate = ?, pace = ?, cadence = ?,
                      systolic_pressure = ?, diastolic_pressure = ?, pulse_rate = ?,
-                     weight = ?, bmi = ?, vo2max = ?
+                     weight = ?, bmi = ?, vo2max = ?, max_heart_rate = ?, steps = ?
                      WHERE id = ?""",
                   (data.get('value', 0), data.get('unit', 'mmol/L'), data.get('type', ''),
                    data.get('notes', ''), data.get('timestamp', ''),
@@ -3201,6 +3450,7 @@ def update_record(id):
                    data.get('pace'), data.get('cadence'),
                    data.get('systolic_pressure'), data.get('diastolic_pressure'), data.get('pulse_rate'),
                    data.get('weight'), data.get('bmi'), data.get('vo2max'),
+                   data.get('max_heart_rate'), data.get('steps'),
                    id))
         db.commit()
         return api_success(message="Record updated successfully")
@@ -3293,22 +3543,8 @@ def import_csv():
         skipped_count = 0
         deleted_count = 0
 
-        # CGM模式：导入前批量删除时间范围内的手动血糖记录
-        if import_mode == 'cgm' and 'timestamp' in df.columns:
-            timestamps = pd.to_datetime(df['timestamp'], errors='coerce').dropna()
-            if len(timestamps) > 0:
-                min_ts = timestamps.min().strftime('%Y-%m-%d %H:%M:%S')
-                max_ts = timestamps.max().strftime('%Y-%m-%d %H:%M:%S')
-                # 删除该时间段内的手动血糖记录（保留运动、饮食等非血糖记录和CGM记录）
-                glucose_types = ('空腹', '餐后2小时', '餐后1小时', '早餐后2小时', '午餐后2小时',
-                                 '晚餐后2小时', '晚饭前', '睡前', '运动后', '餐前')
-                placeholders = ','.join('?' * len(glucose_types))
-                c.execute(f"""DELETE FROM records WHERE user_id = ?
-                              AND timestamp BETWEEN ? AND ?
-                              AND type IN ({placeholders})
-                              AND is_predicted = 0""",
-                          (current_user_id, min_ts, max_ts, *glucose_types))
-                deleted_count = c.rowcount
+        # CGM模式：手动记录与CGM数据共存，显示层已有 CGM > 手动 > 预测 优先级
+        # 不再删除手动记录，保留用户录入的类型信息（空腹/餐后等）
 
         for _, row in df.iterrows():
             try:
@@ -3374,11 +3610,105 @@ def import_csv():
                 continue
 
         db.commit()
+
+        # CGM 导入后：批量关联未验证的预测记录
+        # 即使全部跳过（重复数据），也检查是否有需要关联的预测
+        linked_count = 0
+        if import_mode == 'cgm':
+            try:
+                timestamps = pd.to_datetime(df['timestamp'], errors='coerce').dropna()
+                if len(timestamps) > 0:
+                    min_ts = timestamps.min().strftime('%Y-%m-%d %H:%M:%S')
+                    max_ts = timestamps.max().strftime('%Y-%m-%d %H:%M:%S')
+                    # 查找导入时间范围内未验证的预测记录
+                    predictions = c.execute("""
+                        SELECT id, value, timestamp, type FROM records
+                        WHERE user_id = ? AND is_predicted = 1
+                        AND verified_by_real_id IS NULL
+                        AND value > 0 AND systolic_pressure IS NULL
+                        AND timestamp BETWEEN ? AND ?
+                    """, (current_user_id, min_ts, max_ts)).fetchall()
+
+                    for pred in predictions:
+                        pred_id, pred_value, pred_ts, pred_type = pred
+                        # 找预测时间戳30分钟内最近的CGM记录
+                        cgm_record = c.execute("""
+                            SELECT id, value FROM records
+                            WHERE user_id = ? AND type = 'CGM'
+                            AND ABS(strftime('%%s', timestamp) - strftime('%%s', ?)) <= 1800
+                            ORDER BY ABS(strftime('%%s', timestamp) - strftime('%%s', ?))
+                            LIMIT 1
+                        """, (current_user_id, pred_ts, pred_ts)).fetchone()
+
+                        if cgm_record:
+                            cgm_id, cgm_value = cgm_record
+                            error = cgm_value - pred_value
+                            c.execute("""
+                                UPDATE records
+                                SET verified_by_real_id = ?, prediction_error = ?
+                                WHERE id = ?
+                            """, (cgm_id, error, pred_id))
+                            linked_count += 1
+
+                    if linked_count > 0:
+                        db.commit()
+                        print(f"✓ CGM导入后批量关联 {linked_count} 条预测记录")
+            except Exception as link_error:
+                print(f"Warning: CGM prediction linking failed: {link_error}")
+
+        # CGM 导入后：批量修正手动记录（3分钟内有 CGM 读数且差异>0.05 则以 CGM 为准）
+        corrected_count = 0
+        if import_mode == 'cgm':
+            try:
+                timestamps = pd.to_datetime(df['timestamp'], errors='coerce').dropna()
+                if len(timestamps) > 0:
+                    min_ts = timestamps.min().strftime('%Y-%m-%d %H:%M:%S')
+                    max_ts = timestamps.max().strftime('%Y-%m-%d %H:%M:%S')
+                    # 查找导入时间范围内的手动血糖记录（非预测、非CGM）
+                    glucose_types = ('空腹', '餐后2小时', '餐后1小时', '早餐后2小时', '午餐后2小时',
+                                     '晚餐后2小时', '晚饭前', '睡前', '运动后', '餐前')
+                    placeholders = ','.join('?' * len(glucose_types))
+                    manual_records = c.execute(f"""
+                        SELECT id, value, timestamp FROM records
+                        WHERE user_id = ? AND is_predicted = 0
+                        AND type IN ({placeholders})
+                        AND value > 0
+                        AND timestamp BETWEEN ? AND ?
+                    """, (current_user_id, *glucose_types, min_ts, max_ts)).fetchall()
+
+                    for rec in manual_records:
+                        rec_id, rec_value, rec_ts = rec
+                        # 找3分钟内最近的CGM读数
+                        cgm_nearby = c.execute("""
+                            SELECT value FROM records
+                            WHERE user_id = ? AND type = 'CGM'
+                            AND ABS(strftime('%%s', timestamp) - strftime('%%s', ?)) <= 180
+                            ORDER BY ABS(strftime('%%s', timestamp) - strftime('%%s', ?))
+                            LIMIT 1
+                        """, (current_user_id, rec_ts, rec_ts)).fetchone()
+
+                        if cgm_nearby and abs(cgm_nearby[0] - rec_value) > 0.05:
+                            c.execute("UPDATE records SET value = ? WHERE id = ?",
+                                      (cgm_nearby[0], rec_id))
+                            corrected_count += 1
+
+                    if corrected_count > 0:
+                        db.commit()
+                        print(f"✓ CGM导入后批量修正 {corrected_count} 条手动记录")
+            except Exception as corr_error:
+                print(f"Warning: CGM manual record correction failed: {corr_error}")
+
         result_data = {"imported": imported_count, "skipped": skipped_count}
         msg = f"成功导入 {imported_count} 条记录，跳过 {skipped_count} 条"
         if deleted_count > 0:
             result_data["deleted_manual"] = deleted_count
             msg += f"，已覆盖 {deleted_count} 条手动记录"
+        if linked_count > 0:
+            result_data["linked_predictions"] = linked_count
+            msg += f"，已验证 {linked_count} 条AI预测"
+        if corrected_count > 0:
+            result_data["corrected_manual"] = corrected_count
+            msg += f"，已修正 {corrected_count} 条手动记录"
         return api_success(data=result_data, message=msg)
     except Exception as e:
         traceback.print_exc()
@@ -3834,7 +4164,28 @@ def prediction_status():
                         if predicted_record is None:
                             predicted_record = record
 
-            # 确定槽位状态
+            # CGM 匹配：如果没有手动实测记录，查找槽位时间30分钟内最近的CGM读数
+            cgm_record = None
+            if measured_record is None:
+                slot_target_minutes = int(slot['time'].split(':')[0]) * 60 + int(slot['time'].split(':')[1])
+                cgm_min_diff = float('inf')
+                for record in today_records:
+                    if (record['type'] or '') != 'CGM':
+                        continue
+                    record_time = record['timestamp'].split(' ')[1][:5] if ' ' in record['timestamp'] else ''
+                    if not record_time or ':' not in record_time:
+                        continue
+                    try:
+                        parts = record_time.split(':')
+                        record_minutes = int(parts[0]) * 60 + int(parts[1])
+                    except (ValueError, IndexError):
+                        continue
+                    diff = abs(record_minutes - slot_target_minutes)
+                    if diff < cgm_min_diff and diff <= 30:
+                        cgm_min_diff = diff
+                        cgm_record = record
+
+            # 确定槽位状态：手动实测 > CGM > AI预测
             if measured_record:
                 slot_data['status'] = 'measured'
                 slot_data['value'] = round(measured_record['value'], 2)
@@ -3846,6 +4197,26 @@ def prediction_status():
                     slot_data['predicted_value'] = round(predicted_record['value'], 2)
                     slot_data['error'] = round(predicted_record['prediction_error'], 2) if predicted_record['prediction_error'] else None
                     slot_data['notes'] = predicted_record['notes']
+            elif cgm_record:
+                # CGM 数据作为实测值
+                slot_data['status'] = 'measured'
+                slot_data['value'] = round(cgm_record['value'], 2)
+                slot_data['real_value'] = round(cgm_record['value'], 2)
+                slot_data['timestamp'] = cgm_record['timestamp']
+                slot_data['cgm'] = True
+                # 如果有预测值，标记为已验证
+                if predicted_record:
+                    if predicted_record['verified_by_real_id']:
+                        slot_data['status'] = 'verified'
+                        slot_data['predicted_value'] = round(predicted_record['value'], 2)
+                        slot_data['error'] = round(predicted_record['prediction_error'], 2) if predicted_record['prediction_error'] else None
+                        slot_data['notes'] = predicted_record['notes']
+                    else:
+                        # 未关联但有CGM数据，显示为已验证（实时计算误差）
+                        slot_data['status'] = 'verified'
+                        slot_data['predicted_value'] = round(predicted_record['value'], 2)
+                        slot_data['error'] = round(cgm_record['value'] - predicted_record['value'], 2)
+                        slot_data['notes'] = predicted_record['notes']
             elif predicted_record:
                 slot_data['status'] = 'predicted'
                 slot_data['value'] = round(predicted_record['value'], 2)
@@ -4251,7 +4622,7 @@ def api_day_overview():
 
         # 运动
         c.execute("""
-            SELECT type, distance, calories, duration, heart_rate, pace, cadence, vo2max, timestamp
+            SELECT type, distance, calories, duration, heart_rate, pace, cadence, vo2max, max_heart_rate, steps, timestamp
             FROM records WHERE user_id = ? AND timestamp BETWEEN ? AND ?
             AND (type IN ('运动','跑步','走路','骑行','游泳','健身') OR type LIKE '%跑%' OR type LIKE '%走%' OR type LIKE '%骑%')
             ORDER BY timestamp DESC, vo2max DESC LIMIT 1
@@ -4259,7 +4630,7 @@ def api_day_overview():
         ex_row = c.fetchone()
         exercise = None
         if ex_row:
-            exercise = {k: ex_row[k] for k in ['type','distance','calories','duration','heart_rate','pace','cadence','vo2max']}
+            exercise = {k: ex_row[k] for k in ['type','distance','calories','duration','heart_rate','pace','cadence','vo2max','max_heart_rate','steps']}
             exercise['time'] = ex_row['timestamp'].split(' ')[1][:5] if ' ' in ex_row['timestamp'] else ''
 
         # 血压
