@@ -5,14 +5,14 @@ import os
 CONFIG_FILE = "user_config.json"
 
 # ========== AI 模型配置 ==========
-# 降级链：ModelScope → 火山引擎 → OpenRouter → Gemini（保底）
+# 降级链：ModelScope → 火山引擎 → Gemini（保底）
 # 应用内置 API Key，用户无需自行配置
 
 # ModelScope 模型配置（国内可用，免费2000次/天，单模型500次/天，OpenAI 兼容接口）
 # 三类任务使用不同模型，有效容量翻3倍（每模型独立500次/天）
 MODELSCOPE_MODELS = {
     'text': ['Qwen/Qwen3-32B'],               # JSON解析/预测（32B结构化输出稳定，复杂口语理解强）
-    'vision': ['Qwen/Qwen3-VL-8B-Thinking'],   # 截图识别（带思考过程，数字识别极其精准）
+    'vision': ['Qwen/Qwen3-VL-235B-A22B-Instruct', 'Qwen/Qwen3-VL-8B-Thinking'],   # 截图识别：235B 更快更准，8B-Thinking 兜底
     'report': ['deepseek-ai/DeepSeek-R1-0528'], # 报告分析（最强推理，医学逻辑天花板）
     'extra_body': {'enable_thinking': False},    # 仅对 text 任务生效（Qwen3 标准模型需关闭思考模式）
 }
@@ -20,19 +20,11 @@ MODELSCOPE_BASE_URL = 'https://api-inference.modelscope.cn/v1/'
 
 # 火山引擎/豆包 模型配置（国内可用，免费50万tokens/模型，OpenAI 兼容接口）
 VOLC_MODELS = {
-    'text': ['doubao-seed-1-6-250615'],
-    'vision': ['doubao-1-5-vision-pro-250328'],
-    'report': ['doubao-seed-1-6-250615'],
+    'text': ['doubao-seed-1-8-251228'],
+    'vision': ['doubao-seed-1-6-vision-250815', 'doubao-seed-1-8-251228'],
+    'report': ['doubao-seed-1-8-251228'],
 }
 VOLC_BASE_URL = 'https://ark.cn-beijing.volces.com/api/v3'
-
-# OpenRouter 模型配置（全球可用，OpenAI 兼容接口）
-OPENROUTER_MODELS = {
-    'text': ['google/gemini-2.5-flash'],
-    'vision': ['google/gemini-2.5-flash'],
-    'report': ['google/gemini-2.5-flash'],
-}
-OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1'
 
 # Gemini 直连（保底，海外可用）
 GEMINI_MODELS = ['gemini-3-flash-preview', 'gemini-2.5-flash']

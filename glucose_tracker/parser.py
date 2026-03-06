@@ -272,8 +272,6 @@ def parse_glucose_input(text, history_context=None, images_data=None, mime_type=
     try:
         raw_text = call_ai(prompt, images_data=images_data, mime_type=mime_type)
 
-        print(f"DEBUG: Raw AI response text: {raw_text}")
-
         # More robust extraction
         match = re.search(r'(\[[\s\S]*\])', raw_text)
         if match:

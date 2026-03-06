@@ -1,7 +1,7 @@
 """
 统一 AI 调用客户端 — 多提供商跨平台降级
 
-降级链：ModelScope (Qwen3) → 火山引擎 (doubao) → OpenRouter → Gemini 直连（保底）
+降级链：ModelScope (Qwen3) → 火山引擎 (doubao) → Gemini 直连（保底）
 
 三类任务使用不同模型：
   - text: JSON 解析/预测（极速，结构化输出）
@@ -14,6 +14,7 @@
 
 import os
 import base64
+import httpx
 from dotenv import load_dotenv
 import settings
 
@@ -22,16 +23,14 @@ load_dotenv()
 # API Keys
 MODELSCOPE_API_KEY = os.getenv("MODELSCOPE_API_KEY")
 VOLC_API_KEY = os.getenv("VOLC_API_KEY")
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
-AI_AVAILABLE = bool(MODELSCOPE_API_KEY or VOLC_API_KEY or OPENROUTER_API_KEY or GEMINI_API_KEY)
+AI_AVAILABLE = bool(MODELSCOPE_API_KEY or VOLC_API_KEY or GEMINI_API_KEY)
 
 # 启动日志
 _providers = []
 if MODELSCOPE_API_KEY: _providers.append('ModelScope')
 if VOLC_API_KEY: _providers.append('火山引擎')
-if OPENROUTER_API_KEY: _providers.append('OpenRouter')
 if GEMINI_API_KEY: _providers.append('Gemini')
 
 if len(_providers) > 1:
@@ -62,7 +61,11 @@ def _call_openai_compatible(api_key, base_url, model, prompt, images_data=None, 
     """通用 OpenAI 兼容接口调用（ModelScope / 火山引擎 / OpenRouter 共用）"""
     from openai import OpenAI
 
-    client = OpenAI(api_key=api_key, base_url=base_url)
+    # 国内域名（.cn / volces.com）绕过系统代理，避免 VPN 分流拦截
+    is_cn_endpoint = '.cn' in base_url or 'volces.com' in base_url
+    http_client = httpx.Client(trust_env=False) if is_cn_endpoint else None
+
+    client = OpenAI(api_key=api_key, base_url=base_url, http_client=http_client)
     has_images = images_data and len(images_data) > 0
 
     if has_images:
@@ -123,7 +126,7 @@ def call_ai(prompt, images_data=None, mime_type=None, task_type=None):
     统一 AI 调用接口，支持跨提供商降级。
 
     降级链:
-      ModelScope (Qwen3) → 火山引擎 (doubao) → OpenRouter → Gemini 直连（保底）
+      ModelScope (Qwen3) → 火山引擎 (doubao) → Gemini 直连（保底）
 
     Args:
         task_type: 任务类型，影响模型选择
@@ -133,7 +136,7 @@ def call_ai(prompt, images_data=None, mime_type=None, task_type=None):
             - None: 根据 images_data 自动选择 text/vision
     """
     if not AI_AVAILABLE:
-        raise Exception("AI 服务未配置，请设置 MODELSCOPE_API_KEY、VOLC_API_KEY、OPENROUTER_API_KEY 或 GEMINI_API_KEY")
+        raise Exception("AI 服务未配置，请设置 MODELSCOPE_API_KEY、VOLC_API_KEY 或 GEMINI_API_KEY")
 
     has_images = images_data and len(images_data) > 0
     # 有图片时强制 vision（即使 task_type 未指定）
@@ -161,20 +164,9 @@ def call_ai(prompt, images_data=None, mime_type=None, task_type=None):
             return result
         if err:
             last_error = err
-            print(f"⚠ 火山引擎全部不可用，降级到 OpenRouter...")
+            print(f"⚠ 火山引擎全部不可用，降级到 Gemini 直连...")
 
-    # === 阶段3: 尝试 OpenRouter 模型链 ===
-    if OPENROUTER_API_KEY:
-        result, err = _try_provider(
-            OPENROUTER_API_KEY, settings.OPENROUTER_BASE_URL, settings.OPENROUTER_MODELS,
-            has_images, prompt, images_data, mime_type, 'OpenRouter', task_type=task_type)
-        if result is not None:
-            return result
-        if err:
-            last_error = err
-            print(f"⚠ OpenRouter 全部不可用，降级到 Gemini 直连...")
-
-    # === 阶段4: Gemini 直连（保底） ===
+    # === 阶段3: Gemini 直连（保底） ===
     if GEMINI_API_KEY:
         for model in settings.GEMINI_MODELS:
             try:

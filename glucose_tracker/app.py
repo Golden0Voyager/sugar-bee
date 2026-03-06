@@ -26,9 +26,17 @@ DB_NAME = os.path.join(BASE_DIR, "glucose.db")
 AVATAR_FOLDER = os.path.join(BASE_DIR, "static", "avatars")
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg'}
 
+# 预测线程防重入标志集合，key 为 user_id
+_prediction_running: set = set()
+_prediction_lock = threading.Lock()
+
 app.config['UPLOAD_FOLDER'] = AVATAR_FOLDER
 # Secret key for session
-app.secret_key = os.getenv('SECRET_KEY', 'dev-secret-key-for-glucose-tracker-2026')
+_secret_key = os.getenv('SECRET_KEY')
+if not _secret_key:
+    print("[安全警告] SECRET_KEY 未配置，当前使用默认密钥，session 存在伪造风险！请在 .env 中设置 SECRET_KEY。")
+    _secret_key = 'dev-secret-key-for-glucose-tracker-2026'
+app.secret_key = _secret_key
 
 # Session security hardening
 app.config['SESSION_COOKIE_HTTPONLY'] = True
@@ -2407,7 +2415,7 @@ def index():
         current_user_id = user_manager.get_current_user_id()
         current_user = user_manager.get_user(current_user_id)
 
-        # 自动生成预测（后台非阻塞，不影响页面加载速度）
+        # 自动生成预测（后台非阻塞，防止并发重入）
         def _run_predictions(user_id):
             try:
                 pred_db = sqlite3.connect(DB_NAME)
@@ -2417,8 +2425,17 @@ def index():
                 pred_db.close()
             except Exception as e:
                 print(f"[AI] 后台预测出错: {e}")
+            finally:
+                with _prediction_lock:
+                    _prediction_running.discard(user_id)
 
-        threading.Thread(target=_run_predictions, args=(current_user_id,), daemon=True).start()
+        with _prediction_lock:
+            already_running = current_user_id in _prediction_running
+            if not already_running:
+                _prediction_running.add(current_user_id)
+
+        if not already_running:
+            threading.Thread(target=_run_predictions, args=(current_user_id,), daemon=True).start()
 
         # 默认加载 90 天数据（覆盖图表默认范围），前端按需加载更多
         sorted_dates, records = build_timeline(c, current_user_id, days=90)
@@ -3646,7 +3663,8 @@ def delete(id):
     try:
         db = get_db()
         c = db.cursor()
-        c.execute("DELETE FROM records WHERE id = ?", (id,))
+        current_user_id = user_manager.get_current_user_id()
+        c.execute("DELETE FROM records WHERE id = ? AND user_id = ?", (id, current_user_id))
         db.commit()
         # 支持 AJAX 和表单提交两种方式
         if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
@@ -3664,7 +3682,8 @@ def get_record(id):
     try:
         db = get_db()
         c = db.cursor()
-        c.execute("SELECT * FROM records WHERE id = ?", (id,))
+        current_user_id = user_manager.get_current_user_id()
+        c.execute("SELECT * FROM records WHERE id = ? AND user_id = ?", (id, current_user_id))
         row = c.fetchone()
         if row:
             return jsonify(dict(row))
@@ -3680,6 +3699,7 @@ def update_record(id):
         data = request.json
         db = get_db()
         c = db.cursor()
+        current_user_id = user_manager.get_current_user_id()
 
         # 构建更新语句
         c.execute("""UPDATE records SET
@@ -3688,7 +3708,7 @@ def update_record(id):
                      distance = ?, duration = ?, heart_rate = ?, pace = ?, cadence = ?,
                      systolic_pressure = ?, diastolic_pressure = ?, pulse_rate = ?,
                      weight = ?, bmi = ?, vo2max = ?, max_heart_rate = ?, steps = ?
-                     WHERE id = ?""",
+                     WHERE id = ? AND user_id = ?""",
                   (data.get('value', 0), data.get('unit', 'mmol/L'), data.get('type', ''),
                    data.get('notes', ''), data.get('timestamp', ''),
                    data.get('calories', 0), data.get('diet_analysis', ''),
@@ -3698,7 +3718,7 @@ def update_record(id):
                    data.get('systolic_pressure'), data.get('diastolic_pressure'), data.get('pulse_rate'),
                    data.get('weight'), data.get('bmi'), data.get('vo2max'),
                    data.get('max_heart_rate'), data.get('steps'),
-                   id))
+                   id, current_user_id))
         db.commit()
         return api_success(message="Record updated successfully")
     except Exception as e:
@@ -5168,7 +5188,7 @@ def delete_duplicates():
             # 保留第一条，删除其他的
             ids_to_delete = id_list[1:]
             for id_to_delete in ids_to_delete:
-                c.execute("DELETE FROM records WHERE id = ?", (id_to_delete,))
+                c.execute("DELETE FROM records WHERE id = ? AND user_id = ?", (id_to_delete, current_user_id))
                 deleted_count += 1
 
         db.commit()
