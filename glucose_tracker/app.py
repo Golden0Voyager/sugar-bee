@@ -6,7 +6,9 @@ import os
 import io
 import traceback
 from collections import defaultdict
+from functools import wraps
 from werkzeug.utils import secure_filename
+from werkzeug.security import check_password_hash
 from parser import parse_glucose_input
 import settings
 from ai_client import call_ai, AI_AVAILABLE
@@ -27,6 +29,11 @@ ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg'}
 app.config['UPLOAD_FOLDER'] = AVATAR_FOLDER
 # Secret key for session
 app.secret_key = os.getenv('SECRET_KEY', 'dev-secret-key-for-glucose-tracker-2026')
+
+# Session security hardening
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config['PERMANENT_SESSION_LIFETIME'] = datetime.timedelta(days=7)
 
 # Ensure avatar folder exists
 os.makedirs(AVATAR_FOLDER, exist_ok=True)
@@ -250,6 +257,12 @@ def init_db():
         except sqlite3.OperationalError:
             pass  # Column already exists
 
+        # Migration: Add password_hash to app_users for authentication
+        try:
+            c.execute("ALTER TABLE app_users ADD COLUMN password_hash TEXT")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+
         # Migration: Add user_id to all user-specific tables
         for table in ['records', 'medication_plans', 'medication_logs', 'health_analyses']:
             try:
@@ -300,6 +313,25 @@ def init_db():
         except sqlite3.OperationalError:
             pass  # Column already exists
 
+        # Migration: Add phone/email to app_users
+        for col in ['phone TEXT', 'email TEXT']:
+            try:
+                c.execute(f"ALTER TABLE app_users ADD COLUMN {col}")
+            except sqlite3.OperationalError:
+                pass  # Column already exists
+
+        # Create user_auth_providers table (第三方登录/手机号/邮箱绑定)
+        c.execute('''CREATE TABLE IF NOT EXISTS user_auth_providers (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            provider TEXT NOT NULL,
+            provider_uid TEXT NOT NULL,
+            verified BOOLEAN DEFAULT 0,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES app_users(id)
+        )''')
+        c.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_auth_provider_uid ON user_auth_providers(provider, provider_uid)')
+
         # 药物日志
         c.execute('CREATE INDEX IF NOT EXISTS idx_medlogs_plan ON medication_logs(plan_id, log_date)')
 
@@ -311,6 +343,209 @@ def init_db():
             conn.close()
 
 init_db()
+
+
+# ========== 认证装饰器 ==========
+def login_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if 'current_user_id' not in session:
+            if request.is_json or request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                return jsonify({'status': 'error', 'message': '请先登录'}), 401
+            return redirect(url_for('login'))
+        return f(*args, **kwargs)
+    return decorated
+
+
+# ========== 认证路由 ==========
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    """登录页面"""
+    if request.method == 'GET':
+        # 如果已登录，直接跳转首页
+        if 'current_user_id' in session:
+            return redirect(url_for('index'))
+        return render_template('login.html', error=None, success=None, set_password_mode=False)
+
+    # POST: 处理登录
+    username = request.form.get('username', '').strip()
+    password = request.form.get('password', '')
+
+    if not username:
+        return render_template('login.html', error='请输入用户名 / 手机号 / 邮箱', set_password_mode=False)
+
+    # 根据输入格式判断类型，尝试查找用户
+    user_info = None
+    if re.match(r'^1[3-9]\d{9}$', username):
+        # 手机号登录
+        found_uid = user_manager.find_user_by_provider('phone', username)
+        if found_uid:
+            user_info = user_manager.get_user_by_username_or_id(found_uid)
+    elif '@' in username:
+        # 邮箱登录
+        found_uid = user_manager.find_user_by_provider('email', username)
+        if found_uid:
+            user_info = user_manager.get_user_by_username_or_id(found_uid)
+
+    # 未通过手机号/邮箱找到，按用户名查找
+    if not user_info:
+        user_info = user_manager.get_user_by_username(username)
+    if not user_info:
+        return render_template('login.html', error='账号不存在', set_password_mode=False)
+
+    # 检查是否已设置密码
+    if not user_info.get('password_hash'):
+        # 旧用户，未设置密码 → 进入设置密码流程
+        return render_template('login.html',
+                               set_password_mode=True,
+                               user_id=user_info['id'],
+                               username=username,
+                               error=None, success=None)
+
+    # 验证密码
+    if not check_password_hash(user_info['password_hash'], password):
+        return render_template('login.html', error='密码错误', set_password_mode=False)
+
+    # 登录成功
+    session.permanent = True
+    session['current_user_id'] = user_info['id']
+    return redirect(url_for('index'))
+
+
+@app.route('/logout')
+def logout():
+    """退出登录"""
+    session.clear()
+    return redirect(url_for('login'))
+
+
+@app.route('/set_password', methods=['POST'])
+def set_password():
+    """设置密码（首次登录的旧用户）"""
+    user_id = request.form.get('user_id', type=int)
+    username = request.form.get('username', '')
+    password = request.form.get('password', '')
+    password_confirm = request.form.get('password_confirm', '')
+
+    if not password or len(password) < 4:
+        return render_template('login.html',
+                               set_password_mode=True, user_id=user_id, username=username,
+                               error='密码至少需要4个字符', success=None)
+
+    if password != password_confirm:
+        return render_template('login.html',
+                               set_password_mode=True, user_id=user_id, username=username,
+                               error='两次输入的密码不一致', success=None)
+
+    user_manager.set_password(user_id, password)
+
+    # 设置完密码自动登录
+    session.permanent = True
+    session['current_user_id'] = user_id
+    return redirect(url_for('index'))
+
+
+@app.route('/change_password', methods=['POST'])
+@login_required
+def change_password():
+    """修改密码（已登录用户）"""
+    data = request.json
+    old_password = data.get('old_password', '')
+    new_password = data.get('new_password', '')
+
+    if not new_password or len(new_password) < 4:
+        return api_error('新密码至少需要4个字符', status_code=400, error_type='validation_error')
+
+    user_id = user_manager.get_current_user_id()
+    user = user_manager.get_user(user_id)
+    if not user:
+        return api_error('用户不存在', status_code=404)
+
+    # 如果已有密码，需要验证旧密码
+    if user_manager.has_password(user_id):
+        conn = sqlite3.connect(DB_NAME)
+        conn.row_factory = sqlite3.Row
+        c = conn.cursor()
+        c.execute("SELECT username FROM app_users WHERE id = ?", (user_id,))
+        row = c.fetchone()
+        conn.close()
+        if not row or not user_manager.authenticate(row['username'], old_password):
+            return api_error('旧密码错误', status_code=400, error_type='auth_error')
+
+    user_manager.set_password(user_id, new_password)
+    return api_success(message='密码修改成功')
+
+
+@app.route('/change_username', methods=['POST'])
+@login_required
+def change_username():
+    """修改用户名（已登录用户）"""
+    data = request.json
+    new_username = data.get('new_username', '').strip()
+
+    if not new_username:
+        return api_error('用户名不能为空', status_code=400, error_type='validation_error')
+
+    # 检查用户名是否已被占用
+    existing = user_manager.get_user_by_username(new_username)
+    user_id = user_manager.get_current_user_id()
+    if existing and existing['id'] != user_id:
+        return api_error('用户名已存在', status_code=400, error_type='validation_error')
+
+    user_manager.change_username(user_id, new_username)
+    return api_success(message='用户名修改成功')
+
+
+@app.route('/bind_phone', methods=['POST'])
+@login_required
+def bind_phone():
+    """绑定手机号"""
+    data = request.json
+    phone = data.get('phone', '').strip()
+    if not re.match(r'^1[3-9]\d{9}$', phone):
+        return api_error('手机号格式不正确', status_code=400, error_type='validation_error')
+    user_id = user_manager.get_current_user_id()
+    result = user_manager.bind_provider(user_id, 'phone', phone)
+    if not result['ok']:
+        return api_error(result['message'], status_code=400, error_type='validation_error')
+    return api_success(message='手机号绑定成功')
+
+
+@app.route('/bind_email', methods=['POST'])
+@login_required
+def bind_email():
+    """绑定邮箱"""
+    data = request.json
+    email = data.get('email', '').strip()
+    if not re.match(r'^[^@\s]+@[^@\s]+\.[^@\s]+$', email):
+        return api_error('邮箱格式不正确', status_code=400, error_type='validation_error')
+    user_id = user_manager.get_current_user_id()
+    result = user_manager.bind_provider(user_id, 'email', email)
+    if not result['ok']:
+        return api_error(result['message'], status_code=400, error_type='validation_error')
+    return api_success(message='邮箱绑定成功')
+
+
+@app.route('/unbind_provider', methods=['POST'])
+@login_required
+def unbind_provider():
+    """解绑手机号/邮箱"""
+    data = request.json
+    provider = data.get('provider', '').strip()
+    if provider not in ('phone', 'email'):
+        return api_error('不支持的解绑类型', status_code=400, error_type='validation_error')
+    user_id = user_manager.get_current_user_id()
+    user_manager.unbind_provider(user_id, provider)
+    return api_success(message='解绑成功')
+
+
+@app.route('/get_user_providers', methods=['GET'])
+@login_required
+def get_user_providers():
+    """获取当前用户已绑定的账号"""
+    user_id = user_manager.get_current_user_id()
+    providers = user_manager.get_user_providers(user_id)
+    return api_success(data=providers)
 
 
 def link_prediction_to_real_record(db, real_record_id, user_id, record_date, record_type, real_value, record_timestamp=None):
@@ -2145,6 +2380,7 @@ def build_timeline(cursor, user_id, days=90):
 
 
 @app.route('/api/timeline')
+@login_required
 def api_timeline():
     """按需加载 timeline 数据，返回与 timelineData 相同格式的 JSON"""
     try:
@@ -2161,6 +2397,7 @@ def api_timeline():
 
 
 @app.route('/')
+@login_required
 def index():
     try:
         db = get_db()
@@ -2846,10 +3083,12 @@ def index():
         return f"Error loading records: {e}", 500
 
 @app.route('/settings', methods=['GET'])
+@login_required
 def get_settings():
     return jsonify(settings.load_config())
 
 @app.route('/settings', methods=['POST'])
+@login_required
 def update_settings():
     try:
         new_config = request.json
@@ -2863,6 +3102,7 @@ def update_settings():
         return api_error(str(e), status_code=500, error_type="settings_error")
 
 @app.route('/upload_avatar', methods=['POST'])
+@login_required
 def upload_avatar():
     if 'avatar' not in request.files:
         return api_error("No file part", error_type="upload_error")
@@ -2883,6 +3123,7 @@ def upload_avatar():
     return api_error("Invalid file type", error_type="upload_error")
 
 @app.route('/add', methods=['POST'])
+@login_required
 def add_record():
     try:
         # Support both form data and JSON
@@ -3042,6 +3283,7 @@ def get_user_stats(db, user_id=1):
     return stats
 
 @app.route('/parse_ai', methods=['POST'])
+@login_required
 def parse_ai():
     try:
         data = request.json
@@ -3098,6 +3340,7 @@ def parse_ai():
         return jsonify({"error": str(e)}), 500
 
 @app.route('/batch_add', methods=['POST'])
+@login_required
 def batch_add():
     try:
         data = request.json.get('records')
@@ -3372,6 +3615,7 @@ def batch_add():
 
 
 @app.route('/backfill_predictions', methods=['POST'])
+@login_required
 def backfill_predictions():
     """
     批量补全历史运动后血糖预测
@@ -3397,6 +3641,7 @@ def backfill_predictions():
 
 
 @app.route('/delete/<int:id>', methods=['POST'])
+@login_required
 def delete(id):
     try:
         db = get_db()
@@ -3413,6 +3658,7 @@ def delete(id):
         return f"Error deleting record: {e}", 500
 
 @app.route('/record/<int:id>')
+@login_required
 def get_record(id):
     """获取单条记录用于编辑"""
     try:
@@ -3427,6 +3673,7 @@ def get_record(id):
         return jsonify({"error": str(e)}), 500
 
 @app.route('/update/<int:id>', methods=['POST'])
+@login_required
 def update_record(id):
     """更新记录"""
     try:
@@ -3459,6 +3706,7 @@ def update_record(id):
         return api_error(str(e), status_code=500, error_type="update_error")
 
 @app.route('/export')
+@login_required
 def export():
     try:
         db = get_db()
@@ -3483,6 +3731,7 @@ def export():
         return f"Error exporting data: {e}", 500
 
 @app.route('/import', methods=['POST'])
+@login_required
 def import_csv():
     """从 CSV 文件导入数据（支持普通格式和CGM格式）"""
     try:
@@ -3716,6 +3965,7 @@ def import_csv():
 
 
 @app.route('/preview_import', methods=['POST'])
+@login_required
 def preview_import():
     """预览导入文件内容，返回前几行数据和列名"""
     try:
@@ -3743,6 +3993,7 @@ def preview_import():
 # ========== Medication Plan Management APIs ==========
 
 @app.route('/add_medication_plan', methods=['POST'])
+@login_required
 def add_medication_plan():
     """添加药物方案"""
     try:
@@ -3779,6 +4030,7 @@ def add_medication_plan():
         return api_error(str(e), status_code=500, error_type="medication_error")
 
 @app.route('/medication_plans', methods=['GET'])
+@login_required
 def get_medication_plans():
     """获取所有药物方案"""
     try:
@@ -3796,6 +4048,7 @@ def get_medication_plans():
         return jsonify({"error": str(e)}), 500
 
 @app.route('/medication_plan/<int:plan_id>', methods=['GET'])
+@login_required
 def get_medication_plan(plan_id):
     """获取单个药物方案"""
     try:
@@ -3812,6 +4065,7 @@ def get_medication_plan(plan_id):
         return jsonify({"error": str(e)}), 500
 
 @app.route('/update_medication_plan/<int:plan_id>', methods=['POST'])
+@login_required
 def update_medication_plan(plan_id):
     """更新药物方案"""
     try:
@@ -3874,6 +4128,7 @@ def update_medication_plan(plan_id):
         return api_error(str(e), status_code=500, error_type="medication_error")
 
 @app.route('/delete_medication_plan/<int:plan_id>', methods=['POST'])
+@login_required
 def delete_medication_plan(plan_id):
     """删除药物方案"""
     try:
@@ -3887,6 +4142,7 @@ def delete_medication_plan(plan_id):
         return api_error(str(e), status_code=500, error_type="medication_error")
 
 @app.route('/toggle_medication_plan/<int:plan_id>', methods=['POST'])
+@login_required
 def toggle_medication_plan(plan_id):
     """启用/停用药物方案"""
     try:
@@ -3901,6 +4157,7 @@ def toggle_medication_plan(plan_id):
 # ========== Health Analysis APIs ==========
 
 @app.route('/analyze_health', methods=['POST'])
+@login_required
 def analyze_health():
     """手动触发健康分析"""
     try:
@@ -3934,6 +4191,7 @@ def analyze_health():
         return api_error(str(e), status_code=500, error_type="analysis_error")
 
 @app.route('/get_latest_analysis', methods=['GET'])
+@login_required
 def get_latest_analysis():
     """获取最新的健康分析"""
     try:
@@ -3964,6 +4222,7 @@ def get_latest_analysis():
         return jsonify({"error": str(e)}), 500
 
 @app.route('/health_analyses', methods=['GET'])
+@login_required
 def get_health_analyses():
     """获取所有健康分析历史"""
     try:
@@ -4000,6 +4259,7 @@ def get_health_analyses():
 
 
 @app.route('/prediction_accuracy', methods=['GET'])
+@login_required
 def prediction_accuracy():
     """获取预测准确性统计"""
     try:
@@ -4050,6 +4310,7 @@ def prediction_accuracy():
 
 
 @app.route('/prediction_status', methods=['GET'])
+@login_required
 def prediction_status():
     """
     获取今日所有时间槽状态
@@ -4278,6 +4539,7 @@ def prediction_status():
 
 
 @app.route('/prediction_comparison', methods=['GET'])
+@login_required
 def prediction_comparison():
     """
     获取预测与真实值对比数据（用于对比图）
@@ -4335,6 +4597,7 @@ def prediction_comparison():
 
 
 @app.route('/api/health_stats')
+@login_required
 def api_health_stats():
     """返回指定天数范围的健康数据统计"""
     try:
@@ -4522,6 +4785,7 @@ def api_health_stats():
 
 
 @app.route('/api/day_overview')
+@login_required
 def api_day_overview():
     """返回指定日期的概览数据（血糖时间轴 + 运动/血压/体重/用药）"""
     try:
@@ -4759,6 +5023,7 @@ def api_day_overview():
         return jsonify({"error": str(e)}), 500
 
 @app.route('/trigger_prediction', methods=['POST'])
+@login_required
 def trigger_prediction():
     """
     手动触发预测
@@ -4829,6 +5094,7 @@ def trigger_prediction():
 
 
 @app.route('/find_duplicates', methods=['GET'])
+@login_required
 def find_duplicates():
     """查找重复的记录"""
     try:
@@ -4873,6 +5139,7 @@ def find_duplicates():
         return api_error(str(e), status_code=500, error_type="query_error")
 
 @app.route('/delete_duplicates', methods=['POST'])
+@login_required
 def delete_duplicates():
     """删除重复的记录，保留每组中的第一条"""
     try:
@@ -4918,6 +5185,7 @@ def delete_duplicates():
 # ========== Database Backup & Restore ==========
 
 @app.route('/backup_database', methods=['GET'])
+@login_required
 def backup_database():
     """备份数据库 - 下载 .db 文件"""
     try:
@@ -4950,6 +5218,7 @@ def backup_database():
         return api_error(str(e), status_code=500, error_type="backup_error")
 
 @app.route('/restore_database', methods=['POST'])
+@login_required
 def restore_database():
     """恢复数据库 - 上传 .db 文件覆盖当前数据库"""
     try:
@@ -5001,30 +5270,60 @@ def restore_database():
 # ========== User Management APIs ==========
 
 @app.route('/switch_user/<int:user_id>', methods=['POST'])
+@login_required
 def switch_user(user_id):
-    """切换当前用户"""
+    """切换当前用户（需要目标用户密码验证）"""
     try:
         user = user_manager.get_user(user_id)
         if not user:
             return api_error("用户不存在", status_code=404, error_type="not_found")
 
-        user_manager.set_current_user(user_id)
+        # 验证目标用户密码
+        if user_manager.has_password(user_id):
+            data = request.json or {}
+            password = data.get('password', '')
+            # 获取目标用户的 username
+            conn = sqlite3.connect(DB_NAME)
+            conn.row_factory = sqlite3.Row
+            c = conn.cursor()
+            c.execute("SELECT username FROM app_users WHERE id = ?", (user_id,))
+            row = c.fetchone()
+            conn.close()
+            if not row or not user_manager.authenticate(row['username'], password):
+                return api_error("密码错误", status_code=401, error_type="auth_error")
+
+        session['current_user_id'] = user_id
         return api_success(data={"user": user}, message="User switched successfully")
     except Exception as e:
         traceback.print_exc()
         return api_error(str(e), status_code=500, error_type="user_error")
 
 @app.route('/get_users', methods=['GET'])
+@login_required
 def get_users():
     """获取所有用户列表"""
     try:
         users = user_manager.get_all_users()
+        # 添加 has_password 标识和脱敏 phone/email
+        for u in users:
+            u['has_password'] = user_manager.has_password(u['id'])
+            # 脱敏手机号: 138****1234
+            phone = u.get('phone')
+            u['phone_masked'] = f"{phone[:3]}****{phone[-4:]}" if phone and len(phone) >= 7 else None
+            # 脱敏邮箱: u***@example.com
+            email = u.get('email')
+            if email and '@' in email:
+                local, domain = email.split('@', 1)
+                u['email_masked'] = f"{local[0]}***@{domain}" if local else None
+            else:
+                u['email_masked'] = None
         return jsonify(users)
     except Exception as e:
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
 @app.route('/get_current_user', methods=['GET'])
+@login_required
 def get_current_user_api():
     """获取当前用户"""
     try:
@@ -5044,6 +5343,7 @@ def get_current_user_api():
         return jsonify({"error": str(e)}), 500
 
 @app.route('/create_user', methods=['POST'])
+@login_required
 def create_user():
     """创建新用户"""
     try:
@@ -5053,6 +5353,15 @@ def create_user():
         if not username or not display_name:
             return api_error("用户名和显示名称不能为空", status_code=400, error_type="validation_error")
 
+        password = data.get('password', '')
+        if not password or len(password) < 4:
+            return api_error("密码至少需要4个字符", status_code=400, error_type="validation_error")
+
+        # 检查用户名是否已存在
+        existing = user_manager.get_user_by_username(username)
+        if existing:
+            return api_error("用户名已存在", status_code=400, error_type="validation_error")
+
         profile_data = {
             'name': display_name,
             'gender': data.get('gender', 'male'),
@@ -5060,13 +5369,14 @@ def create_user():
             'height': data.get('height', 170),
             'weight': data.get('weight', 65),
         }
-        user_id = user_manager.create_user(username, display_name, profile_data)
+        user_id = user_manager.create_user(username, display_name, profile_data, password=password)
         return api_success(data={"id": user_id}, message="用户创建成功")
     except Exception as e:
         traceback.print_exc()
         return api_error(str(e), status_code=500, error_type="user_error")
 
 @app.route('/delete_user/<int:user_id>', methods=['POST'])
+@login_required
 def delete_user(user_id):
     """删除用户（软删除）"""
     try:

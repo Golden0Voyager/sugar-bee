@@ -5,6 +5,7 @@
 import json
 import sqlite3
 from flask import session
+from werkzeug.security import generate_password_hash, check_password_hash
 
 class UserManager:
     """简化版用户管理器"""
@@ -19,6 +20,7 @@ class UserManager:
         c = conn.cursor()
         c.execute("""
             SELECT u.id, u.username, u.display_name, u.avatar, u.is_active,
+                   u.phone, u.email,
                    p.name, p.birth_year, p.height, p.weight, p.gender,
                    p.default_meals, p.target_ranges, p.enabled_modules
             FROM app_users u
@@ -80,16 +82,17 @@ class UserManager:
             return True  # 默认全部启用
         return module_name in user['enabled_modules']
 
-    def create_user(self, username, display_name, profile_data):
+    def create_user(self, username, display_name, profile_data, password=None):
         """创建新用户"""
         conn = sqlite3.connect(self.db_path)
         c = conn.cursor()
 
-        # 插入用户
+        # 插入用户（含密码哈希）
+        password_hash = generate_password_hash(password) if password else None
         c.execute("""
-            INSERT INTO app_users (username, display_name, is_active)
-            VALUES (?, ?, 1)
-        """, (username, display_name))
+            INSERT INTO app_users (username, display_name, is_active, password_hash)
+            VALUES (?, ?, 1, ?)
+        """, (username, display_name, password_hash))
         user_id = c.lastrowid
 
         # 插入配置
@@ -194,3 +197,132 @@ class UserManager:
                 'postmeal_range': '6.5-8.0'
             }
         }
+
+    def authenticate(self, username, password):
+        """验证用户名密码，返回 user_id 或 None"""
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        c = conn.cursor()
+        c.execute("SELECT id, password_hash FROM app_users WHERE username = ? AND is_active = 1", (username,))
+        row = c.fetchone()
+        conn.close()
+        if not row:
+            return None
+        if not row['password_hash']:
+            # 未设置密码的旧用户，返回 user_id 但标记需要设置密码
+            return row['id']
+        if check_password_hash(row['password_hash'], password):
+            return row['id']
+        return None
+
+    def has_password(self, user_id):
+        """检查用户是否已设置密码"""
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        c = conn.cursor()
+        c.execute("SELECT password_hash FROM app_users WHERE id = ? AND is_active = 1", (user_id,))
+        row = c.fetchone()
+        conn.close()
+        if not row:
+            return False
+        return bool(row['password_hash'])
+
+    def set_password(self, user_id, password):
+        """设置用户密码"""
+        conn = sqlite3.connect(self.db_path)
+        c = conn.cursor()
+        c.execute("UPDATE app_users SET password_hash = ? WHERE id = ?",
+                  (generate_password_hash(password), user_id))
+        conn.commit()
+        conn.close()
+
+    def get_user_by_username(self, username):
+        """根据用户名获取用户"""
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        c = conn.cursor()
+        c.execute("SELECT id, username, display_name, password_hash FROM app_users WHERE username = ? AND is_active = 1", (username,))
+        row = c.fetchone()
+        conn.close()
+        return dict(row) if row else None
+
+    def get_user_by_username_or_id(self, user_id):
+        """根据用户 ID 获取用户（含 password_hash，用于登录验证）"""
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        c = conn.cursor()
+        c.execute("SELECT id, username, display_name, password_hash FROM app_users WHERE id = ? AND is_active = 1", (user_id,))
+        row = c.fetchone()
+        conn.close()
+        return dict(row) if row else None
+
+    def change_username(self, user_id, new_username):
+        """修改用户名"""
+        conn = sqlite3.connect(self.db_path)
+        c = conn.cursor()
+        c.execute("UPDATE app_users SET username = ? WHERE id = ?", (new_username, user_id))
+        conn.commit()
+        conn.close()
+
+    # ========== 手机号/邮箱绑定 ==========
+
+    def bind_provider(self, user_id, provider, provider_uid):
+        """绑定手机号/邮箱/第三方账号"""
+        conn = sqlite3.connect(self.db_path)
+        c = conn.cursor()
+        # 检查是否已被其他用户绑定
+        c.execute("SELECT user_id FROM user_auth_providers WHERE provider = ? AND provider_uid = ?",
+                  (provider, provider_uid))
+        existing = c.fetchone()
+        if existing:
+            conn.close()
+            if existing[0] == user_id:
+                return {'ok': False, 'message': '该账号已绑定'}
+            return {'ok': False, 'message': '该账号已被其他用户绑定'}
+        # 删除当前用户同类型旧绑定
+        c.execute("DELETE FROM user_auth_providers WHERE user_id = ? AND provider = ?",
+                  (user_id, provider))
+        # 插入新绑定
+        c.execute("INSERT INTO user_auth_providers (user_id, provider, provider_uid, verified) VALUES (?, ?, ?, 1)",
+                  (user_id, provider, provider_uid))
+        # 同步更新 app_users 便捷字段
+        if provider in ('phone', 'email'):
+            c.execute(f"UPDATE app_users SET {provider} = ? WHERE id = ?", (provider_uid, user_id))
+        conn.commit()
+        conn.close()
+        return {'ok': True}
+
+    def unbind_provider(self, user_id, provider):
+        """解绑手机号/邮箱/第三方账号"""
+        conn = sqlite3.connect(self.db_path)
+        c = conn.cursor()
+        c.execute("DELETE FROM user_auth_providers WHERE user_id = ? AND provider = ?",
+                  (user_id, provider))
+        # 清空 app_users 便捷字段
+        if provider in ('phone', 'email'):
+            c.execute(f"UPDATE app_users SET {provider} = NULL WHERE id = ?", (user_id,))
+        conn.commit()
+        conn.close()
+
+    def find_user_by_provider(self, provider, provider_uid):
+        """通过绑定信息查找用户，返回 user_id 或 None"""
+        conn = sqlite3.connect(self.db_path)
+        c = conn.cursor()
+        c.execute("""SELECT uap.user_id FROM user_auth_providers uap
+                     JOIN app_users u ON uap.user_id = u.id
+                     WHERE uap.provider = ? AND uap.provider_uid = ? AND u.is_active = 1""",
+                  (provider, provider_uid))
+        row = c.fetchone()
+        conn.close()
+        return row[0] if row else None
+
+    def get_user_providers(self, user_id):
+        """获取用户已绑定的所有 provider"""
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        c = conn.cursor()
+        c.execute("SELECT provider, provider_uid, verified, created_at FROM user_auth_providers WHERE user_id = ?",
+                  (user_id,))
+        rows = [dict(r) for r in c.fetchall()]
+        conn.close()
+        return rows

@@ -614,6 +614,102 @@
             font-size: 0.875rem;
         }
         
+        /* ── Calendar: Segmented Control ── */
+        .cal-seg-control {
+            display: flex;
+            background: #EEF2FF;
+            border-radius: 20px;
+            padding: 3px;
+            gap: 2px;
+        }
+        .cal-seg-btn {
+            border: none;
+            border-radius: 16px;
+            padding: 5px 14px;
+            font-size: 0.82rem;
+            font-weight: 500;
+            color: var(--md-text-secondary);
+            background: transparent;
+            cursor: pointer;
+            transition: color 0.15s;
+            line-height: 1.4;
+        }
+        .cal-seg-btn:hover { color: var(--md-primary-dark); }
+        .cal-seg-btn.cal-seg-active {
+            background: white;
+            color: var(--md-primary);
+            font-weight: 600;
+            box-shadow: 0 1px 3px rgba(99,102,241,0.2);
+        }
+        .cal-seg-icon-btn {
+            border: 1.5px solid #e2e8f0;
+            border-radius: 10px;
+            background: white;
+            color: var(--md-text-secondary);
+            padding: 5px 10px;
+            cursor: pointer;
+            transition: background 0.2s, border-color 0.2s, color 0.2s;
+            line-height: 1;
+        }
+        .cal-seg-icon-btn:hover {
+            background: #eef0ff;
+            border-color: var(--md-primary-light);
+            color: var(--md-primary-dark);
+        }
+
+        /* ── Day View: Stats Chips ── */
+        .day-stats-row {
+            display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; margin-bottom: 12px;
+        }
+        .stat-chip {
+            display: flex; flex-direction: column; align-items: center;
+            background: #f8f9fa; border-radius: 12px; padding: 8px 14px;
+            flex: 1; min-width: 72px;
+        }
+        .stat-chip .chip-val {
+            font-size: 1.05rem; font-weight: 700; color: var(--md-text-primary); line-height: 1.2;
+        }
+        .stat-chip .chip-label {
+            font-size: 0.7rem; color: var(--md-text-secondary); margin-top: 2px; white-space: nowrap;
+        }
+        .stat-chip.chip-deficit { background: #e6f4ea; }
+        .stat-chip.chip-deficit .chip-val { color: #1e8e3e; }
+        .stat-chip.chip-surplus { background: #fce8e6; }
+        .stat-chip.chip-surplus .chip-val { color: #c5221f; }
+
+        /* ── Day View: CGM Summary Card ── */
+        .cgm-summary-card {
+            background: linear-gradient(135deg, #e8f4fd 0%, #f0f7ff 100%);
+            border: 1px solid #bee3f8; border-radius: 10px;
+            padding: 10px 14px; margin-bottom: 12px;
+            font-size: 0.82rem; color: #2c5282;
+            display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+        }
+        .cgm-stat {
+            background: white; border-radius: 6px; padding: 2px 8px;
+            font-weight: 600; white-space: nowrap;
+        }
+
+        /* ── Day View: Medication Pills ── */
+        .med-section { margin-bottom: 12px; }
+        .med-section-header {
+            font-size: 0.82rem; color: var(--md-text-secondary);
+            cursor: pointer; display: flex; align-items: center; gap: 6px;
+            padding: 4px 0; user-select: none;
+        }
+        .med-section-header:hover { color: var(--md-text-primary); }
+        .med-pills { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+        .med-pill {
+            background: #f1f3f5; color: #495057;
+            border-radius: 20px; padding: 3px 10px;
+            font-size: 0.75rem; white-space: nowrap;
+        }
+
+        /* ── Day View: Timeline tighter spacing & hover actions ── */
+        .day-view-item { padding-bottom: 16px; }
+        .timeline-item .item-actions { opacity: 0; transition: opacity 0.15s; }
+        .timeline-item:hover .item-actions { opacity: 1; }
+
         /* Calendar Customization - Minimalist & Elegant */
         .fc {
             border: none !important;
@@ -710,13 +806,34 @@
             color: var(--md-primary-dark) !important;
         }
         .fc-button-active {
-            background-color: var(--md-cta) !important;
-            border-color: var(--md-cta) !important;
+            background-color: var(--md-primary) !important;
+            border-color: var(--md-primary) !important;
             color: white !important;
             box-shadow: 0 2px 6px rgba(67,56,202,0.25) !important;
         }
         .fc-button-active:hover {
             background-color: #4338CA !important;
+        }
+        /* FC prev/next 按钮 — 与 .btn-overview-nav 统一 */
+        .fc .fc-prev-button,
+        .fc .fc-next-button {
+            width: 36px !important;
+            height: 50px !important;
+            padding: 0 !important;
+            display: inline-flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+        }
+        .fc .fc-prev-button:active,
+        .fc .fc-next-button:active {
+            background-color: var(--md-primary) !important;
+            border-color: var(--md-primary) !important;
+            color: white !important;
+            transform: scale(0.96);
+        }
+        .fc .fc-prev-button .fc-icon,
+        .fc .fc-next-button .fc-icon {
+            -webkit-text-stroke: 1px currentColor;
         }
         .fc .fc-daygrid-day-top {
             flex-direction: row;
@@ -1709,6 +1826,12 @@
                     <li>
                         <a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#userSettingsModal">
                             ⚙️ 更多设置
+                        </a>
+                    </li>
+                    <li><hr class="dropdown-divider"></li>
+                    <li>
+                        <a class="dropdown-item text-danger" href="/logout">
+                            <i class="bi bi-box-arrow-left me-1"></i>退出登录
                         </a>
                     </li>
                     <input type="file" id="restoreFileInput" accept=".db" style="display:none">
@@ -2838,8 +2961,25 @@
         <div class="card-body">
             <div class="d-flex justify-content-between align-items-center mb-3">
                 <div class="d-flex align-items-center gap-2">
-                    <h3 class="mb-0"><i class="bi bi-calendar3 me-2" style="color: var(--md-primary);"></i>每日复盘</h3>
-                    <button class="btn btn-link text-muted p-0"
+                    <button class="btn btn-overview-nav" id="calendarPrevBtn" onclick="calendarNav(-1)" title="前一页">
+                        <i class="bi bi-chevron-left"></i>
+                    </button>
+                    <div class="mini-calendar" id="reviewMiniCal">
+                        <div class="mini-cal-month" id="reviewMiniCalMonth">{{ stats.today_str.split('-')[1]|int }}月</div>
+                        <div class="mini-cal-day" id="reviewMiniCalDay">{{ stats.today_str.split('-')[2]|int }}</div>
+                    </div>
+                    <h5 class="mb-0" style="font-size: 1.1rem; letter-spacing: 0.15em;">每日复盘</h5>
+                    <button class="btn btn-overview-nav" id="calendarNextBtn" onclick="calendarNav(1)" title="后一页" style="display: none;">
+                        <i class="bi bi-chevron-right"></i>
+                    </button>
+                </div>
+                <div class="d-flex gap-2 align-items-center">
+                    <div class="cal-seg-control" id="calendarViewBtns">
+                        <button id="calViewDay" class="cal-seg-btn" onclick="calendarSetView('timeGridDay')">日</button>
+                        <button id="calViewWeek" class="cal-seg-btn" onclick="calendarSetView('dayGridWeek')">周</button>
+                        <button id="calViewMonth" class="cal-seg-btn cal-seg-active" onclick="calendarSetView('dayGridMonth')">月</button>
+                    </div>
+                    <button class="cal-seg-icon-btn"
                             type="button"
                             data-bs-toggle="collapse"
                             data-bs-target="#calendarSection"
@@ -2847,15 +2987,6 @@
                             title="展开/收起日历">
                         <i class="bi bi-chevron-down collapse-toggle-icon" id="calendarCollapseIcon"></i>
                     </button>
-                </div>
-                <div class="d-flex gap-2 align-items-center">
-                    <label class="btn btn-primary btn-sm" for="csvImport" title="导入 CSV">
-                        <i class="bi bi-upload me-1"></i>导入
-                        <input type="file" id="csvImport" accept=".csv,.xlsx,.xls" class="d-none" onchange="importCSV(this)">
-                    </label>
-                    <a href="/export" class="btn btn-primary btn-sm" title="导出 CSV">
-                        <i class="bi bi-download me-1"></i>导出
-                    </a>
                 </div>
             </div>
             <div class="collapse show" id="calendarSection">
@@ -3197,15 +3328,92 @@
                     <div class="tab-pane fade" id="tabUsers" role="tabpanel">
                         <div id="settingsUserList" class="mb-3"></div>
                         <hr>
+                        <!-- 修改用户名区域 -->
+                        <h6 class="text-muted mb-3"><i class="bi bi-person-badge me-2"></i>修改用户名</h6>
+                        <div class="row g-2 mb-3">
+                            <div class="col-md-8">
+                                <input type="text" id="newUsername" class="form-control" placeholder="新用户名（英文）" style="font-size: 1rem; padding: 10px;">
+                            </div>
+                            <div class="col-md-4">
+                                <button class="btn btn-outline-primary w-100" onclick="changeUsername()" style="font-size: 1rem; padding: 10px;">
+                                    <i class="bi bi-check-lg me-1"></i>修改用户名
+                                </button>
+                            </div>
+                        </div>
+                        <hr>
+                        <!-- 账号绑定区域 -->
+                        <h6 class="text-muted mb-3"><i class="bi bi-link-45deg me-2"></i>账号绑定</h6>
+                        <div id="accountBindingSection">
+                            <!-- 手机号绑定 -->
+                            <div class="row g-2 mb-2 align-items-center">
+                                <div class="col-auto" style="min-width: 60px;">
+                                    <span class="text-muted" style="font-size: 0.9rem;">手机号</span>
+                                </div>
+                                <div class="col">
+                                    <div id="phoneBound" style="display:none;">
+                                        <span class="badge bg-success-subtle text-success me-2" id="phoneMasked"></span>
+                                        <button class="btn btn-outline-danger btn-sm" onclick="unbindProvider('phone')">
+                                            <i class="bi bi-x-lg me-1"></i>解绑
+                                        </button>
+                                    </div>
+                                    <div id="phoneUnbound" class="d-flex gap-2">
+                                        <input type="text" id="bindPhone" class="form-control form-control-sm" placeholder="输入手机号" style="max-width: 200px;">
+                                        <button class="btn btn-outline-primary btn-sm" onclick="bindPhone()">
+                                            <i class="bi bi-check-lg me-1"></i>绑定
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- 邮箱绑定 -->
+                            <div class="row g-2 mb-2 align-items-center">
+                                <div class="col-auto" style="min-width: 60px;">
+                                    <span class="text-muted" style="font-size: 0.9rem;">邮箱</span>
+                                </div>
+                                <div class="col">
+                                    <div id="emailBound" style="display:none;">
+                                        <span class="badge bg-success-subtle text-success me-2" id="emailMasked"></span>
+                                        <button class="btn btn-outline-danger btn-sm" onclick="unbindProvider('email')">
+                                            <i class="bi bi-x-lg me-1"></i>解绑
+                                        </button>
+                                    </div>
+                                    <div id="emailUnbound" class="d-flex gap-2">
+                                        <input type="email" id="bindEmail" class="form-control form-control-sm" placeholder="输入邮箱" style="max-width: 200px;">
+                                        <button class="btn btn-outline-primary btn-sm" onclick="bindEmail()">
+                                            <i class="bi bi-check-lg me-1"></i>绑定
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <hr>
+                        <!-- 修改密码区域 -->
+                        <h6 class="text-muted mb-3"><i class="bi bi-shield-lock me-2"></i>修改密码</h6>
+                        <div class="row g-2 mb-3">
+                            <div class="col-md-4">
+                                <input type="password" id="oldPassword" class="form-control" placeholder="当前密码" style="font-size: 1rem; padding: 10px;">
+                            </div>
+                            <div class="col-md-4">
+                                <input type="password" id="newPassword" class="form-control" placeholder="新密码（至少4位）" style="font-size: 1rem; padding: 10px;">
+                            </div>
+                            <div class="col-md-4">
+                                <button class="btn btn-outline-primary w-100" onclick="changePassword()" style="font-size: 1rem; padding: 10px;">
+                                    <i class="bi bi-check-lg me-1"></i>修改密码
+                                </button>
+                            </div>
+                        </div>
+                        <hr>
                         <h6 class="text-muted mb-3"><i class="bi bi-person-plus me-2"></i>添加新用户</h6>
                         <div class="row g-2">
-                            <div class="col-md-4">
+                            <div class="col-md-6">
                                 <input type="text" id="newUserUsername" class="form-control" placeholder="用户名（英文）" style="font-size: 1rem; padding: 10px;">
                             </div>
-                            <div class="col-md-4">
+                            <div class="col-md-6">
                                 <input type="text" id="newUserDisplayName" class="form-control" placeholder="显示名称" style="font-size: 1rem; padding: 10px;">
                             </div>
-                            <div class="col-md-4">
+                            <div class="col-md-6">
+                                <input type="password" id="newUserPassword" class="form-control" placeholder="登录密码（至少4位）" style="font-size: 1rem; padding: 10px;">
+                            </div>
+                            <div class="col-md-6">
                                 <button class="btn btn-success w-100" onclick="createNewUser()" style="font-size: 1rem; padding: 10px;">
                                     <i class="bi bi-plus-circle me-1"></i>创建用户
                                 </button>
@@ -3438,6 +3646,12 @@
                 error.httpStatus = res.status;
                 error.errorType = data.error_type;
                 error.details = data.details;
+
+                // 401 未登录，跳转登录页
+                if (res.status === 401) {
+                    window.location.href = '/login';
+                    return null;
+                }
 
                 // 特殊处理 429 配额错误
                 if (res.status === 429 || data.error_type === 'quota_exceeded') {
@@ -4710,17 +4924,7 @@
         var calendar = new FullCalendar.Calendar(calendarEl, {
             initialView: 'dayGridMonth',
             locale: 'zh-cn',
-            headerToolbar: {
-                left: 'prev,next today',
-                center: 'title',
-                right: 'timeGridDay,dayGridWeek,dayGridMonth'
-            },
-            buttonText: {
-                today: '今天',
-                day: '日',
-                week: '周',
-                month: '月'
-            },
+            headerToolbar: false,
             height: 'auto',
             aspectRatio: 1.5,
             slotMinTime: '06:00:00',
@@ -4756,6 +4960,32 @@
                 } else {
                     hideDayStats();
                 }
+                // 同步视图切换按钮高亮
+                const viewMap = {
+                    'timeGridDay': 'calViewDay',
+                    'dayGridWeek': 'calViewWeek',
+                    'dayGridMonth': 'calViewMonth'
+                };
+                ['calViewDay', 'calViewWeek', 'calViewMonth'].forEach(id => {
+                    const btn = document.getElementById(id);
+                    if (!btn) return;
+                    btn.classList.toggle('cal-seg-active', viewMap[info.view.type] === id);
+                });
+                // 更新 mini-cal（用 calendar.getDate() 取锚点日期，避免月视图拿到上月末）
+                const viewDate = calendar.getDate();
+                const month = viewDate.getMonth() + 1;
+                const day = viewDate.getDate();
+                const mEl = document.getElementById('reviewMiniCalMonth');
+                const dEl = document.getElementById('reviewMiniCalDay');
+                if (mEl) mEl.textContent = month + '月';
+                if (dEl) dEl.textContent = day;
+                // 日视图：显示 next 按钮（日期不超过今天）；否则隐藏
+                const nextBtn = document.getElementById('calendarNextBtn');
+                if (nextBtn) {
+                    const today = new Date(); today.setHours(0,0,0,0);
+                    const curStart = new Date(info.view.currentStart); curStart.setHours(0,0,0,0);
+                    nextBtn.style.display = curStart < today ? '' : 'none';
+                }
                 // 日历翻到已加载范围之外时，按需加载数据
                 const viewStart = info.startStr.split('T')[0];
                 if (timelineLoaded.minDate && viewStart < timelineLoaded.minDate) {
@@ -4768,6 +4998,22 @@
             }
         });
         calendar.render();
+
+        // 日历外部导航函数
+        window.calendarNav = function(dir) {
+            if (dir === -1) calendar.prev();
+            else calendar.next();
+        };
+        window.calendarToday = function() {
+            calendar.today();
+        };
+        window.calendarSetView = function(viewType) {
+            if (viewType === 'timeGridDay') {
+                calendar.changeView('timeGridDay', new Date());
+            } else {
+                calendar.changeView(viewType);
+            }
+        };
     });
 
     // 标准化血糖类型名称（将各种变体统一为标准类型）
@@ -6300,21 +6546,18 @@
 
     // Show daily stats header in Day view
     function showDayStats(date) {
-        const dateStr = date.toISOString().split('T')[0];
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        const dateStr = `${year}-${month}-${day}`;
         const dayData = timelineData.find(d => d.date === dateStr);
 
-        // Remove existing stats if any
         hideDayStats();
-
-        // Add timeline-day-view class to parent card body
         const calendarCardBody = document.querySelector('#calendar').closest('.card-body');
-        if (calendarCardBody) {
-            calendarCardBody.classList.add('timeline-day-view');
-        }
+        if (calendarCardBody) calendarCardBody.classList.add('timeline-day-view');
 
         if (!dayData) {
-            const calendarEl = document.getElementById('calendar');
-            calendarEl.insertAdjacentHTML('beforebegin', `
+            document.getElementById('calendar').insertAdjacentHTML('beforebegin', `
                 <div id="dayStatsHeader" class="text-center text-muted py-5">
                     <i class="bi bi-calendar-x fs-1 d-block mb-3"></i>
                     <p>当天无记录</p>
@@ -6324,52 +6567,123 @@
         }
 
         const stats = dayData.data.stats;
-        const entries = dayData.data.entries;
+        const allEntries = dayData.data.entries;
         const medPlans = dayData.data.medication_plans || [];
+
+        // 分离 CGM 与普通条目
+        const cgmEntries = allEntries.filter(r => r.type === 'CGM' && !r.is_predicted);
+        const timelineEntries = allEntries.filter(r => r.type !== 'CGM');
 
         let html = `<div id="dayStatsHeader">`;
 
-        // Stats header
+        // ── 1. 概要统计 Chips ──
+        const energyClass = stats.is_deficit ? 'chip-deficit' : 'chip-surplus';
+        const energyLabel = stats.is_deficit ? '⚖️ 能量缺口' : '⚖️ 能量盈余';
         html += `
-            <div class="alert alert-info mb-3">
-                <div class="d-flex gap-3 small justify-content-center flex-wrap">
-                    <span><strong>🥗 饮食摄入</strong> ${stats.cal_in} kcal</span>
-                    <span class="border-start mx-1"></span>
-                    <span><strong>😴 基础代谢</strong> ${stats.cal_out_bmr} kcal</span>
-                    <span class="border-start mx-1"></span>
-                    <span><strong>🏃 运动消耗</strong> ${stats.cal_out_exercise} kcal</span>
-                    <span class="border-start mx-1"></span>
-                    <span class="fw-bold ${stats.is_deficit ? 'text-success' : 'text-danger'}">
-                        <strong>⚖️ ${stats.is_deficit ? '能量缺口' : '能量盈余'}</strong> ${Math.abs(stats.net_calories)} kcal
-                    </span>
+            <div class="day-stats-row">
+                <div class="stat-chip">
+                    <span class="chip-val">${stats.cal_in}</span>
+                    <span class="chip-label">🥗 kcal 摄入</span>
                 </div>
+                <div class="stat-chip">
+                    <span class="chip-val">${stats.cal_out_bmr}</span>
+                    <span class="chip-label">😴 kcal 基础</span>
+                </div>
+                <div class="stat-chip">
+                    <span class="chip-val">${stats.cal_out_exercise}</span>
+                    <span class="chip-label">🏃 kcal 运动</span>
+                </div>
+                <div class="stat-chip ${energyClass}">
+                    <span class="chip-val">${Math.abs(stats.net_calories)}</span>
+                    <span class="chip-label">${energyLabel}</span>
+                </div>
+            </div>
         `;
 
-        // Add medication plans if any
-        if (medPlans.length > 0) {
+        // ── 2. CGM 汇总卡片 ──
+        if (cgmEntries.length > 0) {
+            const cgmVals = cgmEntries.map(r => r.value).filter(v => v > 0);
+            const cgmAvg = cgmVals.length ? (cgmVals.reduce((a, b) => a + b, 0) / cgmVals.length).toFixed(1) : '—';
+            const cgmMax = cgmVals.length ? Math.max(...cgmVals).toFixed(1) : '—';
+            const cgmMin = cgmVals.length ? Math.min(...cgmVals).toFixed(1) : '—';
+            const cgmOk = cgmEntries.filter(r => r.value > 0 && checkGlucoseCompliance(r.value, r.type).isCompliant).length;
+            const cgmRate = cgmEntries.length ? Math.round(cgmOk / cgmEntries.length * 100) : 0;
+            const rateColor = cgmRate >= 70 ? '#1e8e3e' : cgmRate >= 50 ? '#b06000' : '#c5221f';
             html += `
-                <div class="mt-2 pt-2 border-top">
-                    <div class="small text-muted mb-1">💊 今日用药方案</div>
-                    <div class="d-flex gap-2 flex-wrap">
+                <div class="cgm-summary-card">
+                    <span>📈 CGM 连续监测</span>
+                    <span class="cgm-stat">${cgmEntries.length} 条</span>
+                    <span class="cgm-stat">均值 ${cgmAvg}</span>
+                    <span class="cgm-stat">峰值 ${cgmMax}</span>
+                    <span class="cgm-stat">谷值 ${cgmMin}</span>
+                    <span class="cgm-stat" style="color:${rateColor};">${cgmRate}% 达标</span>
+                </div>
             `;
-            medPlans.forEach(plan => {
-                const dq = plan.dose_quantity || '1';
-                const du = plan.dose_unit || '片';
-                let dosageStr = plan.dosage || '';
-                if (dosageStr && dq !== '1') dosageStr = `${dosageStr} ×${dq}${du}`;
-                html += `
-                    <span class="badge bg-success">
-                        ${plan.medication_name} ${dosageStr} · ${plan.times_per_day}次/天
-                    </span>
-                `;
-            });
-            html += `</div></div>`;
         }
 
-        html += '</div>'; // Close alert
+        // ── 3. 用药方案（药物 / 补剂 Tab）──
+        if (medPlans.length > 0) {
+            const regularMeds = medPlans.filter(p => p.category !== 'supplement');
+            const supplements  = medPlans.filter(p => p.category === 'supplement');
 
-        // Timeline entries - 显示真实记录 + 未验证的预测，排除已验证的预测
-        entries.filter(r => !r.is_predicted || !r.is_verified).forEach(r => {
+            // 药物 tab：按 med_type 分组
+            const medGroups = {};
+            regularMeds.forEach(plan => {
+                const type = plan.med_type || '其他';
+                if (!medGroups[type]) medGroups[type] = [];
+                medGroups[type].push(plan);
+            });
+            const buildPill = plan => {
+                const dq = plan.dose_quantity || '1';
+                const du = plan.dose_unit || '片';
+                let d = plan.dosage || '';
+                if (d && dq !== '1') d = `${d} ×${dq}${du}`;
+                return `<span class="med-pill">${plan.medication_name}${d ? ' ' + d : ''}</span>`;
+            };
+            const medGroupHtml = Object.entries(medGroups).map(([type, plans], i) => `
+                <div style="margin-bottom:8px;">
+                    <div style="margin-bottom:4px;">
+                        <span style="font-size:0.65rem;color:#1565c0;background:#e3f2fd;padding:1px 6px;border-radius:3px;">${type}</span>
+                    </div>
+                    <div class="med-pills">${plans.map(buildPill).join('')}</div>
+                </div>
+            `).join('');
+            // 补剂 tab：同样按 med_type 分组
+            const suppGroups = {};
+            supplements.forEach(plan => {
+                const type = plan.med_type || '其他';
+                if (!suppGroups[type]) suppGroups[type] = [];
+                suppGroups[type].push(plan);
+            });
+            const suppGroupHtml = Object.entries(suppGroups).map(([type, plans]) => `
+                <div style="margin-bottom:8px;">
+                    <div style="margin-bottom:4px;">
+                        <span style="font-size:0.65rem;color:#1565c0;background:#e3f2fd;padding:1px 6px;border-radius:3px;">${type}</span>
+                    </div>
+                    <div class="med-pills">${plans.map(buildPill).join('')}</div>
+                </div>
+            `).join('');
+
+            html += `
+                <div class="med-section dv-med-section">
+                    <div class="med-section-header" style="cursor:default;margin-bottom:8px;">
+                        <i class="bi bi-capsule text-success"></i>
+                        <span>今日用药（${medPlans.length} 种）</span>
+                    </div>
+                    <div class="med-tab-bar">
+                        <button class="med-tab-pill active" style="font-size:0.78rem;padding:4px 12px;"
+                                onclick="switchDvMedTab(this,'dv-med-list')">💊 药物（${regularMeds.length}）</button>
+                        <button class="med-tab-pill" style="font-size:0.78rem;padding:4px 12px;"
+                                onclick="switchDvMedTab(this,'dv-supp-list')">🧬 补剂（${supplements.length}）</button>
+                    </div>
+                    <div id="dv-med-list" class="dv-tab-panel">${medGroupHtml}</div>
+                    <div id="dv-supp-list" class="dv-tab-panel" style="display:none;">${suppGroupHtml}</div>
+                </div>
+            `;
+        }
+
+        // ── 4. 时间轴（不含 CGM）──
+        timelineEntries.filter(r => !r.is_predicted || !r.is_verified).forEach(r => {
             let dotClass = 'dot-food';
             if (r.weight && r.weight > 0) dotClass = 'dot-weight';
             else if (r.value > 0) dotClass = 'dot-glucose';
@@ -6378,131 +6692,112 @@
             else if (r.type === '加餐') dotClass = 'dot-snack';
 
             html += `
-            <div class="timeline-item">
+            <div class="timeline-item day-view-item">
                 <div class="timeline-dot ${dotClass}"></div>
                 <div class="d-flex w-100 justify-content-between align-items-start">
-                    <div class="me-3 text-muted small" style="min-width: 45px;">
+                    <div class="me-3 text-muted" style="min-width:45px;font-size:0.8rem;padding-top:3px;">
                         ${r.timestamp.split(' ')[1].slice(0, 5)}
                     </div>
                     <div class="flex-grow-1">
             `;
 
-            // Weight
+            // 体重
             if (r.weight && r.weight > 0) {
-                let bmiText = r.bmi ? ` · BMI ${r.bmi}` : '';
-                let bmiCategory = '';
+                let bmiCat = '';
                 if (r.bmi) {
-                    if (r.bmi < 18.5) bmiCategory = ' (偏瘦)';
-                    else if (r.bmi < 24) bmiCategory = ' (正常)';
-                    else if (r.bmi < 28) bmiCategory = ' (超重)';
-                    else bmiCategory = ' (肥胖)';
+                    if (r.bmi < 18.5) bmiCat = '偏瘦';
+                    else if (r.bmi < 24) bmiCat = '正常';
+                    else if (r.bmi < 28) bmiCat = '超重';
+                    else bmiCat = '肥胖';
                 }
                 html += `
-                    <div class="d-flex align-items-center mb-1">
-                        <h5 class="mb-0 fw-bold me-2" style="color: #00897B;">⚖️ ${r.weight} <small class="text-muted fw-normal fs-6">kg</small></h5>
-                        <span class="badge me-2" style="background: #00897B20; color: #00897B;">${r.type}</span>
-                        ${r.bmi ? `<small class="text-muted">${bmiText}${bmiCategory}</small>` : ''}
+                    <div class="d-flex align-items-center gap-2 mb-1">
+                        <span style="font-size:1.3rem;font-weight:700;color:#00897B;">${r.weight}<small style="font-size:0.8rem;font-weight:400;color:#aaa;"> kg</small></span>
+                        <span class="med-pill" style="background:#e0f2f1;color:#00695c;">${r.type}</span>
+                        ${r.bmi ? `<small class="text-muted">BMI ${r.bmi}（${bmiCat}）</small>` : ''}
                     </div>
                 `;
             }
 
-            // Glucose
+            // 血糖（非 CGM）
             if (r.value > 0) {
+                const comp = checkGlucoseCompliance(r.value, r.type);
+                const valColor = comp.badge.color;
                 let trendHtml = '';
-                if (r.trend_dir === 'up') trendHtml = `<small class="text-danger"><i class="bi bi-arrow-up"></i> ${r.trend}</small>`;
-                else if (r.trend_dir === 'down') trendHtml = `<small class="text-success"><i class="bi bi-arrow-down"></i> ${r.trend}</small>`;
-
-                let predictedBadge = r.is_predicted ? '<span class="badge bg-secondary ms-1" style="font-size: 0.6em;">预测</span>' : '';
-
+                if (r.trend_dir === 'up') trendHtml = `<small style="color:#c5221f;"><i class="bi bi-arrow-up-short"></i>${r.trend}</small>`;
+                else if (r.trend_dir === 'down') trendHtml = `<small style="color:#1e8e3e;"><i class="bi bi-arrow-down-short"></i>${r.trend}</small>`;
+                const predBadge = r.is_predicted
+                    ? `<span style="font-size:0.65rem;background:#e2e8f0;color:#64748b;border-radius:4px;padding:1px 6px;">预测</span>` : '';
                 html += `
-                    <div class="d-flex align-items-center mb-1">
-                        <h5 class="mb-0 text-primary fw-bold me-2">${r.value} <small class="text-muted fw-normal fs-6">${r.unit}</small></h5>
-                        <span class="badge bg-info text-dark me-2">${r.type}</span>
-                        ${predictedBadge}
-                        ${trendHtml}
+                    <div class="d-flex align-items-center gap-2 mb-1">
+                        <span style="font-size:1.3rem;font-weight:700;color:${valColor};">${r.value}<small style="font-size:0.8rem;font-weight:400;color:#aaa;"> ${r.unit}</small></span>
+                        <span style="font-size:0.75rem;background:${comp.badge.bgColor};color:${comp.badge.textColor};border-radius:6px;padding:2px 8px;">${r.type}</span>
+                        ${predBadge}${trendHtml}
                     </div>
                 `;
             }
 
-            // Blood Pressure
+            // 血压
             if (r.systolic_pressure && r.diastolic_pressure) {
-                let bpStatus = '';
-                let bpColor = 'success';
-                if (r.systolic_pressure > 140 || r.diastolic_pressure > 90) {
-                    bpStatus = ' 偏高⚠️';
-                    bpColor = 'danger';
-                } else if (r.systolic_pressure > 130 || r.diastolic_pressure > 85) {
-                    bpStatus = ' 警戒';
-                    bpColor = 'warning';
-                } else {
-                    bpStatus = ' 正常';
-                }
-
+                let bpColor = '#1e8e3e', bpBg = '#e6f4ea', bpLabel = '正常';
+                if (r.systolic_pressure > 140 || r.diastolic_pressure > 90) { bpColor = '#c5221f'; bpBg = '#fce8e6'; bpLabel = '偏高'; }
+                else if (r.systolic_pressure > 130 || r.diastolic_pressure > 85) { bpColor = '#b06000'; bpBg = '#fef7e0'; bpLabel = '警戒'; }
                 html += `
-                    <div class="d-flex align-items-center mb-1">
-                        <h5 class="mb-0 fw-bold me-2" style="color: #9C27B0;">${r.systolic_pressure}/${r.diastolic_pressure} <small class="text-muted fw-normal fs-6">mmHg</small></h5>
-                        <span class="badge bg-${bpColor} me-2">${r.type}</span>
-                        <small class="text-${bpColor}">${bpStatus}</small>
-                        ${r.pulse_rate ? `<small class="text-muted ms-2">脉搏 ${r.pulse_rate} bpm</small>` : ''}
-                        ${r.spo2 ? `<small class="${r.spo2 < 95 ? 'text-danger' : 'text-muted'} ms-2">血氧 ${r.spo2}%</small>` : ''}
+                    <div class="d-flex align-items-center gap-2 mb-1 flex-wrap">
+                        <span style="font-size:1.3rem;font-weight:700;color:#9C27B0;">${r.systolic_pressure}/${r.diastolic_pressure}<small style="font-size:0.8rem;font-weight:400;color:#aaa;"> mmHg</small></span>
+                        <span style="font-size:0.75rem;background:${bpBg};color:${bpColor};border-radius:6px;padding:2px 8px;">${r.type} · ${bpLabel}</span>
+                        ${r.pulse_rate ? `<small class="text-muted">脉搏 ${r.pulse_rate} bpm</small>` : ''}
+                        ${r.spo2 ? `<small class="${r.spo2 < 95 ? 'text-danger' : 'text-muted'}">血氧 ${r.spo2}%</small>` : ''}
                     </div>
                 `;
             }
 
-
-            // Exercise - 排除血压记录（血压记录有 systolic_pressure）
+            // 运动
             if (!r.systolic_pressure && (r.distance || r.duration || r.heart_rate)) {
                 html += `
-                    <div class="mb-2 p-2 bg-light rounded border small">
-                        <div class="d-flex align-items-center text-success fw-bold mb-1"><i class="bi bi-activity me-2"></i> 运动打卡</div>
-                        <div class="text-nowrap overflow-auto">
-                            ${r.distance ? `<span class="me-2">🏃 <strong>${r.distance}</strong><small>km</small></span>` : ''}
-                            ${r.duration ? `<span class="me-2">⏱️ <strong>${r.duration}</strong></span>` : ''}
-                            ${r.pace ? `<span class="me-2">⏱️ 配速 <strong>${r.pace}</strong></span>` : ''}
-                            ${r.heart_rate ? `<span class="me-2">❤️ <strong>${r.heart_rate}</strong>${r.max_heart_rate ? '/<strong>'+r.max_heart_rate+'</strong>' : ''}<small>bpm</small></span>` : ''}
-                            ${r.cadence ? `<span class="me-2">👟 <strong>${r.cadence}</strong><small>spm</small></span>` : ''}
-                            ${r.steps ? `<span class="me-2">👣 <strong>${r.steps}</strong><small>步</small></span>` : ''}
-                            ${r.calories ? `<span class="me-2">🔥 <strong>${r.calories}</strong><small>kcal</small></span>` : ''}
-                        </div>
+                    <div class="d-flex align-items-center gap-1 flex-wrap mb-1" style="font-size:0.85rem;">
+                        <span style="color:#388e3c;font-weight:600;"><i class="bi bi-activity me-1"></i>运动打卡</span>
+                        ${r.distance ? `<span class="med-pill" style="background:#e8f5e9;color:#2e7d32;">🏃 ${r.distance}km</span>` : ''}
+                        ${r.duration ? `<span class="med-pill" style="background:#e8f5e9;color:#2e7d32;">⏱️ ${r.duration}</span>` : ''}
+                        ${r.pace ? `<span class="med-pill" style="background:#e8f5e9;color:#2e7d32;">配速 ${r.pace}</span>` : ''}
+                        ${r.heart_rate ? `<span class="med-pill" style="background:#fce4ec;color:#c62828;">❤️ ${r.heart_rate}${r.max_heart_rate ? '/' + r.max_heart_rate : ''} bpm</span>` : ''}
+                        ${r.cadence ? `<span class="med-pill" style="background:#e8f5e9;color:#2e7d32;">👟 ${r.cadence}spm</span>` : ''}
+                        ${r.steps ? `<span class="med-pill" style="background:#e8f5e9;color:#2e7d32;">👣 ${r.steps}步</span>` : ''}
+                        ${r.calories ? `<span class="med-pill" style="background:#fff3e0;color:#e65100;">🔥 ${r.calories}kcal</span>` : ''}
                     </div>
                 `;
             }
 
-            // Food/Notes
+            // 备注 / 饮食描述
             if (r.notes) {
-                let icon = (r.value === 0 && !r.distance) ? '<i class="bi bi-cup-hot me-1 text-warning"></i>' : '';
-                html += `<div class="text-dark mb-1">${icon}${r.notes}</div>`;
+                const icon = (r.value === 0 && !r.distance) ? '<i class="bi bi-cup-hot me-1 text-warning"></i>' : '';
+                html += `<div style="font-size:0.85rem;color:#555;margin-bottom:4px;">${icon}${r.notes}</div>`;
             }
 
-            // Calories
-            if (r.calories > 0 || r.diet_analysis) {
-                html += `
-                    <div class="small text-muted">
-                        ${r.calories > 0 ? `<span class="me-2">🔥 ${r.calories} kcal</span>` : ''}
-                        ${r.diet_analysis ? `<span>🥗 ${r.diet_analysis}</span>` : ''}
-                    </div>
-                `;
+            // 饮食热量（排除运动）
+            if ((r.calories > 0 || r.diet_analysis) && !r.distance && !r.heart_rate) {
+                html += `<div style="font-size:0.8rem;color:#aaa;">
+                    ${r.calories > 0 ? `<span class="me-2">🔥 ${r.calories} kcal</span>` : ''}
+                    ${r.diet_analysis ? `<span>🥗 ${r.diet_analysis}</span>` : ''}
+                </div>`;
             }
 
             html += `
                     </div>
-                    <div class="ms-2 d-flex gap-1">
-                        <button class="btn btn-sm btn-outline-primary p-1 px-2" onclick="openEditModal(${r.id})" title="编辑" style="border-radius: 6px;">
-                            <i class="bi bi-pencil" style="font-size: 0.9rem;"></i>
+                    <div class="ms-2 item-actions d-flex gap-1" style="flex-shrink:0;">
+                        <button class="btn btn-sm btn-outline-secondary p-1 px-2" onclick="openEditModal(${r.id})" title="编辑" style="border-radius:6px;border-color:#e2e8f0;">
+                            <i class="bi bi-pencil" style="font-size:0.8rem;"></i>
                         </button>
-                        <button class="btn btn-sm btn-outline-danger p-1 px-2" onclick="deleteRecord(${r.id})" title="删除" style="border-radius: 6px;">
-                            <i class="bi bi-trash" style="font-size: 0.9rem;"></i>
+                        <button class="btn btn-sm btn-outline-danger p-1 px-2" onclick="deleteRecord(${r.id})" title="删除" style="border-radius:6px;">
+                            <i class="bi bi-trash" style="font-size:0.8rem;"></i>
                         </button>
                     </div>
                 </div>
             </div>`;
         });
 
-        html += '</div>'; // Close dayStatsHeader
-
-        // Insert before calendar
-        const calendarEl = document.getElementById('calendar');
-        calendarEl.insertAdjacentHTML('beforebegin', html);
+        html += '</div>';
+        document.getElementById('calendar').insertAdjacentHTML('beforebegin', html);
     }
 
     function hideDayStats() {
@@ -8596,6 +8891,15 @@
         checkMedListOverflow(showId);
     }
 
+    // ========== 每日复盘 药物/补剂 Tab 切换 ==========
+    function switchDvMedTab(btn, targetId) {
+        const section = btn.closest('.dv-med-section');
+        section.querySelectorAll('.med-tab-pill').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        section.querySelectorAll('.dv-tab-panel').forEach(p => p.style.display = 'none');
+        document.getElementById(targetId).style.display = '';
+    }
+
     // ========== 用药列表折叠 ==========
     function toggleMedListCollapse(innerId, fadeId) {
         const inner = document.getElementById(innerId);
@@ -9496,21 +9800,27 @@
     async function createNewUser() {
         const username = document.getElementById('newUserUsername').value.trim();
         const displayName = document.getElementById('newUserDisplayName').value.trim();
+        const password = document.getElementById('newUserPassword').value;
         if (!username || !displayName) {
             showToast('请填写用户名和显示名称', 'warning');
+            return;
+        }
+        if (!password || password.length < 4) {
+            showToast('密码至少需要4个字符', 'warning');
             return;
         }
         try {
             const res = await fetch('/create_user', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ username, display_name: displayName })
+                body: JSON.stringify({ username, display_name: displayName, password })
             });
             const result = await res.json();
             if (result.status === 'success') {
                 showToast('用户创建成功', 'success');
                 document.getElementById('newUserUsername').value = '';
                 document.getElementById('newUserDisplayName').value = '';
+                document.getElementById('newUserPassword').value = '';
                 loadSettingsUserList();
             } else {
                 showToast('创建失败: ' + result.message, 'danger');
@@ -9536,6 +9846,162 @@
         }
     }
 
+    async function changePassword() {
+        const oldPwd = document.getElementById('oldPassword').value;
+        const newPwd = document.getElementById('newPassword').value;
+        if (!newPwd || newPwd.length < 4) {
+            showToast('新密码至少需要4个字符', 'warning');
+            return;
+        }
+        try {
+            const res = await fetch('/change_password', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ old_password: oldPwd, new_password: newPwd })
+            });
+            const result = await res.json();
+            if (result.status === 'success') {
+                showToast('密码修改成功', 'success');
+                document.getElementById('oldPassword').value = '';
+                document.getElementById('newPassword').value = '';
+            } else {
+                showToast(result.message || '修改失败', 'danger');
+            }
+        } catch (e) {
+            showToast('修改失败: ' + e, 'danger');
+        }
+    }
+
+    async function changeUsername() {
+        const newName = document.getElementById('newUsername').value.trim();
+        if (!newName) {
+            showToast('请输入新用户名', 'warning');
+            return;
+        }
+        try {
+            const res = await fetch('/change_username', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ new_username: newName })
+            });
+            const result = await res.json();
+            if (result.status === 'success') {
+                showToast('用户名修改成功', 'success');
+                document.getElementById('newUsername').value = '';
+                loadSettingsUserList();
+            } else {
+                showToast(result.message || '修改失败', 'danger');
+            }
+        } catch (e) {
+            showToast('修改失败: ' + e, 'danger');
+        }
+    }
+
+    // ========== 账号绑定 ==========
+    async function loadAccountBindings() {
+        try {
+            const res = await fetch('/get_user_providers');
+            const result = await res.json();
+            const providers = result.data || [];
+            const phoneProvider = providers.find(p => p.provider === 'phone');
+            const emailProvider = providers.find(p => p.provider === 'email');
+
+            if (phoneProvider) {
+                const ph = phoneProvider.provider_uid;
+                document.getElementById('phoneMasked').textContent = ph.slice(0, 3) + '****' + ph.slice(-4);
+                document.getElementById('phoneBound').style.display = '';
+                document.getElementById('phoneUnbound').style.display = 'none';
+            } else {
+                document.getElementById('phoneBound').style.display = 'none';
+                document.getElementById('phoneUnbound').style.display = '';
+            }
+
+            if (emailProvider) {
+                const em = emailProvider.provider_uid;
+                const [local, domain] = em.split('@');
+                document.getElementById('emailMasked').textContent = local[0] + '***@' + domain;
+                document.getElementById('emailBound').style.display = '';
+                document.getElementById('emailUnbound').style.display = 'none';
+            } else {
+                document.getElementById('emailBound').style.display = 'none';
+                document.getElementById('emailUnbound').style.display = '';
+            }
+        } catch (e) {
+            console.error('加载账号绑定失败:', e);
+        }
+    }
+
+    async function bindPhone() {
+        const phone = document.getElementById('bindPhone').value.trim();
+        if (!/^1[3-9]\d{9}$/.test(phone)) {
+            showToast('请输入正确的手机号', 'warning');
+            return;
+        }
+        try {
+            const res = await fetch('/bind_phone', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ phone })
+            });
+            const result = await res.json();
+            if (result.status === 'success') {
+                showToast('手机号绑定成功', 'success');
+                document.getElementById('bindPhone').value = '';
+                loadAccountBindings();
+            } else {
+                showToast(result.message || '绑定失败', 'danger');
+            }
+        } catch (e) {
+            showToast('绑定失败: ' + e, 'danger');
+        }
+    }
+
+    async function bindEmail() {
+        const email = document.getElementById('bindEmail').value.trim();
+        if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+            showToast('请输入正确的邮箱地址', 'warning');
+            return;
+        }
+        try {
+            const res = await fetch('/bind_email', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ email })
+            });
+            const result = await res.json();
+            if (result.status === 'success') {
+                showToast('邮箱绑定成功', 'success');
+                document.getElementById('bindEmail').value = '';
+                loadAccountBindings();
+            } else {
+                showToast(result.message || '绑定失败', 'danger');
+            }
+        } catch (e) {
+            showToast('绑定失败: ' + e, 'danger');
+        }
+    }
+
+    async function unbindProvider(provider) {
+        const label = provider === 'phone' ? '手机号' : '邮箱';
+        if (!confirm(`确定要解绑${label}吗？解绑后将无法使用${label}登录。`)) return;
+        try {
+            const res = await fetch('/unbind_provider', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ provider })
+            });
+            const result = await res.json();
+            if (result.status === 'success') {
+                showToast('解绑成功', 'success');
+                loadAccountBindings();
+            } else {
+                showToast(result.message || '解绑失败', 'danger');
+            }
+        } catch (e) {
+            showToast('解绑失败: ' + e, 'danger');
+        }
+    }
+
     async function importCsvFile(input) {
         if (!input.files || !input.files[0]) return;
         const file = input.files[0];
@@ -9547,6 +10013,7 @@
     // 设置 modal 打开时加载用户列表
     document.getElementById('userSettingsModal')?.addEventListener('show.bs.modal', function() {
         loadSettingsUserList();
+        loadAccountBindings();
     });
     async function findAndCleanDuplicates() {
         try {
@@ -9612,26 +10079,35 @@
         }
     }
 
-    // Switch to a different user
+    // Switch to a different user (with password verification)
     async function switchUser(userId) {
         if (userId === currentUserId) {
             console.log('Already on this user, skipping switch');
             return;
         }
 
+        // 弹出密码输入框
+        const password = prompt('请输入目标用户的登录密码：');
+        if (password === null) return; // 用户取消
+
         const result = await apiCall(`/switch_user/${userId}`, {
-            method: 'POST'
+            method: 'POST',
+            body: JSON.stringify({ password })
         }, {
             showLoading: false,
             onError: (error) => {
                 console.error('Switch user error:', error);
-                alert('切换失败: ' + error.message);
+                if (error.httpStatus === 401) {
+                    alert('密码错误，切换失败');
+                } else {
+                    alert('切换失败: ' + error.message);
+                }
             }
         });
 
         if (result) {
             console.log('Switched to user:', result.data?.user);
-            location.reload();  // Refresh page to load new user's data
+            location.reload();
         }
     }
 
