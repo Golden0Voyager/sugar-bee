@@ -213,6 +213,12 @@ def init_db():
             except sqlite3.OperationalError:
                 pass
 
+        # Migration: Add max_pace column for exercise records
+        try:
+            c.execute("ALTER TABLE records ADD COLUMN max_pace TEXT")
+        except sqlite3.OperationalError:
+            pass
+
         # Create medication_plans table (药物方案)
         c.execute('''CREATE TABLE IF NOT EXISTS medication_plans
                      (id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -3501,21 +3507,31 @@ def batch_add():
                 except (ValueError, TypeError):
                     pass
 
+            # VO2max 范围校验：人类合理范围 20–90 mL/kg/min，超出视为误读丢弃
+            vo2max = r.get('vo2max')
+            if vo2max is not None:
+                try:
+                    vo2max = float(vo2max)
+                    if not (20 <= vo2max <= 90):
+                        vo2max = None
+                except (ValueError, TypeError):
+                    vo2max = None
+
             c.execute("""INSERT INTO records
                       (user_id, value, unit, type, notes, timestamp, calories, diet_analysis, is_predicted,
                        distance, duration, heart_rate, pace, cadence,
                        systolic_pressure, diastolic_pressure, pulse_rate, spo2,
                        carbs_grams, gi_value, weight, bmi, medication_name, vo2max,
-                       max_heart_rate, steps)
-                      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                       max_heart_rate, steps, max_pace)
+                      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                       (current_user_id, r['value'], r.get('unit', 'mmol/L'), r['type'], r.get('notes', ''),
                        r.get('datetime'), cal, da, is_pred,
                        r.get('distance'), r.get('duration'), r.get('heart_rate'),
                        r.get('pace'), r.get('cadence'),
                        systolic, diastolic, pulse, spo2,
                        r.get('carbs_grams'), r.get('gi_value'), weight, bmi,
-                       r.get('medication_name'), r.get('vo2max'),
-                       r.get('max_heart_rate'), r.get('steps')))
+                       r.get('medication_name'), vo2max,
+                       r.get('max_heart_rate'), r.get('steps'), r.get('max_pace')))
 
             inserted_records.append({
                 'id': c.lastrowid,
@@ -3707,7 +3723,8 @@ def update_record(id):
                      calories = ?, diet_analysis = ?, is_predicted = ?,
                      distance = ?, duration = ?, heart_rate = ?, pace = ?, cadence = ?,
                      systolic_pressure = ?, diastolic_pressure = ?, pulse_rate = ?,
-                     weight = ?, bmi = ?, vo2max = ?, max_heart_rate = ?, steps = ?
+                     weight = ?, bmi = ?, vo2max = ?, max_heart_rate = ?, steps = ?,
+                     max_pace = ?
                      WHERE id = ? AND user_id = ?""",
                   (data.get('value', 0), data.get('unit', 'mmol/L'), data.get('type', ''),
                    data.get('notes', ''), data.get('timestamp', ''),
@@ -3718,6 +3735,7 @@ def update_record(id):
                    data.get('systolic_pressure'), data.get('diastolic_pressure'), data.get('pulse_rate'),
                    data.get('weight'), data.get('bmi'), data.get('vo2max'),
                    data.get('max_heart_rate'), data.get('steps'),
+                   data.get('max_pace'),
                    id, current_user_id))
         db.commit()
         return api_success(message="Record updated successfully")

@@ -100,7 +100,9 @@ def parse_glucose_input(text, history_context=None, images_data=None, mime_type=
 
        - **情况 A：运动/健康App截图**
          - 提取：距离(km)、时长、心率(平均+最大)、配速、步频、步数、消耗卡路里。
-         - **最大摄氧量(VO2max)**：如截图中有最大摄氧量/VO2max数值，务必提取到 vo2max 字段。
+         - **配速(pace)**：必须提取"平均配速"（如"6'30''"），不要使用"最快配速"。截图中通常有两个配速值，取标注为"平均配速"/"avg pace"的那个。
+         - **最快配速(max_pace)**：如截图中有"最快配速"/"best pace"数值，提取到 max_pace 字段。
+         - **最大摄氧量(VO2max)**：仅当截图中有明确标注"最大摄氧量"或"VO2max"字样的数值时才提取，合理范围 20–90 mL/kg/min。若无明确标注、或数值不在此范围内，不填此字段（设为 null）。
          - **时间**：务必提取截图中的运动开始时间。
          - 类型设为 "跑步" 或 "运动"。
          - **重要**：运动记录只记录运动数据本身，不要生成运动后血糖预测！血糖预测由系统统一处理。
@@ -250,7 +252,8 @@ def parse_glucose_input(text, history_context=None, images_data=None, mime_type=
             "duration": "string",
             "heart_rate": int (平均心率，仅运动记录),
             "max_heart_rate": int (最大心率，仅运动记录，可选),
-            "pace": "string",
+            "pace": "string (平均配速，格式必须为 X'XX\"/km，如 6'30\"/km，注意不是最快配速)",
+            "max_pace": "string (最快配速，格式必须为 X'XX\"/km，如 5'45\"/km，可选)",
             "cadence": int,
             "steps": int (步数，仅运动记录，可选),
             "vo2max": float (最大摄氧量 ml/kg/min，仅运动记录，可选),
