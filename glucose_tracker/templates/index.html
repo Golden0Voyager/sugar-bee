@@ -6768,8 +6768,11 @@
                 `;
             }
 
-            // 运动
-            if (!r.systolic_pressure && (r.distance || r.duration || r.heart_rate)) {
+            // 运动（排除餐食记录：有碳水/GI/饮食分析的不算运动）
+            const _hasMealTraits1 = r.carbs_grams || r.gi_value || r.diet_analysis;
+            const _isExerciseType1 = ['跑步', '运动'].includes(r.type);
+            const _hasRealExerciseData1 = r.distance || r.heart_rate || r.cadence || r.steps;
+            if (!r.systolic_pressure && !_hasMealTraits1 && (_isExerciseType1 || _hasRealExerciseData1) && (r.distance || r.duration || r.heart_rate)) {
                 html += `
                     <div class="d-flex align-items-center gap-1 flex-wrap mb-1" style="font-size:0.85rem;">
                         <span style="color:#388e3c;font-weight:600;"><i class="bi bi-activity me-1"></i>运动打卡</span>
@@ -6950,8 +6953,11 @@
                 `;
             }
 
-            // Exercise - 排除血压记录（血压记录有 systolic_pressure）
-            if (!r.systolic_pressure && (r.distance || r.duration || r.heart_rate)) {
+            // Exercise - 排除血压记录和餐食记录
+            const _hasMealTraits2 = r.carbs_grams || r.gi_value || r.diet_analysis;
+            const _isExerciseType2 = ['跑步', '运动'].includes(r.type);
+            const _hasRealExerciseData2 = r.distance || r.heart_rate || r.cadence || r.steps;
+            if (!r.systolic_pressure && !_hasMealTraits2 && (_isExerciseType2 || _hasRealExerciseData2) && (r.distance || r.duration || r.heart_rate)) {
                 itemHtml += `
                     <div class="mb-2 p-2 bg-light rounded border small">
                         <div class="d-flex align-items-center text-success fw-bold mb-1"><i class="bi bi-activity me-2"></i> 运动打卡</div>
@@ -7404,15 +7410,22 @@
         const exerciseTypes = ['跑步', '运动'];
 
         parsedData.forEach(item => {
+            // 判断是否有餐食特征（碳水/GI/饮食分析）
+            const hasMealTraits = item.carbs_grams || item.gi_value || item.diet_analysis;
+            // 判断是否有实质运动数据（排除零值）
+            const hasRealExerciseData = item.distance || item.heart_rate || item.cadence || item.steps;
+
             if (item.medication_name) {
                 medicationRecords.push(item);
             } else if (item.systolic_pressure && item.diastolic_pressure) {
                 bloodPressureRecords.push(item);
             } else if (item.weight && item.weight > 0) {
                 weightRecords.push(item);
+            } else if (mealTypes.includes(item.type) || (hasMealTraits && !hasRealExerciseData)) {
+                mealRecords.push(item);
             } else if (exerciseTypes.includes(item.type) || item.distance) {
                 exerciseRecords.push(item);
-            } else if (mealTypes.includes(item.type) || (item.value == 0 && item.calories > 0)) {
+            } else if (item.value == 0 && item.calories > 0) {
                 mealRecords.push(item);
             } else {
                 glucoseRecords.push(item);

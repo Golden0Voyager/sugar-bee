@@ -278,12 +278,60 @@ def parse_glucose_input(text, history_context=None, images_data=None, mime_type=
         # More robust extraction
         match = re.search(r'(\[[\s\S]*\])', raw_text)
         if match:
-            return json.loads(match.group(1))
+            results = json.loads(match.group(1))
+            return _postprocess_records(results)
         return []
 
     except Exception as e:
         print(f"Error parsing AI response: {e}")
         return []
+
+
+def _postprocess_records(records):
+    """后处理：修正 AI 常见的分类错误"""
+    meal_types = {'早餐', '午餐', '晚餐', '加餐', '晨跑前'}
+    exercise_types = {'跑步', '运动'}
+    # 餐食特征字段
+    meal_fields = ('carbs_grams', 'gi_value', 'diet_analysis')
+    # 运动数据字段（需有实质数值才算有效）
+    exercise_fields = ('distance', 'heart_rate', 'cadence', 'steps')
+
+    for r in records:
+        record_type = r.get('type', '')
+
+        # 检测：被标为运动，但实际是餐食记录
+        # 条件：有餐食特征（碳水/GI/饮食分析）且无实质运动数据
+        has_meal_traits = any(r.get(f) for f in meal_fields)
+        has_real_exercise_data = any(r.get(f) for f in exercise_fields)
+
+        if record_type in exercise_types and has_meal_traits and not has_real_exercise_data:
+            # 根据时间推断正确的餐食类型
+            dt_str = r.get('datetime', '')
+            r['type'] = _infer_meal_type(dt_str)
+            # 清除无意义的运动字段
+            for field in ('distance', 'duration', 'heart_rate', 'max_heart_rate',
+                          'pace', 'max_pace', 'cadence', 'steps', 'vo2max'):
+                if field in r:
+                    r[field] = None
+            print(f"[parser] 修正分类: '{record_type}' → '{r['type']}' (检测到餐食特征)")
+
+    return records
+
+
+def _infer_meal_type(dt_str):
+    """根据时间推断餐食类型"""
+    try:
+        hour = int(dt_str.split(' ')[1].split(':')[0])
+    except (IndexError, ValueError):
+        hour = 12  # 默认按午餐处理
+    if hour < 10:
+        return '早餐'
+    elif hour < 14:
+        return '午餐'
+    elif hour < 17:
+        return '加餐'
+    else:
+        return '晚餐'
 
 if __name__ == "__main__":
     # Test
