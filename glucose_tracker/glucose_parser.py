@@ -169,7 +169,7 @@ def parse_glucose_input(text, history_context=None, images_data=None, mime_type=
       - "血压119/70、68" → type="血压测量", systolic_pressure=119, diastolic_pressure=70, pulse_rate=68（血压后紧跟的第三个数字为脉搏/心率）
 
     **体重识别规则**:
-    - 识别关键词：体重/称了/称重/秤/重了/kg/公斤
+    - 识别特征：包含关键词（体重/称/kg/公斤）；或者在包含血压、血糖等体征数列中，出现合理范围内的无单位数值（通常在 40.0 - 150.0 之间，且多带小数），应自动判定为体重！
     - 提取信息：
       - weight: 体重值（单位kg，合理范围30-200kg）
       - type: "体重记录"
@@ -178,7 +178,7 @@ def parse_glucose_input(text, history_context=None, images_data=None, mime_type=
     - 示例：
       - "体重75kg" → type="体重记录", weight=75.0
       - "今天称了74.5" → type="体重记录", weight=74.5
-      - "早上称重73.8公斤" → type="体重记录", weight=73.8
+      - "早空腹血压122/71、61，68.60，7.1" → 必须拆分：独立记录血压(122/71, 脉搏61)；独立记录体重(68.6)；独立血糖('空腹', 7.1)
 
     **血糖预测规则（用于计算 predicted_value）**:
     - 预测值必须基于用户历史数据（空腹均值、餐后均值）合理推算
@@ -190,7 +190,8 @@ def parse_glucose_input(text, history_context=None, images_data=None, mime_type=
       - 场景2（无真实值）：用户输入"吃了面条"。输出: `value`: 8.5 (你的估算), `predicted_value`: 8.5, `is_predicted`: true
 
     2. **文本/语音数据识别**:
-       - **关键：如果输入同时包含餐食、血糖、药物，必须拆分成多条记录！**
+       - **关键：如果输入同时包含餐食、血糖、体征数列、药物，必须拆分成多条记录！**
+       - **无标签多维体征推断**：当用户在一句话中连续输入多个无单位数值时，务必根据数值常理范围进行独立拆分（例如："130/80 75 66.5 5.8" → 血压 130/80，脉搏 75，体重 66.5，血糖 5.8），并各自生成独立记录！
        - 例如："吃了二甲双胍后，喝了一杯酸奶，运动后血糖6.2"应拆分为：
          - 记录1：medication_name="二甲双胍", medication_is_new_plan=false
          - 记录2：type="晨跑前", value=0, notes="一杯酸奶"
