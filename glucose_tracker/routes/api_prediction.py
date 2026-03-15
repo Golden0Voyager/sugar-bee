@@ -55,7 +55,7 @@ def trigger_prediction():
 
         if prediction_type in ['all', 'remaining', '剩余时间点']:
             remaining_results = predict_remaining_glucose_slots(db, current_user_id, target_date, force_update=force_update)
-            if remaining_results:
+            if isinstance(remaining_results, list) and remaining_results:
                 for pred in remaining_results:
                     results.append({
                         'type': pred['type'],
@@ -63,8 +63,12 @@ def trigger_prediction():
                         'value': pred['value'],
                         'reasoning': pred.get('reasoning', '')
                     })
+            elif remaining_results == 'no_measured':
+                results.append({'type': '剩余时间点', 'status': 'skipped', 'reason': '无实测血糖基准，请先录入实测数据'})
+            elif remaining_results == 'all_measured':
+                results.append({'type': '剩余时间点', 'status': 'skipped', 'reason': '所有时间点已有实测数据'})
             else:
-                results.append({'type': '剩余时间点', 'status': 'skipped', 'reason': '无实测数据或已有预测'})
+                results.append({'type': '剩余时间点', 'status': 'skipped', 'reason': '预测未返回有效结果'})
 
         return api_success(data={'results': results})
 

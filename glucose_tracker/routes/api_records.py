@@ -223,7 +223,7 @@ def parse_ai():
         except Exception as e:
             print(f"Error matching predictions: {e}")
 
-        return api_success(data=results)
+        return jsonify(results)
     except Exception as e:
         traceback.print_exc()
         return api_error(str(e), status_code=500, error_type="parse_ai_error")

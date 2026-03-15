@@ -137,6 +137,39 @@ def init_db():
                       user_id INTEGER DEFAULT 1,
                       days INTEGER DEFAULT 7)''')
 
+        # 用户表
+        c.execute('''CREATE TABLE IF NOT EXISTS app_users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE NOT NULL,
+            display_name TEXT NOT NULL,
+            avatar TEXT,
+            is_active BOOLEAN DEFAULT 1,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP)''')
+
+        # 用户档案表
+        c.execute('''CREATE TABLE IF NOT EXISTS user_profiles (
+            user_id INTEGER PRIMARY KEY REFERENCES app_users(id),
+            name TEXT,
+            birth_year INTEGER,
+            height INTEGER,
+            weight INTEGER,
+            gender TEXT,
+            default_meals TEXT,
+            target_ranges TEXT,
+            enabled_modules TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)''')
+
+        # 聊天记录表
+        c.execute('''CREATE TABLE IF NOT EXISTS chat_messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            session_id TEXT NOT NULL,
+            role TEXT NOT NULL,
+            content TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
+        c.execute('CREATE INDEX IF NOT EXISTS idx_chat_user_session ON chat_messages(user_id, session_id, created_at)')
+
         # 用户表迁移
         try:
             c.execute("ALTER TABLE app_users ADD COLUMN password_hash TEXT")

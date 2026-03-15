@@ -148,7 +148,7 @@ def generate_health_analysis(db, user_id=1, is_auto=False, days=7):
 要求：返回 Markdown 格式，文末必须包含 '综合健康得分: [分数]'。
 """
 
-        ai_response = call_ai(prompt, system_prompt="你是一位专业的健康管理专家。")
+        ai_response = call_ai(prompt, task_type='report')
         
         # 解析得分
         score_match = re.search(r'综合健康得分:\s*(\d+)', ai_response)
