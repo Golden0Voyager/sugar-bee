@@ -2,12 +2,18 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta name="theme-color" content="#6366F1">
+    <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="蜜蜂控糖">
+    <meta name="mobile-web-app-capable" content="yes">
     <title>蜜蜂控糖 - 勤劳控糖，甜蜜生活</title>
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="/static/manifest.json">
     <!-- Favicon using emoji as data URI -->
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🐝</text></svg>">
+    <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css" rel="stylesheet">
@@ -313,7 +319,7 @@
         .mini-cal-month {
             background: var(--md-primary);
             color: white;
-            font-size: 0.6rem;
+            font-size: 0.7rem;
             font-weight: 600;
             padding: 3px 0;
             line-height: 1;
@@ -1659,7 +1665,10 @@
             body {
                 font-size: 16px;
                 padding-bottom: env(safe-area-inset-bottom, 0);
+                -webkit-text-size-adjust: 100%;
             }
+            /* 禁用双击缩放 */
+            * { touch-action: manipulation; }
             h3 {
                 font-size: 1.4rem;
             }
@@ -1677,6 +1686,17 @@
             .btn-circle-icon {
                 width: 44px;
                 height: 44px;
+            }
+            /* 下拉菜单项触摸目标 */
+            .dropdown-item {
+                padding: 12px 16px;
+                min-height: 44px;
+            }
+            /* 药物标签触摸目标 + 字体 */
+            .med-tab-pill {
+                min-height: 36px;
+                padding: 6px 12px;
+                font-size: 0.85rem;
             }
             /* Nav pills 在极窄屏幕上可滚动 */
             .nav-pills {
@@ -1699,6 +1719,9 @@
             }
             .stats-card .label {
                 font-size: 0.8rem;
+                min-height: 32px;
+                display: inline-flex;
+                align-items: center;
             }
             /* 时间轴缩进减少 */
             .timeline-item {
@@ -1712,6 +1735,43 @@
             /* 图表容器不溢出 */
             .card-body canvas {
                 max-width: 100%;
+            }
+
+            /* ---- Modal 底部弹出 (Bottom Sheet) ---- */
+            .modal {
+                align-items: flex-end !important;
+            }
+            .modal-dialog {
+                margin: 0;
+                max-width: 100vw;
+                width: 100%;
+            }
+            .modal-content {
+                border-radius: 20px 20px 0 0;
+                max-height: 85vh;
+                display: flex;
+                flex-direction: column;
+            }
+            .modal-content::before {
+                content: '';
+                display: block;
+                width: 36px;
+                height: 4px;
+                background: #D1D5DB;
+                border-radius: 2px;
+                margin: 8px auto 0;
+                flex-shrink: 0;
+            }
+            .modal-body {
+                overflow-y: auto;
+                overscroll-behavior: contain;
+                -webkit-overflow-scrolling: touch;
+            }
+            .modal.fade .modal-dialog {
+                transform: translateY(100%);
+            }
+            .modal.show .modal-dialog {
+                transform: translateY(0);
             }
         }
 
@@ -2133,8 +2193,8 @@
                             {% set supp_plans = all_plans|selectattr('category', 'eq', 'supplement')|list %}
                             <div class="fw-semibold text-dark mb-1">今日 {{ all_plans|length }} 种药物/补剂</div>
                             <div class="med-tab-bar mb-2">
-                                <button class="med-tab-pill active" onclick="switchOverviewMedTab(this, 'card-med-list')" style="font-size: 0.7rem; padding: 2px 8px;">💊 药物 ({{ non_supp }})</button>
-                                <button class="med-tab-pill" onclick="switchOverviewMedTab(this, 'card-supp-list')" style="font-size: 0.7rem; padding: 2px 8px;">🧬 补剂 ({{ supp_plans|length }})</button>
+                                <button class="med-tab-pill active" onclick="switchOverviewMedTab(this, 'card-med-list')" style="font-size: 0.8rem; padding: 4px 10px;">💊 药物 ({{ non_supp }})</button>
+                                <button class="med-tab-pill" onclick="switchOverviewMedTab(this, 'card-supp-list')" style="font-size: 0.8rem; padding: 4px 10px;">🧬 补剂 ({{ supp_plans|length }})</button>
                             </div>
                             {# === 药物 tab === #}
                             <div id="card-med-list">
@@ -2142,7 +2202,7 @@
                                 {% if med_plans_daily %}
                                 {% for group_type, group_meds in med_plans_daily|groupby('med_type') %}
                                 <div style="margin: {{ '0' if loop.first else '6px' }} 0 4px;">
-                                    <span style="font-size: 0.65rem; color: #1565c0; background: #e3f2fd; padding: 1px 6px; border-radius: 3px;">{{ group_type or '未分类' }}</span>
+                                    <span style="font-size: 0.75rem; color: #1565c0; background: #e3f2fd; padding: 1px 6px; border-radius: 3px;">{{ group_type or '未分类' }}</span>
                                 </div>
                                 {% for med in group_meds %}
                                 <div class="d-flex align-items-start gap-1 mb-1">
@@ -2158,11 +2218,11 @@
                                         {% if med.frequency != 'daily' %}
                                         {% set weekday_map = {'Monday':'周一','Tuesday':'周二','Wednesday':'周三','Thursday':'周四','Friday':'周五','Saturday':'周六','Sunday':'周日'} %}
                                         {% if med.frequency == 'weekly' %}
-                                        <span style="font-size: 0.65rem; background: #e3f2fd; color: #1976d2; padding: 0 4px; border-radius: 3px; margin-left: 3px;">每周{{ weekday_map.get(med.frequency_detail, med.frequency_detail) }}</span>
+                                        <span style="font-size: 0.75rem; background: #e3f2fd; color: #1976d2; padding: 0 4px; border-radius: 3px; margin-left: 3px;">每周{{ weekday_map.get(med.frequency_detail, med.frequency_detail) }}</span>
                                         {% elif med.frequency == 'biweekly' %}
-                                        <span style="font-size: 0.65rem; background: #f3e5f5; color: #7b1fa2; padding: 0 4px; border-radius: 3px; margin-left: 3px;">每两周·{{ weekday_map.get(med.frequency_detail, med.frequency_detail) }}</span>
+                                        <span style="font-size: 0.75rem; background: #f3e5f5; color: #7b1fa2; padding: 0 4px; border-radius: 3px; margin-left: 3px;">每两周·{{ weekday_map.get(med.frequency_detail, med.frequency_detail) }}</span>
                                         {% elif med.frequency == 'monthly' %}
-                                        <span style="font-size: 0.65rem; background: #fff3e0; color: #e65100; padding: 0 4px; border-radius: 3px; margin-left: 3px;">每月{{ med.frequency_detail }}号</span>
+                                        <span style="font-size: 0.75rem; background: #fff3e0; color: #e65100; padding: 0 4px; border-radius: 3px; margin-left: 3px;">每月{{ med.frequency_detail }}号</span>
                                         {% endif %}
                                         {% endif %}
                                         {% if med.timing %}<div style="font-size: 0.7rem; color: #999;">{{ med.timing }}</div>{% endif %}
@@ -2173,7 +2233,7 @@
                                 {% endif %}
                                 {% if temp_plan_list or stats.today_med_status.temp_medications %}
                                 <div style="margin: 6px 0 4px;">
-                                    <span style="font-size: 0.65rem; color: #e65100; background: #fff3e0; padding: 1px 6px; border-radius: 3px;">临时用药</span>
+                                    <span style="font-size: 0.75rem; color: #e65100; background: #fff3e0; padding: 1px 6px; border-radius: 3px;">临时用药</span>
                                 </div>
                                 {% for med in temp_plan_list %}
                                 <div class="d-flex align-items-start gap-1 mb-1">
@@ -2217,7 +2277,7 @@
                                 {% if supp_plans %}
                                 {% for group_type, group_meds in supp_plans|groupby('med_type') %}
                                 <div style="margin: {{ '0' if loop.first else '6px' }} 0 4px;">
-                                    <span style="font-size: 0.65rem; color: #00897B; background: #e0f2f1; padding: 1px 6px; border-radius: 3px;">{{ group_type or '未分类' }}</span>
+                                    <span style="font-size: 0.75rem; color: #00897B; background: #e0f2f1; padding: 1px 6px; border-radius: 3px;">{{ group_type or '未分类' }}</span>
                                 </div>
                                 {% for med in group_meds %}
                                 <div class="d-flex align-items-start gap-1 mb-1">
@@ -2233,11 +2293,11 @@
                                         {% if med.frequency != 'daily' %}
                                         {% set weekday_map = {'Monday':'周一','Tuesday':'周二','Wednesday':'周三','Thursday':'周四','Friday':'周五','Saturday':'周六','Sunday':'周日'} %}
                                         {% if med.frequency == 'weekly' %}
-                                        <span style="font-size: 0.65rem; background: #e3f2fd; color: #1976d2; padding: 0 4px; border-radius: 3px; margin-left: 3px;">每周{{ weekday_map.get(med.frequency_detail, med.frequency_detail) }}</span>
+                                        <span style="font-size: 0.75rem; background: #e3f2fd; color: #1976d2; padding: 0 4px; border-radius: 3px; margin-left: 3px;">每周{{ weekday_map.get(med.frequency_detail, med.frequency_detail) }}</span>
                                         {% elif med.frequency == 'biweekly' %}
-                                        <span style="font-size: 0.65rem; background: #f3e5f5; color: #7b1fa2; padding: 0 4px; border-radius: 3px; margin-left: 3px;">每两周·{{ weekday_map.get(med.frequency_detail, med.frequency_detail) }}</span>
+                                        <span style="font-size: 0.75rem; background: #f3e5f5; color: #7b1fa2; padding: 0 4px; border-radius: 3px; margin-left: 3px;">每两周·{{ weekday_map.get(med.frequency_detail, med.frequency_detail) }}</span>
                                         {% elif med.frequency == 'monthly' %}
-                                        <span style="font-size: 0.65rem; background: #fff3e0; color: #e65100; padding: 0 4px; border-radius: 3px; margin-left: 3px;">每月{{ med.frequency_detail }}号</span>
+                                        <span style="font-size: 0.75rem; background: #fff3e0; color: #e65100; padding: 0 4px; border-radius: 3px; margin-left: 3px;">每月{{ med.frequency_detail }}号</span>
                                         {% endif %}
                                         {% endif %}
                                         {% if med.timing %}<div style="font-size: 0.7rem; color: #999;">{{ med.timing }}</div>{% endif %}
@@ -2644,7 +2704,7 @@
                             <div class="ms-1">
                                 <div class="d-flex align-items-center gap-2">
                                     <h6 class="mb-0">综合健康分析</h6>
-                                    <span class="badge rounded-pill" style="background: rgba(255,255,255,0.2); font-size: 0.65rem;">{{ stats.latest_analysis.days_label }}</span>
+                                    <span class="badge rounded-pill" style="background: rgba(255,255,255,0.2); font-size: 0.75rem;">{{ stats.latest_analysis.days_label }}</span>
                                 </div>
                                 <small style="opacity: 0.75; font-size: 0.75rem;">{{ stats.latest_analysis.analysis_date }} 生成</small>
                                 <div class="small mt-1" style="opacity: 0.95; line-height: 1.4;">{{ stats.latest_analysis.glucose_summary }}</div>
@@ -9638,11 +9698,14 @@
 
         // 使用 marked.js 渲染 Markdown
         const contentDiv = modal.querySelector('#fullAnalysisContent');
+        let mdText = analysis.full_analysis;
+        // 去除 AI 返回的 ```markdown ... ``` 包裹
+        mdText = mdText.replace(/^```(?:markdown|md)?\s*\n?/i, '').replace(/\n?```\s*$/, '');
         if (typeof marked !== 'undefined') {
-            contentDiv.innerHTML = marked.parse(analysis.full_analysis);
+            contentDiv.innerHTML = marked.parse(mdText);
         } else {
             // 简单的换行处理
-            contentDiv.innerHTML = analysis.full_analysis.replace(/\n/g, '<br>');
+            contentDiv.innerHTML = mdText.replace(/\n/g, '<br>');
         }
 
         // 清理：模态框关闭后移除
@@ -10435,7 +10498,7 @@
 /* ---- 浮动入口 ---- */
 .chat-fab {
     position: fixed;
-    bottom: 24px;
+    bottom: calc(24px + env(safe-area-inset-bottom, 0px));
     right: 24px;
     z-index: 1040;
     display: inline-flex;
@@ -10652,6 +10715,16 @@
     .chat-resize-handle { display: none; }
     .chat-fab-label { display: none; }
     .chat-fab { padding: 12px; border-radius: 50%; }
+    .chat-input-area {
+        padding-bottom: max(12px, env(safe-area-inset-bottom));
+    }
+}
+
+/* ---- Standalone 模式顶部安全区 ---- */
+@media all and (display-mode: standalone) {
+    .chat-panel {
+        padding-top: env(safe-area-inset-top, 0px);
+    }
 }
 </style>
 
@@ -11010,6 +11083,25 @@
         el.style.height = Math.min(el.scrollHeight, 120) + 'px';
         chatToggleSend(el.value.trim().length > 0);
     };
+})();
+</script>
+
+<!-- Standalone 模式检测 -->
+<script>
+(function() {
+    var isStandalone = window.navigator.standalone || window.matchMedia('(display-mode: standalone)').matches;
+    if (isStandalone) {
+        document.documentElement.classList.add('standalone');
+        // 顶部安全区 padding
+        var style = document.createElement('style');
+        style.textContent = '.standalone body { padding-top: env(safe-area-inset-top, 20px); }' +
+            '.standalone .container:first-child { padding-top: env(safe-area-inset-top, 0px); }';
+        document.head.appendChild(style);
+    }
+    // 监听 display-mode 变化（从浏览器切换到 standalone）
+    window.matchMedia('(display-mode: standalone)').addEventListener('change', function(e) {
+        if (e.matches) document.documentElement.classList.add('standalone');
+    });
 })();
 </script>
 

@@ -49,7 +49,7 @@ def api_health_stats():
         # 血糖统计
         c.execute("""
             SELECT
-                AVG(CASE WHEN (type LIKE '%空腹%') THEN value END),
+                AVG(CASE WHEN (type LIKE '%空腹%' AND type NOT LIKE '%血压%') THEN value END),
                 AVG(CASE WHEN type LIKE '%餐后2小时%' THEN value END),
                 MAX(value), MIN(value)
             FROM records
@@ -101,7 +101,7 @@ def api_health_stats():
                    COUNT(DISTINCT DATE(timestamp))
             FROM records
             WHERE user_id = ? AND timestamp > ?
-            AND (distance IS NOT NULL OR type IN ('跑步', '运动'))
+            AND (distance > 0 OR type IN ('跑步', '运动'))
         """, (current_user_id, cutoff))
         es = c.fetchone()
 

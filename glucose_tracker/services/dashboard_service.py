@@ -24,7 +24,7 @@ def get_dashboard_stats(db, user_id):
     # === 2. 血糖统计（7天） ===
     c.execute("""
         SELECT
-            AVG(CASE WHEN (type LIKE '%空腹%') THEN value END) as avg_fasting,
+            AVG(CASE WHEN (type LIKE '%空腹%' AND type NOT LIKE '%血压%') THEN value END) as avg_fasting,
             AVG(CASE WHEN type LIKE '%餐后2小时%' THEN value END) as avg_post2h,
             MAX(value) as max_glucose,
             MIN(value) as min_glucose
@@ -57,12 +57,12 @@ def get_dashboard_stats(db, user_id):
     c.execute("""
         SELECT
             SUM(distance) as total_distance,
-            SUM(CASE WHEN (type = '跑步' OR type = '运动' OR distance IS NOT NULL) AND calories > 0 THEN calories END) as total_cal,
+            SUM(CASE WHEN (type = '跑步' OR type = '运动' OR distance > 0) AND calories > 0 THEN calories END) as total_cal,
             AVG(CASE WHEN heart_rate IS NOT NULL AND (type = '跑步' OR type = '运动') THEN heart_rate END) as avg_hr,
             COUNT(DISTINCT DATE(timestamp)) as exercise_count
         FROM records
         WHERE user_id = ? AND timestamp > ?
-        AND (distance IS NOT NULL OR type IN ('跑步', '运动'))
+        AND (distance > 0 OR type IN ('跑步', '运动'))
     """, (user_id, seven_days_ago))
     exercise_stats = c.fetchone()
 

@@ -39,7 +39,9 @@ def generate_health_analysis(db, user_id=1, is_auto=False, days=7):
             LEFT JOIN records p ON p.verified_by_real_id = r.id AND p.is_predicted = 1
             WHERE r.user_id = ? AND r.value > 0 AND r.is_predicted = 0
             AND r.timestamp > datetime('now', ? || ' days')
-            AND r.type NOT IN ('跑步', '运动', '血压')
+            AND r.type NOT IN ('跑步', '运动')
+            AND r.type NOT LIKE '%血压%'
+            AND r.systolic_pressure IS NULL
             ORDER BY r.timestamp DESC
         """, (user_id, f'-{days}'))
         glucose_records = c.fetchall()
@@ -58,7 +60,7 @@ def generate_health_analysis(db, user_id=1, is_auto=False, days=7):
         c.execute("""
             SELECT distance, duration, heart_rate, max_heart_rate, calories, pace, cadence, steps, vo2max, timestamp
             FROM records
-            WHERE user_id = ? AND (type IN ('跑步', '运动') OR distance IS NOT NULL)
+            WHERE user_id = ? AND (type IN ('跑步', '运动') OR distance > 0)
             AND timestamp > datetime('now', ? || ' days')
             ORDER BY timestamp DESC
         """, (user_id, f'-{days}'))
@@ -68,7 +70,7 @@ def generate_health_analysis(db, user_id=1, is_auto=False, days=7):
         c.execute("""
             SELECT calories, carbs_grams, gi_value, diet_analysis, notes, type, timestamp
             FROM records
-            WHERE user_id = ? AND calories > 0 AND type NOT IN ('跑步', '运动')
+            WHERE user_id = ? AND calories > 0 AND type NOT IN ('跑步', '运动', '走路', '骑行', '游泳', '健身')
             AND timestamp > datetime('now', ? || ' days')
             ORDER BY timestamp DESC
         """, (user_id, f'-{days}'))
@@ -114,8 +116,9 @@ def generate_health_analysis(db, user_id=1, is_auto=False, days=7):
         # --- 数据汇总 ---
         glucose_summary = ""
         if glucose_records:
-            glucose_values = [r[0] for r in glucose_records]
-            glucose_summary = f"平均血糖: {sum(glucose_values)/len(glucose_values):.1f} mmol/L, 最高: {max(glucose_values):.1f}, 最低: {min(glucose_values):.1f}"
+            glucose_values = [r[0] for r in glucose_records if 1.0 <= r[0] <= 30.0]
+            if glucose_values:
+                glucose_summary = f"平均血糖: {sum(glucose_values)/len(glucose_values):.1f} mmol/L, 最高: {max(glucose_values):.1f}, 最低: {min(glucose_values):.1f}"
         
         bp_summary = ""
         if bp_records:
@@ -149,7 +152,11 @@ def generate_health_analysis(db, user_id=1, is_auto=False, days=7):
 """
 
         ai_response = call_ai(prompt, task_type='report')
-        
+
+        # 去除 AI 返回的 ```markdown ... ``` 包裹
+        ai_response = re.sub(r'^```(?:markdown|md)?\s*\n?', '', ai_response, flags=re.IGNORECASE)
+        ai_response = re.sub(r'\n?```\s*$', '', ai_response)
+
         # 解析得分
         score_match = re.search(r'综合健康得分:\s*(\d+)', ai_response)
         score = int(score_match.group(1)) if score_match else 80

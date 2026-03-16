@@ -33,6 +33,8 @@ def get_user_stats(db, user_id=1):
             SELECT AVG(value) FROM records
             WHERE user_id = ?
             AND type LIKE '%空腹%'
+            AND type NOT LIKE '%血压%'
+            AND systolic_pressure IS NULL
             AND is_predicted = 0
             AND timestamp > datetime('now', '-30 days')
         """, (user_id,))
@@ -44,6 +46,8 @@ def get_user_stats(db, user_id=1):
             SELECT AVG(value) FROM records
             WHERE user_id = ?
             AND type LIKE '%餐后%'
+            AND type NOT LIKE '%血压%'
+            AND systolic_pressure IS NULL
             AND is_predicted = 0
             AND timestamp > datetime('now', '-30 days')
         """, (user_id,))
@@ -51,7 +55,12 @@ def get_user_stats(db, user_id=1):
         stats['avg_postmeal'] = round(row[0], 1) if row and row[0] else '未知'
 
         # 3. Last record
-        c.execute("SELECT value, type FROM records WHERE user_id = ? AND is_predicted = 0 ORDER BY timestamp DESC LIMIT 1", (user_id,))
+        c.execute("""SELECT value, type FROM records
+            WHERE user_id = ? AND is_predicted = 0
+            AND value > 0 AND systolic_pressure IS NULL
+            AND type NOT LIKE '%血压%'
+            AND type NOT IN ('跑步', '运动', '体重记录')
+            ORDER BY timestamp DESC LIMIT 1""", (user_id,))
         row = c.fetchone()
         if row:
             stats['last_value'] = row[0]

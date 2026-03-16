@@ -26,7 +26,7 @@ def build_timeline(cursor, user_id, days=90):
     # 2. Calculate Trends
     last_values = {}
     for r in records:
-        key = 'fasting' if '空腹' in r['type'] else ('post' if '餐后' in r['type'] else 'other')
+        key = 'fasting' if ('空腹' in r['type'] and '血压' not in r['type']) else ('post' if ('餐后' in r['type'] and '血压' not in r['type']) else 'other')
         r['trend'] = 0
         r['trend_dir'] = 'flat'
         if key in last_values and r['value'] > 0:
@@ -58,13 +58,13 @@ def build_timeline(cursor, user_id, days=90):
         
         calories = r.get('calories') or 0
         if calories > 0:
-            if r['type'] in ['跑步', '运动'] or r.get('distance'):
+            if r['type'] in ['跑步', '运动', '走路', '骑行', '游泳', '健身'] or (r.get('distance') and r.get('distance') > 0):
                 day_group['stats']['cal_out_exercise'] += calories
             else:
                 day_group['stats']['cal_in'] += calories
-        
+
         value = r.get('value') or 0
-        if value > 0:
+        if value > 0 and not r.get('systolic_pressure') and not r.get('is_predicted') and r['type'] not in ['跑步', '运动', '走路', '骑行', '游泳', '健身', '早餐', '午餐', '晚餐', '加餐', '体重记录'] and '血压' not in r['type']:
             day_group['stats']['avg_glucose'] += value
             day_group['stats']['glucose_count'] += 1
 

@@ -124,8 +124,8 @@ def predict_morning_fpg(db, user_id=1):
             WHERE user_id = ? AND DATE(timestamp) = ? AND calories > 0""", (user_id, yesterday_str,))
         yesterday_calories = c.fetchall()
 
-        cal_in = sum(row[1] for row in yesterday_calories if row[0] not in ['跑步', '运动'])
-        cal_out_exercise = sum(row[1] for row in yesterday_calories if row[0] in ['跑步', '运动'])
+        cal_in = sum(row[1] for row in yesterday_calories if row[0] not in ['跑步', '运动', '走路', '骑行', '游泳', '健身'])
+        cal_out_exercise = sum(row[1] for row in yesterday_calories if row[0] in ['跑步', '运动', '走路', '骑行', '游泳', '健身'])
 
         user_config = settings.load_config()
         default_meals = user_config.get('default_meals', {})
@@ -435,7 +435,7 @@ def check_daily_data_complete(db, user_id=1, target_date=None):
     if target_date is None: target_date = datetime.datetime.now().strftime('%Y-%m-%d')
     try:
         c = db.cursor()
-        c.execute("SELECT COUNT(*) FROM records WHERE user_id = ? AND DATE(timestamp) = ? AND value > 0 AND type NOT IN ('跑步', '运动', '血压')", (user_id, target_date))
+        c.execute("SELECT COUNT(*) FROM records WHERE user_id = ? AND DATE(timestamp) = ? AND value > 0 AND type NOT IN ('跑步', '运动') AND type NOT LIKE '%血压%' AND systolic_pressure IS NULL", (user_id, target_date))
         has_g = c.fetchone()[0] > 0
         c.execute("SELECT COUNT(*) FROM records WHERE user_id = ? AND DATE(timestamp) = ? AND systolic_pressure > 0", (user_id, target_date))
         has_bp = c.fetchone()[0] > 0
