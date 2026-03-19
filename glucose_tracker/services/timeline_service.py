@@ -82,7 +82,9 @@ def build_timeline(cursor, user_id, days=90):
         data = grouped_records[date_str]
         # Match medication plans
         for plan in medication_plans:
-            if plan['start_date'] <= date_str <= (plan['end_date'] or '9999-12-31'):
+            start = plan['start_date'] or date_str
+            end = plan['end_date'] or '9999-12-31'
+            if start <= date_str <= end:
                 data['medication_plans'].append(plan)
         
         # BMR Adjustment for today

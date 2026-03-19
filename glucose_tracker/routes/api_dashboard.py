@@ -316,44 +316,45 @@ def api_day_overview():
                 else: predicted_count += 1
             overview.append(slot_data)
 
-        # 运动
+        # 运动（全部记录）
         c.execute("""
-            SELECT type, distance, calories, duration, heart_rate, pace, cadence, vo2max, max_heart_rate, steps, timestamp
+            SELECT type, distance, calories, duration, heart_rate, pace, max_pace, cadence, vo2max, max_heart_rate, steps, timestamp
             FROM records WHERE user_id = ? AND timestamp BETWEEN ? AND ?
             AND (type IN ('运动','跑步','走路','骑行','游泳','健身') OR type LIKE '%跑%' OR type LIKE '%走%' OR type LIKE '%骑%')
-            ORDER BY timestamp DESC, vo2max DESC LIMIT 1
+            ORDER BY timestamp DESC, vo2max DESC
         """, (current_user_id, day_start, day_end))
-        ex_row = c.fetchone()
-        exercise = None
-        if ex_row:
-            exercise = {k: ex_row[k] for k in ['type','distance','calories','duration','heart_rate','pace','cadence','vo2max','max_heart_rate','steps']}
-            exercise['time'] = ex_row['timestamp'].split(' ')[1][:5] if ' ' in ex_row['timestamp'] else ''
+        ex_rows = c.fetchall()
+        exercises = []
+        for ex_row in ex_rows:
+            ex = {k: ex_row[k] for k in ['type','distance','calories','duration','heart_rate','pace','max_pace','cadence','vo2max','max_heart_rate','steps']}
+            ex['time'] = ex_row['timestamp'].split(' ')[1][:5] if ' ' in ex_row['timestamp'] else ''
+            exercises.append(ex)
 
-        # 血压
+        # 血压（全部记录）
         c.execute("""
             SELECT systolic_pressure, diastolic_pressure, pulse_rate, spo2, timestamp
             FROM records WHERE user_id = ? AND timestamp BETWEEN ? AND ?
-            AND systolic_pressure IS NOT NULL ORDER BY timestamp DESC LIMIT 1
+            AND systolic_pressure IS NOT NULL ORDER BY timestamp DESC
         """, (current_user_id, day_start, day_end))
-        bp_row = c.fetchone()
-        bp = None
-        if bp_row:
-            bp = {'systolic': bp_row['systolic_pressure'], 'diastolic': bp_row['diastolic_pressure'],
+        bp_rows = c.fetchall()
+        bps = []
+        for bp_row in bp_rows:
+            bps.append({'systolic': bp_row['systolic_pressure'], 'diastolic': bp_row['diastolic_pressure'],
                   'heart_rate': bp_row['pulse_rate'], 'spo2': bp_row['spo2'],
-                  'time': bp_row['timestamp'].split(' ')[1][:5] if ' ' in bp_row['timestamp'] else ''}
+                  'time': bp_row['timestamp'].split(' ')[1][:5] if ' ' in bp_row['timestamp'] else ''})
 
-        # 体重
+        # 体重（全部记录）
         c.execute("""
             SELECT weight, bmi, timestamp FROM records WHERE user_id = ? AND timestamp BETWEEN ? AND ?
-            AND weight > 0 ORDER BY timestamp DESC LIMIT 1
+            AND weight > 0 ORDER BY timestamp DESC
         """, (current_user_id, day_start, day_end))
-        w_row = c.fetchone()
-        weight = None
-        if w_row:
+        w_rows = c.fetchall()
+        weights = []
+        for w_row in w_rows:
             bmi_cat = settings.get_bmi_category(w_row['bmi'])
-            weight = {'weight': w_row['weight'], 'bmi': w_row['bmi'],
+            weights.append({'weight': w_row['weight'], 'bmi': w_row['bmi'],
                       'bmi_category': bmi_cat,
-                      'time': w_row['timestamp'].split(' ')[1][:5] if ' ' in w_row['timestamp'] else ''}
+                      'time': w_row['timestamp'].split(' ')[1][:5] if ' ' in w_row['timestamp'] else ''})
 
         # 用药
         med_plans = []
@@ -445,9 +446,9 @@ def api_day_overview():
             'completion': {'measured': measured_count, 'predicted': predicted_count, 'total': len(today_schedule)},
             'compliance': compliance,
             'compliance_badge': compliance_badge,
-            'exercise': exercise,
-            'bp': bp,
-            'weight': weight,
+            'exercises': exercises,
+            'bps': bps,
+            'weights': weights,
             'med_status': {'plans': med_plans, 'taken_details': taken_logs, 'temp_medications': temp_meds}
         })
     except Exception as e:

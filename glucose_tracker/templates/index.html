@@ -1289,6 +1289,15 @@
             gap: 4px;
             margin-bottom: 10px;
         }
+        .overview-card-nav {
+            display: inline-flex; align-items: center; gap: 2px; font-size: 0.7rem; user-select: none;
+        }
+        .overview-card-nav button {
+            border: none; background: none; color: #999; padding: 0 3px; cursor: pointer;
+            font-size: 0.95rem; line-height: 1; border-radius: 3px; transition: color 0.15s;
+        }
+        .overview-card-nav button:hover { color: #333; background: rgba(0,0,0,0.06); }
+        .overview-card-nav .nav-idx { color: #888; font-size: 0.7rem; min-width: 24px; text-align: center; }
         .med-tab-pill {
             padding: 7px 18px;
             border: none;
@@ -2103,16 +2112,30 @@
                         <div class="d-flex align-items-center gap-1 mb-2">
                             <span style="font-size: 1rem;">🏃</span>
                             <span class="fw-bold" style="color: var(--md-primary);">运动</span>
+                            {% if stats.today_exercises|length > 1 %}
+                            <span class="ms-auto overview-card-nav" id="nav-exercise">
+                                <button onclick="overviewCardNav('exercise',-1)" title="上一条">&lsaquo;</button>
+                                <span class="nav-idx">1/{{ stats.today_exercises|length }}</span>
+                                <button onclick="overviewCardNav('exercise',1)" title="下一条">&rsaquo;</button>
+                            </span>
+                            {% endif %}
                         </div>
+                        <div id="overview-exercise-content">
                         {% if stats.today_exercise %}
                         <div style="font-size: 0.85rem;" class="text-muted">
                             <div class="fw-semibold text-dark mb-1">{{ stats.today_exercise.type }}</div>
                             <div>📏 {{ stats.today_exercise.distance or 0 }}km · {{ stats.today_exercise.duration or '--' }}</div>
                             {% if stats.today_exercise.pace %}
-                            <div>⏱️ 平均配速 {{ stats.today_exercise.pace }}/km</div>
+                            <div>⏱️ 平均配速 {{ stats.today_exercise.pace }}{% if '/km' not in (stats.today_exercise.pace|string) %}/km{% endif %}</div>
+                            {% endif %}
+                            {% if stats.today_exercise.max_pace %}
+                            <div>⏱️ 最大配速 {{ stats.today_exercise.max_pace }}{% if '/km' not in (stats.today_exercise.max_pace|string) %}/km{% endif %}</div>
                             {% endif %}
                             {% if stats.today_exercise.heart_rate %}
-                            <div>💓 心率 {{ stats.today_exercise.heart_rate }}{% if stats.today_exercise.max_heart_rate %}/{{ stats.today_exercise.max_heart_rate }}{% endif %}bpm</div>
+                            <div>💓 平均心率 {{ stats.today_exercise.heart_rate }}bpm</div>
+                            {% endif %}
+                            {% if stats.today_exercise.max_heart_rate %}
+                            <div>💓 最大心率 {{ stats.today_exercise.max_heart_rate }}bpm</div>
                             {% endif %}
                             {% if stats.today_exercise.cadence %}
                             <div>👟 步频 {{ stats.today_exercise.cadence }}spm</div>
@@ -2130,6 +2153,7 @@
                         {% else %}
                         <div class="text-muted small">暂无运动记录</div>
                         {% endif %}
+                        </div>
                     </div>
                 </div>
                 <!-- 血压 -->
@@ -2138,7 +2162,15 @@
                         <div class="d-flex align-items-center gap-1 mb-2">
                             <span style="font-size: 1rem;">❤️</span>
                             <span class="fw-bold" style="color: var(--md-secondary);">血压</span>
+                            {% if stats.today_bps|length > 1 %}
+                            <span class="ms-auto overview-card-nav" id="nav-bp">
+                                <button onclick="overviewCardNav('bp',-1)" title="上一条">&lsaquo;</button>
+                                <span class="nav-idx">1/{{ stats.today_bps|length }}</span>
+                                <button onclick="overviewCardNav('bp',1)" title="下一条">&rsaquo;</button>
+                            </span>
+                            {% endif %}
                         </div>
+                        <div id="overview-bp-content">
                         {% if stats.today_bp %}
                         <div style="font-size: 0.85rem;" class="text-muted">
                             <div class="fw-semibold text-dark mb-1">{{ stats.today_bp.systolic }}/{{ stats.today_bp.diastolic }} mmHg</div>
@@ -2149,10 +2181,19 @@
                             <div>🫁 血氧 {{ stats.today_bp.spo2 }}%</div>
                             {% endif %}
                             <div>🕐 测量时间 {{ stats.today_bp.time }}</div>
+                            {% if stats.today_bps|length >= 2 %}
+                            {% set ns = namespace(sum_sys=0, sum_dia=0) %}
+                            {% for bp in stats.today_bps %}
+                                {% set ns.sum_sys = ns.sum_sys + bp.systolic %}
+                                {% set ns.sum_dia = ns.sum_dia + bp.diastolic %}
+                            {% endfor %}
+                            <div style="margin-top:6px; padding-top:5px; border-top:1px dashed #e0e0e0; color:#888;">📊 当日均值 {{ (ns.sum_sys / stats.today_bps|length)|round|int }}/{{ (ns.sum_dia / stats.today_bps|length)|round|int }} mmHg</div>
+                            {% endif %}
                         </div>
                         {% else %}
                         <div class="text-muted small">暂无血压记录</div>
                         {% endif %}
+                        </div>
                     </div>
                 </div>
                 <!-- 体重 -->
@@ -2161,7 +2202,15 @@
                         <div class="d-flex align-items-center gap-1 mb-2">
                             <span style="font-size: 1rem;">⚖️</span>
                             <span class="fw-bold" style="color: #00897B;">体重</span>
+                            {% if stats.today_weights|length > 1 %}
+                            <span class="ms-auto overview-card-nav" id="nav-weight">
+                                <button onclick="overviewCardNav('weight',-1)" title="上一条">&lsaquo;</button>
+                                <span class="nav-idx">1/{{ stats.today_weights|length }}</span>
+                                <button onclick="overviewCardNav('weight',1)" title="下一条">&rsaquo;</button>
+                            </span>
+                            {% endif %}
                         </div>
+                        <div id="overview-weight-content">
                         {% if stats.today_weight %}
                         <div style="font-size: 0.85rem;" class="text-muted">
                             <div class="fw-semibold text-dark mb-1">{{ "%.1f"|format(stats.today_weight.weight) }} kg</div>
@@ -2175,6 +2224,7 @@
                         {% else %}
                         <div class="text-muted small">暂无体重记录</div>
                         {% endif %}
+                        </div>
                     </div>
                 </div>
                 <!-- 用药 -->
@@ -2191,7 +2241,6 @@
                             {% set temp_plan_list = all_plans|selectattr('category', 'eq', 'temporary')|list %}
                             {% set non_supp = med_plans_daily|length + temp_plan_list|length + (stats.today_med_status.temp_medications|length if stats.today_med_status.temp_medications else 0) %}
                             {% set supp_plans = all_plans|selectattr('category', 'eq', 'supplement')|list %}
-                            <div class="fw-semibold text-dark mb-1">今日 {{ all_plans|length }} 种药物/补剂</div>
                             <div class="med-tab-bar mb-2">
                                 <button class="med-tab-pill active" onclick="switchOverviewMedTab(this, 'card-med-list')" style="font-size: 0.8rem; padding: 4px 10px;">💊 药物 ({{ non_supp }})</button>
                                 <button class="med-tab-pill" onclick="switchOverviewMedTab(this, 'card-supp-list')" style="font-size: 0.8rem; padding: 4px 10px;">🧬 补剂 ({{ supp_plans|length }})</button>
@@ -4016,6 +4065,99 @@
         } catch(e) { console.error(e); }
     }
 
+    // === 概览卡片多条记录切换 ===
+    window._ovData = { exercise: [], bp: [], weight: [] };
+    window._ovIdx = { exercise: 0, bp: 0, weight: 0 };
+
+    function _rebuildCardHeader(cardEl, type, icon, label, color) {
+        const items = window._ovData[type];
+        const headerEl = cardEl.querySelector('.d-flex.align-items-center');
+        let navHtml = '';
+        if (items.length > 1) {
+            navHtml = `<span class="ms-auto overview-card-nav" id="nav-${type}">
+                <button onclick="overviewCardNav('${type}',-1)" title="上一条">&lsaquo;</button>
+                <span class="nav-idx">1/${items.length}</span>
+                <button onclick="overviewCardNav('${type}',1)" title="下一条">&rsaquo;</button></span>`;
+        }
+        headerEl.innerHTML = `<span style="font-size:1rem;">${icon}</span><span class="fw-bold" style="color:${color};">${label}</span>${navHtml}`;
+        // 确保内容容器存在
+        if (!cardEl.querySelector(`#overview-${type}-content`)) {
+            const div = document.createElement('div');
+            div.id = `overview-${type}-content`;
+            cardEl.appendChild(div);
+        }
+    }
+
+    function _renderExerciseItem() {
+        const el = document.getElementById('overview-exercise-content');
+        const items = window._ovData.exercise;
+        const idx = window._ovIdx.exercise;
+        if (!items.length) { el.innerHTML = '<div class="text-muted small">暂无运动记录</div>'; return; }
+        const e = items[idx];
+        let h = `<div style="font-size:0.85rem;" class="text-muted">
+            <div class="fw-semibold text-dark mb-1">${e.type}</div>
+            <div>📏 ${e.distance||0}km · ${e.duration||'--'}</div>`;
+        if (e.pace) h += `<div>⏱️ 平均配速 ${e.pace}${String(e.pace).includes('/km') ? '' : '/km'}</div>`;
+        if (e.max_pace) h += `<div>⏱️ 最大配速 ${e.max_pace}${String(e.max_pace).includes('/km') ? '' : '/km'}</div>`;
+        if (e.heart_rate) h += `<div>💓 平均心率 ${e.heart_rate}bpm</div>`;
+        if (e.max_heart_rate) h += `<div>💓 最大心率 ${e.max_heart_rate}bpm</div>`;
+        if (e.cadence) h += `<div>👟 步频 ${e.cadence}spm</div>`;
+        if (e.steps) h += `<div>👣 ${e.steps}步</div>`;
+        if (e.calories) h += `<div>🔥 ${e.calories}kcal</div>`;
+        if (e.vo2max) h += `<div>🫁 VO₂max ${e.vo2max}</div>`;
+        h += '</div>';
+        el.innerHTML = h;
+    }
+
+    function _renderBpItem() {
+        const el = document.getElementById('overview-bp-content');
+        const items = window._ovData.bp;
+        const idx = window._ovIdx.bp;
+        if (!items.length) { el.innerHTML = '<div class="text-muted small">暂无血压记录</div>'; return; }
+        const b = items[idx];
+        let h = `<div style="font-size:0.85rem;" class="text-muted">
+            <div class="fw-semibold text-dark mb-1">${b.systolic}/${b.diastolic} mmHg</div>
+            ${b.heart_rate ? `<div>💓 静息心率 ${b.heart_rate}bpm</div>` : ''}
+            ${b.spo2 ? `<div>🫁 血氧 ${b.spo2}%</div>` : ''}
+            <div>🕐 测量时间 ${b.time}</div>`;
+        if (items.length >= 2) {
+            const avgSys = Math.round(items.reduce((s, v) => s + v.systolic, 0) / items.length);
+            const avgDia = Math.round(items.reduce((s, v) => s + v.diastolic, 0) / items.length);
+            h += `<div style="margin-top:6px; padding-top:5px; border-top:1px dashed #e0e0e0; color:#888;">📊 当日均值 ${avgSys}/${avgDia} mmHg</div>`;
+        }
+        h += '</div>';
+        el.innerHTML = h;
+    }
+
+    function _renderWeightItem() {
+        const el = document.getElementById('overview-weight-content');
+        const items = window._ovData.weight;
+        const idx = window._ovIdx.weight;
+        if (!items.length) { el.innerHTML = '<div class="text-muted small">暂无体重记录</div>'; return; }
+        const w = items[idx];
+        let h = `<div style="font-size:0.85rem;" class="text-muted">
+            <div class="fw-semibold text-dark mb-1">${w.weight.toFixed ? w.weight.toFixed(1) : w.weight} kg</div>`;
+        if (w.bmi) h += `<div>📊 BMI ${w.bmi.toFixed ? w.bmi.toFixed(1) : w.bmi} <span style="color:${w.bmi_category.color};">${w.bmi_category.label}</span></div>`;
+        h += `<div>🕐 ${w.time}</div></div>`;
+        el.innerHTML = h;
+    }
+
+    function overviewCardNav(type, delta) {
+        const items = window._ovData[type];
+        if (!items || items.length <= 1) return;
+        let idx = window._ovIdx[type] + delta;
+        if (idx < 0) idx = items.length - 1;
+        if (idx >= items.length) idx = 0;
+        window._ovIdx[type] = idx;
+        // 更新导航指示器
+        const navEl = document.getElementById(`nav-${type}`);
+        if (navEl) navEl.querySelector('.nav-idx').textContent = `${idx + 1}/${items.length}`;
+        // 重新渲染内容
+        if (type === 'exercise') _renderExerciseItem();
+        else if (type === 'bp') _renderBpItem();
+        else if (type === 'weight') _renderWeightItem();
+    }
+
     function renderOverview(data) {
         const isToday = data.date === todayStr;
         document.getElementById('overviewTitle').textContent = isToday ? '今日概览' : '旧日重温';
@@ -4091,51 +4233,28 @@
 
         document.querySelector('.today-progress').nextElementSibling.innerHTML = footLeft + footRight;
 
+        // 存储数组数据到全局状态，用于箭头切换
+        window._ovData = {
+            exercise: data.exercises || (data.exercise ? [data.exercise] : []),
+            bp: data.bps || (data.bp ? [data.bp] : []),
+            weight: data.weights || (data.weight ? [data.weight] : [])
+        };
+        window._ovIdx = { exercise: 0, bp: 0, weight: 0 };
+
         // 运动
-        const exEl = document.querySelector('#todayOverviewCard .col-md-3:nth-child(1) .p-2');
-        if (data.exercise) {
-            const e = data.exercise;
-            let exHtml = `<div class="d-flex align-items-center gap-1 mb-2"><span style="font-size:1rem;">🏃</span><span class="fw-bold" style="color:var(--md-primary);">运动</span></div>
-                <div style="font-size:0.75rem;" class="text-muted">
-                <div class="fw-semibold text-dark mb-1">${e.type}</div>
-                <div>📏 ${e.distance||0}km · ${e.duration||'--'}</div>`;
-            if (e.pace) exHtml += `<div>⏱️ 平均配速 ${e.pace}/km</div>`;
-            if (e.heart_rate) exHtml += `<div>💓 心率 ${e.heart_rate}${e.max_heart_rate ? '/'+e.max_heart_rate : ''}bpm</div>`;
-            if (e.cadence) exHtml += `<div>👟 步频 ${e.cadence}spm</div>`;
-            if (e.steps) exHtml += `<div>👣 ${e.steps}步</div>`;
-            if (e.calories) exHtml += `<div>🔥 ${e.calories}kcal</div>`;
-            if (e.vo2max) exHtml += `<div>🫁 VO₂max ${e.vo2max}</div>`;
-            exHtml += `</div>`;
-            exEl.innerHTML = exHtml;
-        } else {
-            exEl.innerHTML = `<div class="d-flex align-items-center gap-1 mb-2"><span style="font-size:1rem;">🏃</span><span class="fw-bold" style="color:var(--md-primary);">运动</span></div><div class="text-muted small">暂无运动记录</div>`;
-        }
+        const exCard = document.querySelector('#todayOverviewCard .col-md-3:nth-child(1) .p-2');
+        _rebuildCardHeader(exCard, 'exercise', '🏃', '运动', 'var(--md-primary)');
+        _renderExerciseItem();
 
         // 血压
-        const bpEl = document.querySelector('#todayOverviewCard .col-md-3:nth-child(2) .p-2');
-        if (data.bp) {
-            bpEl.innerHTML = `<div class="d-flex align-items-center gap-1 mb-2"><span style="font-size:1rem;">❤️</span><span class="fw-bold" style="color:var(--md-secondary);">血压</span></div>
-                <div style="font-size:0.75rem;" class="text-muted">
-                <div class="fw-semibold text-dark mb-1">${data.bp.systolic}/${data.bp.diastolic} mmHg</div>
-                ${data.bp.heart_rate ? `<div>💓 静息心率 ${data.bp.heart_rate}bpm</div>` : ''}
-                ${data.bp.spo2 ? `<div>🫁 血氧 ${data.bp.spo2}%</div>` : ''}
-                <div>🕐 测量时间 ${data.bp.time}</div></div>`;
-        } else {
-            bpEl.innerHTML = `<div class="d-flex align-items-center gap-1 mb-2"><span style="font-size:1rem;">❤️</span><span class="fw-bold" style="color:var(--md-secondary);">血压</span></div><div class="text-muted small">暂无血压记录</div>`;
-        }
+        const bpCard = document.querySelector('#todayOverviewCard .col-md-3:nth-child(2) .p-2');
+        _rebuildCardHeader(bpCard, 'bp', '❤️', '血压', 'var(--md-secondary)');
+        _renderBpItem();
 
         // 体重
-        const wtEl = document.querySelector('#todayOverviewCard .col-md-3:nth-child(3) .p-2');
-        if (data.weight) {
-            let wtHtml = `<div class="d-flex align-items-center gap-1 mb-2"><span style="font-size:1rem;">⚖️</span><span class="fw-bold" style="color:#00897B;">体重</span></div>
-                <div style="font-size:0.75rem;" class="text-muted">
-                <div class="fw-semibold text-dark mb-1">${data.weight.weight.toFixed(1)} kg</div>`;
-            if (data.weight.bmi) wtHtml += `<div>📊 BMI ${data.weight.bmi.toFixed(1)} <span style="color:${data.weight.bmi_category.color};">${data.weight.bmi_category.label}</span></div>`;
-            wtHtml += `<div>🕐 ${data.weight.time}</div></div>`;
-            wtEl.innerHTML = wtHtml;
-        } else {
-            wtEl.innerHTML = `<div class="d-flex align-items-center gap-1 mb-2"><span style="font-size:1rem;">⚖️</span><span class="fw-bold" style="color:#00897B;">体重</span></div><div class="text-muted small">暂无体重记录</div>`;
-        }
+        const wtCard = document.querySelector('#todayOverviewCard .col-md-3:nth-child(3) .p-2');
+        _rebuildCardHeader(wtCard, 'weight', '⚖️', '体重', '#00897B');
+        _renderWeightItem();
 
         // 用药
         const medEl = document.querySelector('#todayOverviewCard .col-md-3:nth-child(4) .p-2');
@@ -4143,11 +4262,16 @@
             const weekdayMap = {Monday:'周一',Tuesday:'周二',Wednesday:'周三',Thursday:'周四',Friday:'周五',Saturday:'周六',Sunday:'周日'};
             const longTermMeds = data.med_status.plans.filter(m => (m.category || 'long_term') !== 'temporary');
             const tempPlanMeds = data.med_status.plans.filter(m => (m.category || 'long_term') === 'temporary');
+            const suppMeds = data.med_status.plans.filter(m => (m.category || 'long_term') === 'supplement');
+            const nonSuppMeds = data.med_status.plans.filter(m => (m.category || 'long_term') !== 'supplement');
             const tempMeds = data.med_status.temp_medications || [];
 
             let medHtml = `<div class="d-flex align-items-center gap-1 mb-2"><span style="font-size:1rem;">💊</span><span class="fw-bold" style="color:var(--md-info);">用药</span></div>
                 <div id="render-med-wrap" style="font-size:0.7rem;" class="text-muted">
-                <div class="fw-semibold text-dark mb-1">当日 ${data.med_status.plans.length} 种药物</div>
+                <div class="med-tab-bar mb-2">
+                    <button class="med-tab-pill active" onclick="switchOverviewMedTab(this, 'render-med-list')" style="font-size:0.7rem;padding:3px 8px;">💊 药物 (${nonSuppMeds.length})</button>
+                    <button class="med-tab-pill" onclick="switchOverviewMedTab(this, 'render-supp-list')" style="font-size:0.7rem;padding:3px 8px;">🧬 补剂 (${suppMeds.length})</button>
+                </div>
                 <div class="med-list-collapse" id="render-med-inner">`;
 
             // 长期用药（按 med_type 分组）
@@ -4925,6 +5049,14 @@
         // 检查用药列表是否需要折叠按钮
         checkMedListOverflow('card-med-list');
         checkMedListOverflow('card-supp-list');
+
+        // 初始化概览卡片多条记录数据
+        window._ovData = {
+            exercise: {{ stats.today_exercises | tojson }},
+            bp: {{ stats.today_bps | tojson }},
+            weight: {{ stats.today_weights | tojson }}
+        };
+        window._ovIdx = { exercise: 0, bp: 0, weight: 0 };
 
         // 初始进度条：为今天已过时间但未测的slot添加seg-missed
         (function() {
@@ -6551,11 +6683,20 @@
             // 4. 用药打卡 Badge
             const medPlans = day.data.medication_plans || [];
             if (medPlans.length > 0) {
-                const medCount = medPlans.length;
+                const medOnly = medPlans.filter(p => (p.category || 'long_term') !== 'supplement');
+                const suppOnly = medPlans.filter(p => (p.category || 'long_term') === 'supplement');
+                let medTitle = '';
+                if (medOnly.length > 0 && suppOnly.length > 0) {
+                    medTitle = `💊${medOnly.length} 🧬${suppOnly.length}`;
+                } else if (medOnly.length > 0) {
+                    medTitle = `💊${medOnly.length}`;
+                } else {
+                    medTitle = `🧬${suppOnly.length}`;
+                }
                 const medNames = medPlans.map(p => p.medication_name).join('、');
 
                 events.push({
-                    title: `💊 ${medCount}种药物`,
+                    title: medTitle,
                     start: day.date,
                     backgroundColor: '#e7e8f5',
                     textColor: '#4a5568',
@@ -6747,7 +6888,7 @@
                 <div class="med-section dv-med-section">
                     <div class="med-section-header" style="cursor:default;margin-bottom:8px;">
                         <i class="bi bi-capsule text-success"></i>
-                        <span>今日用药（${medPlans.length} 种）</span>
+                        <span>今日用药（${regularMeds.length} 药 ${supplements.length} 补）</span>
                     </div>
                     <div class="med-tab-bar">
                         <button class="med-tab-pill active" style="font-size:0.78rem;padding:4px 12px;"

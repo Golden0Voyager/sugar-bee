@@ -147,19 +147,20 @@ def get_dashboard_stats(db, user_id):
     latest_bmi = settings.calculate_bmi(latest_weight, user_config.get('height')) if latest_weight else (round(latest_bmi_raw, 1) if latest_bmi_raw else None)
     bmi_category = settings.get_bmi_category(latest_bmi)
 
-    # 今日体重
+    # 今日体重（全部记录）
     c.execute("""SELECT weight, bmi, timestamp FROM records
         WHERE user_id = ? AND timestamp BETWEEN ? AND ? AND weight IS NOT NULL AND weight > 0
-        ORDER BY timestamp DESC LIMIT 1""", (user_id, today_start, today_end))
-    today_weight_row = c.fetchone()
-    today_weight = None
-    if today_weight_row:
-        today_weight = {
-            'weight': today_weight_row[0],
-            'bmi': today_weight_row[1],
-            'bmi_category': settings.get_bmi_category(today_weight_row[1]),
-            'time': today_weight_row[2].split(' ')[1][:5] if ' ' in today_weight_row[2] else ''
-        }
+        ORDER BY timestamp DESC""", (user_id, today_start, today_end))
+    today_weight_rows = c.fetchall()
+    today_weights = []
+    for row in today_weight_rows:
+        today_weights.append({
+            'weight': row[0],
+            'bmi': row[1],
+            'bmi_category': settings.get_bmi_category(row[1]),
+            'time': row[2].split(' ')[1][:5] if ' ' in row[2] else ''
+        })
+    today_weight = today_weights[0] if today_weights else None
 
     # === 6. 达标率 ===
     c.execute("""
@@ -267,35 +268,38 @@ def get_dashboard_stats(db, user_id):
         'percentage': int(measured_count / len(today_schedule) * 100)
     }
 
-    # === 8. 今日运动 ===
+    # === 8. 今日运动（全部记录）===
     c.execute("""
-        SELECT type, distance, calories, duration, heart_rate, pace, cadence, vo2max, max_heart_rate, steps, timestamp
+        SELECT type, distance, calories, duration, heart_rate, pace, max_pace, cadence, vo2max, max_heart_rate, steps, timestamp
         FROM records WHERE user_id = ? AND timestamp BETWEEN ? AND ?
         AND (type IN ('运动','跑步','走路','骑行','游泳','健身') OR type LIKE '%跑%' OR type LIKE '%走%' OR type LIKE '%骑%')
-        ORDER BY timestamp DESC, vo2max DESC LIMIT 1
+        ORDER BY timestamp DESC, vo2max DESC
     """, (user_id, today_start, today_end))
-    today_ex_row = c.fetchone()
-    today_exercise = None
-    if today_ex_row:
-        today_exercise = {k: today_ex_row[k] for k in ['type','distance','calories','duration','heart_rate','pace','cadence','vo2max','max_heart_rate','steps']}
-        today_exercise['time'] = today_ex_row['timestamp'].split(' ')[1][:5] if ' ' in today_ex_row['timestamp'] else ''
+    today_ex_rows = c.fetchall()
+    today_exercises = []
+    for row in today_ex_rows:
+        ex = {k: row[k] for k in ['type','distance','calories','duration','heart_rate','pace','max_pace','cadence','vo2max','max_heart_rate','steps']}
+        ex['time'] = row['timestamp'].split(' ')[1][:5] if ' ' in row['timestamp'] else ''
+        today_exercises.append(ex)
+    today_exercise = today_exercises[0] if today_exercises else None
 
-    # === 9. 今日血压 ===
+    # === 9. 今日血压（全部记录）===
     c.execute("""
         SELECT systolic_pressure, diastolic_pressure, pulse_rate, spo2, timestamp
         FROM records WHERE user_id = ? AND timestamp BETWEEN ? AND ?
-        AND systolic_pressure IS NOT NULL ORDER BY timestamp DESC LIMIT 1
+        AND systolic_pressure IS NOT NULL ORDER BY timestamp DESC
     """, (user_id, today_start, today_end))
-    today_bp_row = c.fetchone()
-    today_bp = None
-    if today_bp_row:
-        today_bp = {
-            'systolic': today_bp_row['systolic_pressure'],
-            'diastolic': today_bp_row['diastolic_pressure'],
-            'heart_rate': today_bp_row['pulse_rate'],
-            'spo2': today_bp_row['spo2'],
-            'time': today_bp_row['timestamp'].split(' ')[1][:5] if ' ' in today_bp_row['timestamp'] else ''
-        }
+    today_bp_rows = c.fetchall()
+    today_bps = []
+    for row in today_bp_rows:
+        today_bps.append({
+            'systolic': row['systolic_pressure'],
+            'diastolic': row['diastolic_pressure'],
+            'heart_rate': row['pulse_rate'],
+            'spo2': row['spo2'],
+            'time': row['timestamp'].split(' ')[1][:5] if ' ' in row['timestamp'] else ''
+        })
+    today_bp = today_bps[0] if today_bps else None
 
     # === 10. 用药情况 ===
     c.execute("""
@@ -419,6 +423,9 @@ def get_dashboard_stats(db, user_id):
         'today_exercise': today_exercise,
         'today_bp': today_bp,
         'today_weight': today_weight,
+        'today_exercises': today_exercises,
+        'today_bps': today_bps,
+        'today_weights': today_weights,
         'today_med_status': today_med_status,
 
         # 血糖统计（7天）

@@ -102,6 +102,9 @@ def add_record():
             vo2max = data.get('vo2max')
             max_heart_rate = data.get('max_heart_rate')
             steps = data.get('steps')
+            pace = data.get('pace')
+            max_pace = data.get('max_pace')
+            cadence = data.get('cadence')
         else:
             value = request.form.get('value')
             unit = request.form.get('unit')
@@ -131,6 +134,9 @@ def add_record():
             vo2max = request.form.get('vo2max')
             max_heart_rate = request.form.get('max_heart_rate')
             steps = request.form.get('steps')
+            pace = request.form.get('pace')
+            max_pace = request.form.get('max_pace')
+            cadence = request.form.get('cadence')
 
         # Auto-calculate BMI if weight is provided but BMI is not
         if weight and not bmi:
@@ -164,11 +170,13 @@ def add_record():
         c.execute("""INSERT INTO records
                      (user_id, value, unit, type, notes, timestamp, calories, diet_analysis, is_predicted,
                       distance, duration, heart_rate, systolic_pressure, diastolic_pressure, pulse_rate,
-                      carbs_grams, gi_value, weight, bmi, spo2, vo2max, max_heart_rate, steps)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                      carbs_grams, gi_value, weight, bmi, spo2, vo2max, max_heart_rate, steps,
+                      pace, max_pace, cadence)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                   (current_user_id, value, unit, r_type, notes, timestamp, calories, diet_analysis, is_predicted,
                    distance, duration, heart_rate, systolic_pressure, diastolic_pressure, pulse_rate,
-                   carbs_grams, gi_value, weight, bmi, spo2, vo2max, max_heart_rate, steps))
+                   carbs_grams, gi_value, weight, bmi, spo2, vo2max, max_heart_rate, steps,
+                   pace, max_pace, cadence))
 
         real_record_id = c.lastrowid
         try:
@@ -295,11 +303,16 @@ def batch_add():
                 except: pass
 
             c.execute("""INSERT INTO records (user_id, value, unit, type, notes, timestamp, calories, diet_analysis, is_predicted,
-                                            distance, duration, heart_rate, systolic_pressure, diastolic_pressure, weight, bmi, medication_name, steps)
-                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                                            distance, duration, heart_rate, max_heart_rate, systolic_pressure, diastolic_pressure,
+                                            pulse_rate, weight, bmi, medication_name, steps, pace, max_pace, cadence, vo2max,
+                                            spo2, carbs_grams, gi_value)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                       (current_user_id, r['value'], r.get('unit', 'mmol/L'), r_type, r.get('notes', ''), timestamp,
                        r.get('calories', 0), r.get('diet_analysis', ''), is_pred, r.get('distance'), r.get('duration'),
-                       r.get('heart_rate'), systolic, diastolic, weight, bmi, r.get('medication_name'), r.get('steps')))
+                       r.get('heart_rate'), r.get('max_heart_rate'), systolic, diastolic,
+                       r.get('pulse_rate'), weight, bmi, r.get('medication_name'), r.get('steps'),
+                       r.get('pace'), r.get('max_pace'), r.get('cadence'), r.get('vo2max'),
+                       r.get('spo2'), r.get('carbs_grams'), r.get('gi_value')))
             inserted_records.append({'id': c.lastrowid, 'is_pred': is_pred, 'value': r['value'], 'datetime': timestamp, 'type': r_type})
 
         db.commit()

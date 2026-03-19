@@ -155,6 +155,7 @@ def parse_glucose_input(text, history_context=None, images_data=None, mime_type=
 
     **血压识别规则**:
     - 识别格式：137/73、"高压137低压73"、"收缩压137舒张压73"
+    - **关键：A/B 格式（如125/68）一定是血压，不是血糖！其中的数字只能用作血压，严禁同时当成血糖值再做 mg/dL→mmol/L 转换！**
     - 提取信息：
       - systolic_pressure: 收缩压/高压（正常范围90-140 mmHg）
       - diastolic_pressure: 舒张压/低压（正常范围60-90 mmHg）
@@ -179,6 +180,7 @@ def parse_glucose_input(text, history_context=None, images_data=None, mime_type=
       - "体重75kg" → type="体重记录", weight=75.0
       - "今天称了74.5" → type="体重记录", weight=74.5
       - "早空腹血压122/71、61，68.60，7.1" → 必须拆分：独立记录血压(122/71, 脉搏61)；独立记录体重(68.6)；独立血糖('空腹', 7.1)
+      - "今天早空腹125/68、66，68.85" → 只有2条记录：血压(125/68, 脉搏66) + 体重(68.85)。注意：没有明确的血糖数值就不要生成血糖记录！"早空腹"是时间描述，不是"早餐"！
 
     **血糖预测规则（用于计算 predicted_value）**:
     - 预测值必须基于用户历史数据（空腹均值、餐后均值）合理推算
@@ -191,6 +193,8 @@ def parse_glucose_input(text, history_context=None, images_data=None, mime_type=
 
     2. **文本/语音数据识别**:
        - **关键：如果输入同时包含餐食、血糖、体征数列、药物，必须拆分成多条记录！**
+       - **严禁凭空生成记录**：只对输入中明确出现的数据生成记录！没有血糖数值就不要生成血糖记录，没有食物就不要生成餐食记录。"早空腹"中的"早"是时间描述（早上），不是"早餐"。
+       - **严禁重复消费数值**：一个数值只能用于一个记录。血压中的收缩压（如125）不可同时解读为 mg/dL 血糖值。
        - **无标签多维体征推断**：当用户在一句话中连续输入多个无单位数值时，务必根据数值常理范围进行独立拆分（例如："130/80 75 66.5 5.8" → 血压 130/80，脉搏 75，体重 66.5，血糖 5.8），并各自生成独立记录！
        - 例如："吃了二甲双胍后，喝了一杯酸奶，运动后血糖6.2"应拆分为：
          - 记录1：medication_name="二甲双胍", medication_is_new_plan=false
@@ -280,7 +284,7 @@ def parse_glucose_input(text, history_context=None, images_data=None, mime_type=
         match = re.search(r'(\[[\s\S]*\])', raw_text)
         if match:
             results = json.loads(match.group(1))
-            return _postprocess_records(results)
+            return _postprocess_records(results, text)
         return []
 
     except Exception as e:
@@ -288,8 +292,8 @@ def parse_glucose_input(text, history_context=None, images_data=None, mime_type=
         return []
 
 
-def _postprocess_records(records):
-    """后处理：修正 AI 常见的分类错误"""
+def _postprocess_records(records, original_text=None):
+    """后处理：修正 AI 常见的分类错误 + 兜底补漏"""
     meal_types = {'早餐', '午餐', '晚餐', '加餐', '晨跑前'}
     exercise_types = {'跑步', '运动'}
     # 餐食特征字段
@@ -315,6 +319,47 @@ def _postprocess_records(records):
                 if field in r:
                     r[field] = None
             print(f"[parser] 修正分类: '{record_type}' → '{r['type']}' (检测到餐食特征)")
+
+    # 兜底：从原始文本中检测 AI 遗漏的体重数据
+    if original_text:
+        records = _ensure_weight_captured(records, original_text)
+
+    return records
+
+
+def _ensure_weight_captured(records, text):
+    """兜底检测：如果原始文本含体重数据但 AI 未生成体重记录，自动补上"""
+    # 已有体重记录则跳过
+    if any(r.get('weight') or r.get('type') == '体重记录' for r in records):
+        return records
+
+    # 模式1：显式关键词 "体重68.85" / "称了74.5" / "75.2kg"
+    weight_val = None
+    m = re.search(r'(?:体重|称了?)\s*(\d{2,3}(?:\.\d{1,2})?)', text)
+    if m:
+        weight_val = float(m.group(1))
+    else:
+        # 模式2：末尾的 "XXkg" / "XX公斤"
+        m = re.search(r'(\d{2,3}(?:\.\d{1,2})?)\s*(?:kg|公斤|千克)', text, re.IGNORECASE)
+        if m:
+            weight_val = float(m.group(1))
+
+    if weight_val and 30 <= weight_val <= 200:
+        # 复用已有记录的时间，没有则用当前时间
+        dt = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        for r in records:
+            if r.get('datetime'):
+                dt = r['datetime']
+                break
+        records.append({
+            'value': 0,
+            'type': '体重记录',
+            'weight': weight_val,
+            'datetime': dt,
+            'notes': '',
+            'is_predicted': False
+        })
+        print(f"[parser] 兜底补漏: 从文本检测到体重 {weight_val}kg，AI 未生成，已自动补充")
 
     return records
 
