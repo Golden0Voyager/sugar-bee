@@ -1,0 +1,22 @@
+{
+  "name": "蜜蜂控糖 - 家庭血糖健康追踪",
+  "short_name": "蜜蜂控糖",
+  "description": "勤劳控糖，甜蜜生活",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "theme_color": "#6366F1",
+  "background_color": "#F5F3FF",
+  "icons": [
+    {
+      "src": "/static/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/static/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

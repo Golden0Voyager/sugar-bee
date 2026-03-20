@@ -178,3 +178,44 @@ def call_ai(prompt, images_data=None, mime_type=None, task_type=None):
 
     # 全部失败
     raise last_error if last_error else Exception("所有 AI 模型均不可用")
+
+
+# ========== 健康助手流式聊天 ==========
+
+DASHSCOPE_API_KEY = os.getenv("DASHSCOPE_API_KEY")
+DASHSCOPE_BASE_URL = os.getenv("DASHSCOPE_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1")
+CHAT_MODEL = "qwen3-vl-plus-2025-12-19"
+CHAT_AVAILABLE = bool(DASHSCOPE_API_KEY)
+
+if DASHSCOPE_API_KEY:
+    print(f"[AI] 健康助手就绪（Dashscope {CHAT_MODEL}）")
+
+
+def call_chat_stream(messages):
+    """流式聊天调用 — Dashscope Qwen
+
+    Args:
+        messages: OpenAI 格式的消息列表 [{"role": "system/user/assistant", "content": "..."}]
+
+    Yields:
+        str: 逐 chunk 的文本内容
+    """
+    from openai import OpenAI
+
+    is_cn = '.cn' in DASHSCOPE_BASE_URL or 'aliyuncs.com' in DASHSCOPE_BASE_URL
+    http_client = httpx.Client(trust_env=False) if is_cn else None
+
+    client = OpenAI(
+        api_key=DASHSCOPE_API_KEY,
+        base_url=DASHSCOPE_BASE_URL,
+        http_client=http_client,
+    )
+    response = client.chat.completions.create(
+        model=CHAT_MODEL,
+        messages=messages,
+        stream=True,
+        extra_body={"enable_thinking": False},
+    )
+    for chunk in response:
+        if chunk.choices and chunk.choices[0].delta.content:
+            yield chunk.choices[0].delta.content
