@@ -19,6 +19,6 @@ data/
 # 个人配置（含隐私数据）
 user_config.json
 static/avatars/
-
+user_data/
 # 日志
 *.log
