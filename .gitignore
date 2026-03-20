@@ -12,6 +12,9 @@ venv/
 .vscode/
 .idea/
 
+# AI 工具本地配置
+.claude/settings.local.json
+
 # 数据库
 *.db
 data/
