@@ -36,7 +36,7 @@ class UserManager:
             if user.get('enabled_modules'):
                 try:
                     user['enabled_modules'] = json.loads(user['enabled_modules'])
-                except:
+                except Exception:
                     user['enabled_modules'] = []
             else:
                 user['enabled_modules'] = []
@@ -44,7 +44,7 @@ class UserManager:
             if user.get('default_meals'):
                 try:
                     user['default_meals'] = json.loads(user['default_meals'])
-                except:
+                except Exception:
                     user['default_meals'] = {}
             else:
                 user['default_meals'] = {}
@@ -52,7 +52,7 @@ class UserManager:
             if user.get('target_ranges'):
                 try:
                     user['target_ranges'] = json.loads(user['target_ranges'])
-                except:
+                except Exception:
                     user['target_ranges'] = {}
             else:
                 user['target_ranges'] = {}

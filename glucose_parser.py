@@ -294,7 +294,6 @@ def parse_glucose_input(text, history_context=None, images_data=None, mime_type=
 
 def _postprocess_records(records, original_text=None):
     """后处理：修正 AI 常见的分类错误 + 兜底补漏"""
-    meal_types = {'早餐', '午餐', '晚餐', '加餐', '晨跑前'}
     exercise_types = {'跑步', '运动'}
     # 餐食特征字段
     meal_fields = ('carbs_grams', 'gi_value', 'diet_analysis')

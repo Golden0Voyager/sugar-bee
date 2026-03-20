@@ -32,9 +32,12 @@ def build_timeline(cursor, user_id, days=90):
         if key in last_values and r['value'] > 0:
             diff = r['value'] - last_values[key]
             r['trend'] = round(abs(diff), 1)
-            if diff > 0: r['trend_dir'] = 'up'
-            elif diff < 0: r['trend_dir'] = 'down'
-        if r['value'] > 0: last_values[key] = r['value']
+            if diff > 0:
+                r['trend_dir'] = 'up'
+            elif diff < 0:
+                r['trend_dir'] = 'down'
+        if r['value'] > 0:
+            last_values[key] = r['value']
 
     # 3. Group by Date
     user_bmr = settings.calculate_bmr()
@@ -75,7 +78,7 @@ def build_timeline(cursor, user_id, days=90):
     now = datetime.datetime.now()
     today_str = now.strftime('%Y-%m-%d')
     user_config = settings.load_config()
-    default_meals = user_config.get('default_meals', {})
+    _default_meals = user_config.get('default_meals', {})
 
     sorted_dates = []
     for date_str in sorted(grouped_records.keys(), reverse=True):

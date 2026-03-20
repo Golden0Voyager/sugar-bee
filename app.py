@@ -1,37 +1,24 @@
-from flask import Flask, render_template, request, redirect, url_for, jsonify, send_file, g, session, after_this_request
+from flask import Flask, render_template, session
 import sqlite3
-import pandas as pd
 import datetime
 import os
-import io
 import traceback
 import threading
 import glob as glob_mod
 import atexit
-import re
-import json
 import shutil
-from functools import wraps
 from dotenv import load_dotenv
-from collections import defaultdict
 
 load_dotenv()
 
-import settings
-from user_manager import UserManager
-from core.config import DB_NAME, AVATAR_FOLDER, ALLOWED_EXTENSIONS
-from utils.responses import success_res, error_res, api_success, api_error
-from utils.auth import login_required
-from utils.db import get_db, close_db, init_db
-import services
-from services import (
-    build_timeline, 
-    generate_health_analysis, 
-    auto_trigger_health_analysis,
+from user_manager import UserManager  # noqa: E402
+from core.config import DB_NAME, AVATAR_FOLDER  # noqa: E402
+from utils.auth import login_required  # noqa: E402
+from utils.db import get_db, close_db, init_db  # noqa: E402
+from services import (  # noqa: E402
+    build_timeline,
     predict_morning_fpg,
     predict_post_exercise_glucose,
-    backfill_post_exercise_predictions,
-    predict_remaining_glucose_slots,
     get_dashboard_stats
 )
 
@@ -116,7 +103,8 @@ _auto_backup_timer = None
 def auto_backup():
     global _auto_backup_timer
     try:
-        if not os.path.exists(DB_NAME): return
+        if not os.path.exists(DB_NAME):
+            return
         os.makedirs(AUTO_BACKUP_DIR, exist_ok=True)
         today = datetime.date.today().strftime('%Y%m%d')
         backup_path = os.path.join(AUTO_BACKUP_DIR, f'glucose_auto_{today}.db')
@@ -129,7 +117,8 @@ def auto_backup():
                 date_str = os.path.basename(f).replace('glucose_auto_', '').replace('.db', '')
                 if datetime.datetime.strptime(date_str, '%Y%m%d').date() < cutoff:
                     os.remove(f)
-            except: pass
+            except Exception:
+                pass
     except Exception as e:
         print(f'[AutoBackup] Error: {e}')
     finally:
@@ -140,15 +129,15 @@ def auto_backup():
 atexit.register(lambda: _auto_backup_timer.cancel() if _auto_backup_timer else None)
 
 # ========== 蓝图注册 ==========
-from routes.api_auth    import bp_auth
-from routes.api_chat    import bp_chat
-from routes.api_records import bp_records
-from routes.api_meds    import bp_meds
-from routes.api_health  import bp_health
-from routes.api_admin   import bp_admin
-from routes.api_user    import bp_user
-from routes.api_dashboard  import bp_dashboard
-from routes.api_prediction import bp_prediction
+from routes.api_auth import bp_auth  # noqa: E402
+from routes.api_chat import bp_chat  # noqa: E402
+from routes.api_records import bp_records  # noqa: E402
+from routes.api_meds import bp_meds  # noqa: E402
+from routes.api_health import bp_health  # noqa: E402
+from routes.api_admin import bp_admin  # noqa: E402
+from routes.api_user import bp_user  # noqa: E402
+from routes.api_dashboard import bp_dashboard  # noqa: E402
+from routes.api_prediction import bp_prediction  # noqa: E402
 
 app.register_blueprint(bp_auth)
 app.register_blueprint(bp_chat)

@@ -7,7 +7,7 @@ from user_manager import UserManager
 from core.config import DB_NAME
 from utils.auth import login_required
 from utils.db import get_db
-from services import build_timeline, get_dashboard_stats
+from services import build_timeline
 
 user_manager = UserManager(DB_NAME)
 bp_dashboard = Blueprint('dashboard', __name__)
@@ -148,12 +148,14 @@ def api_health_stats():
                 c.execute("SELECT weight FROM records WHERE user_id = ? AND weight > 0 AND timestamp <= ? ORDER BY timestamp DESC LIMIT 1",
                           (current_user_id, cutoff))
                 ow = c.fetchone()
-                if ow: weight_change = round(lw[0] - ow[0], 1)
+                if ow:
+                    weight_change = round(lw[0] - ow[0], 1)
             else:
                 c.execute("SELECT weight FROM records WHERE user_id = ? AND weight > 0 ORDER BY timestamp ASC LIMIT 1",
                           (current_user_id,))
                 ow = c.fetchone()
-                if ow: weight_change = round(lw[0] - ow[0], 1)
+                if ow:
+                    weight_change = round(lw[0] - ow[0], 1)
 
         bmi_cat = settings.get_bmi_category(lw[1]) if lw and lw[1] else {'label': '-', 'color': '#999'}
 
@@ -170,7 +172,8 @@ def api_health_stats():
                 WHERE user_id = ? AND vo2max IS NOT NULL AND vo2max > 0
                 AND timestamp < ? ORDER BY timestamp DESC LIMIT 1""", (current_user_id, vo2row[1]))
             pv = c.fetchone()
-            if pv: prev_vo2max = pv[0]
+            if pv:
+                prev_vo2max = pv[0]
 
         return jsonify({
             'days': days,
@@ -263,21 +266,32 @@ def api_day_overview():
                 rh = -1
                 rt_time = r['timestamp'].split(' ')[1][:5] if ' ' in r['timestamp'] else ''
                 if rt_time and ':' in rt_time:
-                    try: rh = int(rt_time.split(':')[0])
-                    except: rh = -1
+                    try:
+                        rh = int(rt_time.split(':')[0])
+                    except Exception:
+                        rh = -1
                 matched = False
                 is_generic_post = '餐后' in rt and not ('早餐后' in rt or '午餐后' in rt or '晚餐后' in rt)
                 is_generic_pre = '餐前' in rt and not ('早餐前' in rt or '午餐前' in rt or '晚餐前' in rt or '晚饭前' in rt)
-                if slot['key'] == 'fasting' and '空腹' in rt: matched = True
-                elif slot['key'] == 'post_exercise' and '运动后' in rt: matched = True
-                elif slot['key'] == 'post_breakfast' and ('早餐后' in rt or (is_generic_post and 10 <= rh < 13)): matched = True
-                elif slot['key'] == 'post_lunch' and ('午餐后' in rt or (is_generic_post and 13 <= rh < 17)): matched = True
-                elif slot['key'] == 'pre_dinner' and ('晚饭前' in rt or '晚餐前' in rt or (is_generic_pre and 16 <= rh < 19)): matched = True
-                elif slot['key'] == 'post_dinner' and ('晚餐后' in rt or (is_generic_post and 19 <= rh < 23)): matched = True
-                elif slot['key'] == 'bedtime' and '睡前' in rt: matched = True
+                if slot['key'] == 'fasting' and '空腹' in rt:
+                    matched = True
+                elif slot['key'] == 'post_exercise' and '运动后' in rt:
+                    matched = True
+                elif slot['key'] == 'post_breakfast' and ('早餐后' in rt or (is_generic_post and 10 <= rh < 13)):
+                    matched = True
+                elif slot['key'] == 'post_lunch' and ('午餐后' in rt or (is_generic_post and 13 <= rh < 17)):
+                    matched = True
+                elif slot['key'] == 'pre_dinner' and ('晚饭前' in rt or '晚餐前' in rt or (is_generic_pre and 16 <= rh < 19)):
+                    matched = True
+                elif slot['key'] == 'post_dinner' and ('晚餐后' in rt or (is_generic_post and 19 <= rh < 23)):
+                    matched = True
+                elif slot['key'] == 'bedtime' and '睡前' in rt:
+                    matched = True
                 if matched:
-                    if not r['is_predicted'] and not measured_match: measured_match = r
-                    elif r['is_predicted'] and not predicted_match: predicted_match = r
+                    if not r['is_predicted'] and not measured_match:
+                        measured_match = r
+                    elif r['is_predicted'] and not predicted_match:
+                        predicted_match = r
             chosen = measured_match or predicted_match
 
             # CGM 优先：查找该时间点30分钟内最近的CGM读数
@@ -312,8 +326,10 @@ def api_day_overview():
                 slot_data['status'] = 'predicted' if chosen['is_predicted'] else 'measured'
                 result = settings.check_glucose_compliance(chosen['value'], chosen['type'])
                 slot_data['compliance'] = result['level']
-                if slot_data['status'] == 'measured': measured_count += 1
-                else: predicted_count += 1
+                if slot_data['status'] == 'measured':
+                    measured_count += 1
+                else:
+                    predicted_count += 1
             overview.append(slot_data)
 
         # 运动（全部记录）
@@ -376,7 +392,8 @@ def api_day_overview():
             freq = row['frequency'] or 'daily'
             freq_detail = row['frequency_detail'] or ''
             include = False
-            if freq == 'daily': include = True
+            if freq == 'daily':
+                include = True
             elif freq == 'every_n_days' and freq_detail:
                 try:
                     n = int(freq_detail)
@@ -386,8 +403,10 @@ def api_day_overview():
                     include = ((t_date - plan_start).days % n == 0)
                 except (ValueError, TypeError):
                     include = True
-            elif freq == 'weekdays': include = weekday_name not in ('Saturday', 'Sunday')
-            elif freq == 'weekly': include = weekday_name == freq_detail if freq_detail else weekday_name == 'Monday'
+            elif freq == 'weekdays':
+                include = weekday_name not in ('Saturday', 'Sunday')
+            elif freq == 'weekly':
+                include = weekday_name == freq_detail if freq_detail else weekday_name == 'Monday'
             elif freq == 'biweekly' and freq_detail:
                 plan_start = datetime.datetime.strptime(
                     row['start_date'] or date_str, '%Y-%m-%d').date()

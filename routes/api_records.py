@@ -3,8 +3,6 @@ import datetime
 import io
 import traceback
 import pandas as pd
-import os
-import sqlite3
 import base64
 
 import settings
@@ -15,10 +13,7 @@ from utils.auth import login_required
 from utils.db import get_db
 from glucose_parser import parse_glucose_input
 from services import (
-    link_prediction_to_real_record,
-    predict_post_exercise_glucose,
-    backfill_post_exercise_predictions,
-    build_timeline
+    link_prediction_to_real_record
 )
 
 user_manager = UserManager(DB_NAME)
@@ -261,7 +256,8 @@ def batch_add():
         # Phase 1: Conflict Detection
         conflicts = []
         for idx, r in enumerate(data):
-            if 'value' not in r or 'type' not in r: continue
+            if 'value' not in r or 'type' not in r:
+                continue
             is_pred = r.get('is_predicted', False)
             timestamp = r.get('datetime')
             record_value = r.get('value', 0)
@@ -280,7 +276,8 @@ def batch_add():
         # Phase 2: Insert
         inserted_records = []
         for r in data:
-            if 'value' not in r or 'type' not in r: continue
+            if 'value' not in r or 'type' not in r:
+                continue
             is_pred = 1 if r.get('is_predicted', False) else 0
             timestamp = r.get('datetime')
             r_type = r['type']
@@ -299,8 +296,10 @@ def batch_add():
             weight = r.get('weight')
             bmi = r.get('bmi')
             if weight and not bmi:
-                try: bmi = settings.calculate_bmi(float(weight))
-                except: pass
+                try:
+                    bmi = settings.calculate_bmi(float(weight))
+                except Exception:
+                    pass
 
             c.execute("""INSERT INTO records (user_id, value, unit, type, notes, timestamp, calories, diet_analysis, is_predicted,
                                             distance, duration, heart_rate, max_heart_rate, systolic_pressure, diastolic_pressure,
@@ -385,7 +384,8 @@ def export():
 def import_csv():
     try:
         file = request.files.get('file')
-        if not file: return api_error("No file")
+        if not file:
+            return api_error("No file")
         df = pd.read_csv(file, encoding='utf-8-sig') if file.filename.endswith('.csv') else pd.read_excel(file)
         db = get_db()
         c = db.cursor()

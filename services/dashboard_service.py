@@ -1,9 +1,6 @@
-import sqlite3
 import datetime
 import json
-import traceback
 import settings
-from core.config import DB_NAME
 
 
 def get_dashboard_stats(db, user_id):
@@ -43,7 +40,8 @@ def get_dashboard_stats(db, user_id):
             ORDER BY timestamp DESC LIMIT 1""",
             (user_id, glucose_stats[2], seven_days_ago))
         row = c.fetchone()
-        if row: max_glucose_detail = {'timestamp': row[0], 'type': row[1]}
+        if row:
+            max_glucose_detail = {'timestamp': row[0], 'type': row[1]}
     if glucose_stats[3]:
         c.execute("""SELECT timestamp, type FROM records
             WHERE user_id = ? AND value = ? AND value > 0 AND is_predicted = 0
@@ -51,7 +49,8 @@ def get_dashboard_stats(db, user_id):
             ORDER BY timestamp ASC LIMIT 1""",
             (user_id, glucose_stats[3], seven_days_ago))
         row = c.fetchone()
-        if row: min_glucose_detail = {'timestamp': row[0], 'type': row[1]}
+        if row:
+            min_glucose_detail = {'timestamp': row[0], 'type': row[1]}
 
     # === 3. 运动统计（7天） ===
     c.execute("""
@@ -79,7 +78,8 @@ def get_dashboard_stats(db, user_id):
             WHERE user_id = ? AND vo2max IS NOT NULL AND vo2max > 0
             AND timestamp < ? ORDER BY timestamp DESC LIMIT 1""", (user_id, vo2max_row[1]))
         pv = c.fetchone()
-        if pv: prev_vo2max = pv[0]
+        if pv:
+            prev_vo2max = pv[0]
 
     # === 4. 血压统计（7天） ===
     c.execute("""
@@ -203,37 +203,51 @@ def get_dashboard_stats(db, user_id):
             record_time = record['timestamp'].split(' ')[1][:5] if ' ' in record['timestamp'] else ''
             rh = -1
             if record_time and ':' in record_time:
-                try: rh = int(record_time.split(':')[0])
-                except: rh = -1
+                try:
+                    rh = int(record_time.split(':')[0])
+                except Exception:
+                    rh = -1
             is_pred = record['is_predicted']
             matched = False
             is_generic_post = '餐后' in rt and not ('早餐后' in rt or '午餐后' in rt or '晚餐后' in rt)
             is_generic_pre = '餐前' in rt and not ('早餐前' in rt or '午餐前' in rt or '晚餐前' in rt or '晚饭前' in rt)
 
-            if slot['key'] == 'fasting' and '空腹' in rt: matched = True
-            elif slot['key'] == 'post_exercise' and '运动后' in rt: matched = True
-            elif slot['key'] == 'post_breakfast' and ('早餐后' in rt or (is_generic_post and 10 <= rh < 13)): matched = True
-            elif slot['key'] == 'post_lunch' and ('午餐后' in rt or (is_generic_post and 13 <= rh < 17)): matched = True
-            elif slot['key'] == 'pre_dinner' and ('晚饭前' in rt or '晚餐前' in rt or (is_generic_pre and 16 <= rh < 19)): matched = True
-            elif slot['key'] == 'post_dinner' and ('晚餐后' in rt or (is_generic_post and 19 <= rh < 23)): matched = True
-            elif slot['key'] == 'bedtime' and '睡前' in rt: matched = True
+            if slot['key'] == 'fasting' and '空腹' in rt:
+                matched = True
+            elif slot['key'] == 'post_exercise' and '运动后' in rt:
+                matched = True
+            elif slot['key'] == 'post_breakfast' and ('早餐后' in rt or (is_generic_post and 10 <= rh < 13)):
+                matched = True
+            elif slot['key'] == 'post_lunch' and ('午餐后' in rt or (is_generic_post and 13 <= rh < 17)):
+                matched = True
+            elif slot['key'] == 'pre_dinner' and ('晚饭前' in rt or '晚餐前' in rt or (is_generic_pre and 16 <= rh < 19)):
+                matched = True
+            elif slot['key'] == 'post_dinner' and ('晚餐后' in rt or (is_generic_post and 19 <= rh < 23)):
+                matched = True
+            elif slot['key'] == 'bedtime' and '睡前' in rt:
+                matched = True
 
             if matched:
-                if not is_pred and measured_match is None: measured_match = record
-                elif is_pred and predicted_match is None: predicted_match = record
+                if not is_pred and measured_match is None:
+                    measured_match = record
+                elif is_pred and predicted_match is None:
+                    predicted_match = record
 
         # CGM 匹配
         cgm_match = None
         cgm_min_diff = float('inf')
         slot_target_minutes = int(slot['time'].split(':')[0]) * 60 + int(slot['time'].split(':')[1])
         for record in today_records:
-            if (record['type'] or '') != 'CGM': continue
+            if (record['type'] or '') != 'CGM':
+                continue
             record_time = record['timestamp'].split(' ')[1][:5] if ' ' in record['timestamp'] else ''
-            if not record_time or ':' not in record_time: continue
+            if not record_time or ':' not in record_time:
+                continue
             try:
                 parts = record_time.split(':')
                 r_minutes = int(parts[0]) * 60 + int(parts[1])
-            except (ValueError, IndexError): continue
+            except (ValueError, IndexError):
+                continue
             diff = abs(r_minutes - slot_target_minutes)
             if diff < cgm_min_diff and diff <= 30:
                 cgm_min_diff = diff
@@ -325,15 +339,19 @@ def get_dashboard_stats(db, user_id):
         freq = row['frequency'] or 'daily'
         freq_detail = row['frequency_detail'] or ''
         include = False
-        if freq == 'daily': include = True
+        if freq == 'daily':
+            include = True
         elif freq == 'every_n_days' and freq_detail:
             try:
                 n = int(freq_detail)
                 plan_start = datetime.datetime.strptime(row['start_date'] or today_str, '%Y-%m-%d').date()
                 include = ((today.date() - plan_start).days % n == 0)
-            except (ValueError, TypeError): include = True
-        elif freq == 'weekdays': include = weekday_name not in ('Saturday', 'Sunday')
-        elif freq == 'weekly': include = weekday_name == freq_detail if freq_detail else weekday_name == 'Monday'
+            except (ValueError, TypeError):
+                include = True
+        elif freq == 'weekdays':
+            include = weekday_name not in ('Saturday', 'Sunday')
+        elif freq == 'weekly':
+            include = weekday_name == freq_detail if freq_detail else weekday_name == 'Monday'
         elif freq == 'biweekly' and freq_detail:
             plan_start = datetime.datetime.strptime(row['start_date'] or today_str, '%Y-%m-%d').date()
             weeks_diff = (today.date() - plan_start).days // 7
@@ -342,8 +360,10 @@ def get_dashboard_stats(db, user_id):
             try:
                 allowed_days = [int(d.strip()) for d in freq_detail.split(',')]
                 include = day_of_month in allowed_days
-            except (ValueError, AttributeError): include = day_of_month == 1
-        else: include = True
+            except (ValueError, AttributeError):
+                include = day_of_month == 1
+        else:
+            include = True
 
         if include:
             dq = row['dose_quantity'] or '1'
@@ -397,14 +417,21 @@ def get_dashboard_stats(db, user_id):
     if latest_analysis_row:
         latest_analysis = dict(latest_analysis_row)
         if latest_analysis.get('recommendations'):
-            try: latest_analysis['recommendations'] = json.loads(latest_analysis['recommendations'])
-            except (json.JSONDecodeError, TypeError, ValueError): latest_analysis['recommendations'] = []
+            try:
+                latest_analysis['recommendations'] = json.loads(latest_analysis['recommendations'])
+            except (json.JSONDecodeError, TypeError, ValueError):
+                latest_analysis['recommendations'] = []
         score = latest_analysis.get('health_score', 0) or 0
-        if score >= 90: latest_analysis['score_label'] = '优秀'
-        elif score >= 80: latest_analysis['score_label'] = '良好'
-        elif score >= 70: latest_analysis['score_label'] = '一般'
-        elif score >= 60: latest_analysis['score_label'] = '需改善'
-        else: latest_analysis['score_label'] = '需关注'
+        if score >= 90:
+            latest_analysis['score_label'] = '优秀'
+        elif score >= 80:
+            latest_analysis['score_label'] = '良好'
+        elif score >= 70:
+            latest_analysis['score_label'] = '一般'
+        elif score >= 60:
+            latest_analysis['score_label'] = '需改善'
+        else:
+            latest_analysis['score_label'] = '需关注'
         days_val = latest_analysis.get('days') or 7
         latest_analysis['days_label'] = f'近{days_val}天'
 

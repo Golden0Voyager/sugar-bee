@@ -29,9 +29,12 @@ AI_AVAILABLE = bool(MODELSCOPE_API_KEY or VOLC_API_KEY or GEMINI_API_KEY)
 
 # 启动日志
 _providers = []
-if MODELSCOPE_API_KEY: _providers.append('ModelScope')
-if VOLC_API_KEY: _providers.append('火山引擎')
-if GEMINI_API_KEY: _providers.append('Gemini')
+if MODELSCOPE_API_KEY:
+    _providers.append('ModelScope')
+if VOLC_API_KEY:
+    _providers.append('火山引擎')
+if GEMINI_API_KEY:
+    _providers.append('Gemini')
 
 if len(_providers) > 1:
     print(f"[AI] {' + '.join(_providers)} 多提供商就绪（跨提供商降级）")
@@ -153,7 +156,7 @@ def call_ai(prompt, images_data=None, mime_type=None, task_type=None):
             return result
         if err:
             last_error = err
-            print(f"⚠ ModelScope 全部不可用，降级到火山引擎...")
+            print("⚠ ModelScope 全部不可用，降级到火山引擎...")
 
     # === 阶段2: 尝试火山引擎模型链 ===
     if VOLC_API_KEY:
@@ -164,7 +167,7 @@ def call_ai(prompt, images_data=None, mime_type=None, task_type=None):
             return result
         if err:
             last_error = err
-            print(f"⚠ 火山引擎全部不可用，降级到 Gemini 直连...")
+            print("⚠ 火山引擎全部不可用，降级到 Gemini 直连...")
 
     # === 阶段3: Gemini 直连（保底） ===
     if GEMINI_API_KEY:
