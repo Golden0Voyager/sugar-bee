@@ -5,14 +5,14 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import mm
 from reportlab.lib.colors import HexColor
-from reportlab.lib.enums import TA_CENTER, TA_LEFT
+from reportlab.lib.enums import TA_CENTER
 from reportlab.platypus import (
     SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
     HRFlowable, KeepTogether
 )
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
-import os, glob
+import os
 
 # ── 注册中文字体 ──
 font_search = [
@@ -34,10 +34,10 @@ for fp in font_search:
             try:
                 pdfmetrics.registerFont(TTFont(name + "Bold", fp, subfontIndex=1))
                 CN_FONT_BOLD = name + "Bold"
-            except:
+            except Exception:
                 CN_FONT_BOLD = name
             break
-        except:
+        except Exception:
             continue
 
 # ── 颜色 ──

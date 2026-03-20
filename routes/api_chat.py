@@ -1,6 +1,5 @@
 from flask import Blueprint, request, jsonify, Response, stream_with_context, session
 import datetime
-import traceback
 import json
 import uuid
 import sqlite3
@@ -134,7 +133,8 @@ def chat_stream():
                     conn.execute("INSERT INTO chat_messages (user_id, session_id, role, content) VALUES (?, ?, 'assistant', ?)", (user_id, session_id, reply_text))
                     conn.commit()
                     conn.close()
-                except: pass
+                except Exception:
+                    pass
             yield "data: [DONE]\n\n"
 
     return Response(stream_with_context(generate()), mimetype='text/event-stream',

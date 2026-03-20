@@ -1,14 +1,12 @@
-from flask import Blueprint, request, jsonify, session, redirect, url_for, render_template
+from flask import Blueprint, request, session, redirect, url_for, render_template
 import re
 import sqlite3
-import traceback
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from user_manager import UserManager
 from core.config import DB_NAME
 from utils.responses import api_success, api_error
 from utils.auth import login_required
-from utils.db import get_db
 
 bp_auth = Blueprint('auth', __name__)
 user_manager = UserManager(DB_NAME)

@@ -1,4 +1,4 @@
-from flask import Blueprint, request, jsonify, send_file, after_this_request, session
+from flask import Blueprint, request, send_file, after_this_request
 import os
 import datetime
 import shutil
@@ -77,7 +77,8 @@ def restore_database():
             cursor.close()
             conn.close()
         except Exception:
-            if os.path.exists(temp_path): os.remove(temp_path)
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
             return api_error("无效的数据库文件", status_code=400)
 
         # 备份当前数据库作为安全网
@@ -90,7 +91,8 @@ def restore_database():
     except Exception as e:
         traceback.print_exc()
         temp_path = os.path.join(BASE_DIR, 'temp_restore.db')
-        if os.path.exists(temp_path): os.remove(temp_path)
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
         return api_error(str(e), status_code=500)
 
 

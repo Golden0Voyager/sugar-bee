@@ -1,9 +1,7 @@
 import datetime
 import traceback
 import re
-import json
 from ai_client import call_ai, AI_AVAILABLE
-import settings
 
 def generate_health_analysis(db, user_id=1, is_auto=False, days=7):
     """
@@ -74,7 +72,7 @@ def generate_health_analysis(db, user_id=1, is_auto=False, days=7):
             AND timestamp > datetime('now', ? || ' days')
             ORDER BY timestamp DESC
         """, (user_id, f'-{days}'))
-        diet_records = c.fetchall()
+        diet_records = c.fetchall()  # noqa: F841
 
         # 5. 用药方案
         c.execute("""
@@ -93,7 +91,7 @@ def generate_health_analysis(db, user_id=1, is_auto=False, days=7):
             AND timestamp > datetime('now', ? || ' days')
             ORDER BY timestamp DESC
         """, (user_id, f'-{days}'))
-        temp_med_records = c.fetchall()
+        temp_med_records = c.fetchall()  # noqa: F841
 
         # 5c. 服药依从性
         c.execute("""
@@ -103,17 +101,14 @@ def generate_health_analysis(db, user_id=1, is_auto=False, days=7):
             WHERE ml.user_id = ? AND ml.log_date > date('now', ? || ' days') AND ml.taken = 1
             GROUP BY ml.plan_id
         """, (user_id, f'-{days}'))
-        adherence_records = c.fetchall()
-
+        adherence_records = c.fetchall()  # noqa: F841
         # 6. 体重数据
         c.execute("""
             SELECT weight, bmi, timestamp FROM records
             WHERE user_id = ? AND weight > 0 AND timestamp > datetime('now', ? || ' days')
             ORDER BY timestamp DESC
         """, (user_id, f'-{days}'))
-        weight_records = c.fetchall()
-
-        # --- 数据汇总 ---
+        weight_records = c.fetchall()  # noqa: F841
         glucose_summary = ""
         if glucose_records:
             glucose_values = [r[0] for r in glucose_records if 1.0 <= r[0] <= 30.0]

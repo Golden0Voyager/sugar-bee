@@ -245,7 +245,7 @@ def run_test():
         diff_pct = (sum(z_scores) - sum(g_scores)) / sum(z_scores) * 100
         print(f"  结论: ZhipuAI 整体略优，领先 {diff_pct:.1f}%")
     else:
-        print(f"  结论: 两者表现相当")
+        print("  结论: 两者表现相当")
 
     if sum(z_scores)/len(z_scores) >= 70:
         print("  ZhipuAI 可作为国内部署的可靠替代方案 ✓")
