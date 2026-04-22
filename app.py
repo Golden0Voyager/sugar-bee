@@ -86,11 +86,22 @@ def index():
         # 默认加载 90 天数据
         sorted_dates, records = build_timeline(c, current_user_id, days=90)
         stats = get_dashboard_stats(db, current_user_id)
-        
+
         # 补全 stats 中的时间轴数据（如果需要）
         stats['current_days'] = 90
-        
-        return render_template('index.html', records=records, stats=stats, timeline=sorted_dates)
+
+        # 3. 获取当前用户启用的功能模块（空/None 视为全部启用）
+        user = user_manager.get_user(current_user_id)
+        enabled_modules = (user.get('enabled_modules') if user else None) or [
+            'glucose', 'blood_pressure', 'exercise', 'weight', 'medication'
+        ]
+
+        # 4. 是否为绑定 Garmin 的用户（控制运动卡片上的"同步 Garmin"按钮显示）
+        garmin_uid = int(os.environ.get('GARMIN_USER_ID', 0) or 0)
+        is_garmin_user = bool(garmin_uid and os.environ.get('GARMIN_EMAIL') and current_user_id == garmin_uid)
+
+        return render_template('index.html', records=records, stats=stats, timeline=sorted_dates,
+                               enabled_modules=enabled_modules, is_garmin_user=is_garmin_user)
     except Exception as e:
         traceback.print_exc()
         return f"Error loading index: {e}", 500
@@ -128,6 +139,41 @@ def auto_backup():
 
 atexit.register(lambda: _auto_backup_timer.cancel() if _auto_backup_timer else None)
 
+# ========== Garmin 自动同步 ==========
+GARMIN_SYNC_INTERVAL = int(os.environ.get('GARMIN_SYNC_INTERVAL', 7200))
+_garmin_sync_timer = None
+_garmin_lock = threading.Lock()
+
+def auto_garmin_sync():
+    global _garmin_sync_timer
+    try:
+        user_id = int(os.environ.get('GARMIN_USER_ID', 0) or 0)
+        if user_id and os.environ.get('GARMIN_EMAIL'):
+            token_dir = os.environ.get('GARMIN_TOKEN_DIR', '.garmin_tokens')
+            token_file = os.path.join(token_dir, 'garmin_tokens.json')
+            # 首次没有 token 时跳过自动同步，避免撞 Garmin IP 限流；需用户手动触发一次完成首登
+            if not os.path.isfile(token_file):
+                print('[Garmin] 未找到持久化 token，跳过自动同步；请先手动触发一次以完成首次登录')
+            else:
+                acquired = _garmin_lock.acquire(blocking=False)
+                if acquired:
+                    try:
+                        from services.garmin_service import sync_activities
+                        result = sync_activities(user_id, days=30)
+                        print(f'[Garmin] 定时同步: {result}')
+                    finally:
+                        _garmin_lock.release()
+                else:
+                    print('[Garmin] 上次同步未完成，跳过本轮')
+    except Exception as e:
+        print(f'[Garmin] 同步出错: {e}')
+    finally:
+        _garmin_sync_timer = threading.Timer(GARMIN_SYNC_INTERVAL, auto_garmin_sync)
+        _garmin_sync_timer.daemon = True
+        _garmin_sync_timer.start()
+
+atexit.register(lambda: _garmin_sync_timer.cancel() if _garmin_sync_timer else None)
+
 # ========== 蓝图注册 ==========
 from routes.api_auth import bp_auth  # noqa: E402
 from routes.api_chat import bp_chat  # noqa: E402
@@ -153,4 +199,6 @@ if __name__ == '__main__':
     with app.app_context():
         init_db()
     auto_backup()
-    app.run(debug=True, port=5001)
+    if os.environ.get('GARMIN_EMAIL'):
+        auto_garmin_sync()
+    app.run(host='0.0.0.0', debug=True, port=5001)

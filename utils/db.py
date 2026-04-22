@@ -62,7 +62,9 @@ def init_db():
             ("max_heart_rate", "INTEGER"),
             ("steps", "INTEGER"),
             ("max_pace", "TEXT"),
-            ("user_id", "INTEGER DEFAULT 1")
+            ("user_id", "INTEGER DEFAULT 1"),
+            ("external_id", "TEXT"),
+            ("source", "TEXT")
         ]
         
         for col_name, col_type in mig_cols:

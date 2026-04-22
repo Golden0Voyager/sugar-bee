@@ -1,6 +1,8 @@
 import datetime
 import json
 import settings
+from core.config import DB_NAME
+from user_manager import UserManager
 
 
 def get_dashboard_stats(db, user_id):
@@ -143,7 +145,7 @@ def get_dashboard_stats(db, user_id):
         if old_weight_row:
             weight_change_default = round(latest_weight - old_weight_row[0], 1)
 
-    user_config = settings.load_config()
+    user_config = UserManager(DB_NAME).get_user_config(user_id)
     latest_bmi = settings.calculate_bmi(latest_weight, user_config.get('height')) if latest_weight else (round(latest_bmi_raw, 1) if latest_bmi_raw else None)
     bmi_category = settings.get_bmi_category(latest_bmi)
 

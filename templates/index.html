@@ -1982,6 +1982,14 @@
         </div>
     </div>
 
+    <!-- ========== 功能模块开关（全部启用时 enabled_modules 为空列表，兜底为全部启用） ========== -->
+    {% set ALL_MODULES = ['glucose', 'blood_pressure', 'exercise', 'weight', 'medication'] %}
+    {% set active_modules = enabled_modules if enabled_modules else ALL_MODULES %}
+    {# tab 按钮顺序（与下方 tab 按钮渲染顺序一致），用于计算第一个启用的模块以决定 active 状态 #}
+    {% set BUTTON_ORDER = ['glucose', 'exercise', 'blood_pressure', 'weight', 'medication'] %}
+    {% set first_active = namespace(module='') %}
+    {% for m in BUTTON_ORDER %}{% if first_active.module == '' and m in active_modules %}{% set first_active.module = m %}{% endif %}{% endfor %}
+
     <!-- ========== 今日概览卡片 ========== -->
     <div class="card mb-4" id="todayOverviewCard">
         <div class="card-body">
@@ -2004,14 +2012,23 @@
                         </button>
                     </div>
                 </div>
+                {% if 'glucose' in active_modules %}
                 <div class="d-flex flex-column align-items-end gap-2">
                     <button type="button" class="btn btn-ai-predict" id="btnAiPredict" onclick="triggerRemainingPredictions()" title="基于已测数据预测剩余时间点" aria-label="预测今日血糖">
                         ✨ 预测今日血糖
                     </button>
                 </div>
+                {% endif %}
             </div>
 
-            <!-- 血糖测量时间轴 -->
+            {% if active_modules|length == 0 %}
+            <div class="alert alert-info mb-0">
+                <i class="bi bi-info-circle me-2"></i>所有功能面板都已关闭。
+                <a href="#" data-bs-toggle="modal" data-bs-target="#userSettingsModal">前往设置</a>启用。
+            </div>
+            {% endif %}
+
+            {% if 'glucose' in active_modules %}
             <div class="today-glucose-timeline mb-3">
                 <div class="d-flex justify-content-between gap-3">
                     {% for slot in stats.today_overview %}
@@ -2103,22 +2120,37 @@
                         </div>
                 </div>
             </div>
+            {% endif %}{# end glucose #}
 
             <!-- 今日快捷信息 -->
             <div class="row g-2">
+                {% if 'exercise' in active_modules %}
                 <!-- 运动 -->
                 <div class="col-md-3 col-6">
                     <div class="p-2 rounded h-100" style="background: var(--bs-light); min-height: 120px;">
                         <div class="d-flex align-items-center gap-1 mb-2">
                             <span style="font-size: 1rem;">🏃</span>
                             <span class="fw-bold" style="color: var(--md-primary);">运动</span>
-                            {% if stats.today_exercises|length > 1 %}
-                            <span class="ms-auto overview-card-nav" id="nav-exercise">
-                                <button onclick="overviewCardNav('exercise',-1)" title="上一条">&lsaquo;</button>
-                                <span class="nav-idx">1/{{ stats.today_exercises|length }}</span>
-                                <button onclick="overviewCardNav('exercise',1)" title="下一条">&rsaquo;</button>
-                            </span>
-                            {% endif %}
+                            <div class="ms-auto d-flex align-items-center gap-2">
+                                {% if stats.today_exercises|length > 1 %}
+                                <span class="overview-card-nav" id="nav-exercise">
+                                    <button onclick="overviewCardNav('exercise',-1)" title="上一条">&lsaquo;</button>
+                                    <span class="nav-idx">1/{{ stats.today_exercises|length }}</span>
+                                    <button onclick="overviewCardNav('exercise',1)" title="下一条">&rsaquo;</button>
+                                </span>
+                                {% endif %}
+                                {% if is_garmin_user %}
+                                <style>
+                                    .garmin-sync-btn { box-shadow: none !important; border: none !important; }
+                                    .garmin-sync-btn:hover { background: transparent !important; transform: none !important; }
+                                    .garmin-sync-btn:hover i { transform: scale(1.2) rotate(180deg); }
+                                    .garmin-sync-btn i { transition: transform 0.3s ease; display: inline-block; }
+                                </style>
+                                <button type="button" class="btn btn-link btn-sm p-0 text-primary garmin-sync-btn" onclick="syncGarmin()" title="同步 Garmin 活动">
+                                    <i class="bi bi-arrow-clockwise" style="font-size: 0.9rem;"></i>
+                                </button>
+                                {% endif %}
+                            </div>
                         </div>
                         <div id="overview-exercise-content">
                         {% if stats.today_exercise %}
@@ -2156,6 +2188,8 @@
                         </div>
                     </div>
                 </div>
+                {% endif %}{# end exercise #}
+                {% if 'blood_pressure' in active_modules %}
                 <!-- 血压 -->
                 <div class="col-md-3 col-6">
                     <div class="p-2 rounded h-100" style="background: var(--bs-light); min-height: 120px;">
@@ -2196,6 +2230,8 @@
                         </div>
                     </div>
                 </div>
+                {% endif %}{# end blood_pressure #}
+                {% if 'weight' in active_modules %}
                 <!-- 体重 -->
                 <div class="col-md-3 col-6">
                     <div class="p-2 rounded h-100" style="background: var(--bs-light); min-height: 120px;">
@@ -2227,6 +2263,8 @@
                         </div>
                     </div>
                 </div>
+                {% endif %}{# end weight #}
+                {% if 'medication' in active_modules %}
                 <!-- 用药 -->
                 <div class="col-md-3 col-6">
                     <div class="p-2 rounded h-100" style="background: var(--bs-light); min-height: 120px;">
@@ -2370,10 +2408,12 @@
                         {% endif %}
                     </div>
                 </div>
+                {% endif %}{# end medication #}
             </div>
         </div>
     </div>
 
+    {% if active_modules|length > 0 %}
     <!-- 健康数据统计 -->
     <div class="card mb-4" id="statsTabsCard">
         <div class="card-body">
@@ -2414,42 +2454,59 @@
             </div>
             <!-- 标签页导航 -->
             <ul class="nav nav-pills nav-fill mb-3" id="statsTab" role="tablist">
+                {% set ns = namespace(first_tab=true) %}
+                {% if 'glucose' in active_modules %}
                 <li class="nav-item" role="presentation">
-                    <button class="nav-link active py-2" id="glucose-tab" data-bs-toggle="pill" data-bs-target="#glucose-stats" type="button" role="tab">
+                    <button class="nav-link {% if ns.first_tab %}active{% endif %} py-2" id="glucose-tab" data-bs-toggle="pill" data-bs-target="#glucose-stats" type="button" role="tab">
                         <i class="bi bi-droplet-fill text-primary me-1"></i>
                         <span class="d-none d-sm-inline">血糖</span>
                     </button>
                 </li>
+                {% set ns.first_tab = false %}
+                {% endif %}
+                {% if 'exercise' in active_modules %}
                 <li class="nav-item" role="presentation">
-                    <button class="nav-link py-2" id="exercise-tab" data-bs-toggle="pill" data-bs-target="#exercise-stats" type="button" role="tab">
+                    <button class="nav-link {% if ns.first_tab %}active{% endif %} py-2" id="exercise-tab" data-bs-toggle="pill" data-bs-target="#exercise-stats" type="button" role="tab">
                         <i class="bi bi-bicycle text-success me-1"></i>
                         <span class="d-none d-sm-inline">运动</span>
                     </button>
                 </li>
+                {% set ns.first_tab = false %}
+                {% endif %}
+                {% if 'blood_pressure' in active_modules %}
                 <li class="nav-item" role="presentation">
-                    <button class="nav-link py-2" id="bp-tab" data-bs-toggle="pill" data-bs-target="#bp-stats" type="button" role="tab">
+                    <button class="nav-link {% if ns.first_tab %}active{% endif %} py-2" id="bp-tab" data-bs-toggle="pill" data-bs-target="#bp-stats" type="button" role="tab">
                         <i class="bi bi-heart-pulse-fill me-1" style="color: #9C27B0;"></i>
                         <span class="d-none d-sm-inline">血压</span>
                     </button>
                 </li>
+                {% set ns.first_tab = false %}
+                {% endif %}
+                {% if 'weight' in active_modules %}
                 <li class="nav-item" role="presentation">
-                    <button class="nav-link py-2" id="weight-tab" data-bs-toggle="pill" data-bs-target="#weight-stats" type="button" role="tab">
+                    <button class="nav-link {% if ns.first_tab %}active{% endif %} py-2" id="weight-tab" data-bs-toggle="pill" data-bs-target="#weight-stats" type="button" role="tab">
                         <i class="bi bi-speedometer me-1" style="color: #00897B;"></i>
                         <span class="d-none d-sm-inline">体重</span>
                     </button>
                 </li>
+                {% set ns.first_tab = false %}
+                {% endif %}
+                {% if 'medication' in active_modules %}
                 <li class="nav-item" role="presentation">
-                    <button class="nav-link py-2" id="med-tab" data-bs-toggle="pill" data-bs-target="#med-stats" type="button" role="tab">
+                    <button class="nav-link {% if ns.first_tab %}active{% endif %} py-2" id="med-tab" data-bs-toggle="pill" data-bs-target="#med-stats" type="button" role="tab">
                         <i class="bi bi-capsule me-1" style="color: #5E35B1;"></i>
                         <span class="d-none d-sm-inline">用药</span>
                     </button>
                 </li>
+                {% set ns.first_tab = false %}
+                {% endif %}
             </ul>
 
             <!-- 标签页内容 -->
             <div class="tab-content" id="statsTabContent">
+                {% if 'glucose' in active_modules %}
                 <!-- 血糖统计 -->
-                <div class="tab-pane fade show active" id="glucose-stats" role="tabpanel">
+                <div class="tab-pane fade {% if first_active.module == 'glucose' %}show active{% endif %}" id="glucose-stats" role="tabpanel">
                     <div class="d-flex justify-content-between align-items-center mb-2">
                         <h6 class="mb-0 text-primary fw-bold"><i class="bi bi-droplet-fill me-2"></i>血糖监测（近7天）</h6>
                         <span class="badge bg-primary-subtle text-primary">达标率 {{ stats.compliance }}%</span>
@@ -2497,9 +2554,11 @@
                         </div>
                     </div>
                 </div>
+                {% endif %}{# end glucose pane #}
 
+                {% if 'exercise' in active_modules %}
                 <!-- 运动统计 -->
-                <div class="tab-pane fade" id="exercise-stats" role="tabpanel">
+                <div class="tab-pane fade {% if first_active.module == 'exercise' %}show active{% endif %}" id="exercise-stats" role="tabpanel">
                     <div class="d-flex justify-content-between align-items-center mb-2">
                         <h6 class="mb-0 text-success fw-bold"><i class="bi bi-activity me-2"></i>运动记录（近7天）</h6>
                         <span class="badge" style="background: rgba(25,135,84,0.1); color: #198754;">{{ stats.exercise_count_7d }}次运动</span>
@@ -2547,9 +2606,11 @@
                         </div>
                     </div>
                 </div>
+                {% endif %}{# end exercise pane #}
 
+                {% if 'blood_pressure' in active_modules %}
                 <!-- 血压统计 -->
-                <div class="tab-pane fade" id="bp-stats" role="tabpanel">
+                <div class="tab-pane fade {% if first_active.module == 'blood_pressure' %}show active{% endif %}" id="bp-stats" role="tabpanel">
                     <div class="d-flex justify-content-between align-items-center mb-2">
                         <h6 class="mb-0 fw-bold" style="color: #9C27B0;"><i class="bi bi-heart-pulse-fill me-2"></i>血压监测（近7天）</h6>
                         <span class="badge" style="background: rgba(156,39,176,0.1); color: #9C27B0;">{{ stats.bp_count_7d }}次测量</span>
@@ -2591,9 +2652,11 @@
                         </div>
                     </div>
                 </div>
+                {% endif %}{# end blood_pressure pane #}
 
+                {% if 'medication' in active_modules %}
                 <!-- 用药统计 -->
-                <div class="tab-pane fade" id="med-stats" role="tabpanel">
+                <div class="tab-pane fade {% if first_active.module == 'medication' %}show active{% endif %}" id="med-stats" role="tabpanel">
                     <div class="d-flex justify-content-between align-items-center mb-2">
                         <h6 class="mb-0 fw-bold" style="color: #5E35B1;">💊 今日用药</h6>
                         <span class="overview-status" style="cursor: pointer; padding: 5px 12px;" data-bs-toggle="modal" data-bs-target="#medicationPlanModal">
@@ -2647,9 +2710,11 @@
                     </div>
                     {% endif %}
                 </div>
+                {% endif %}{# end medication pane #}
 
+                {% if 'weight' in active_modules %}
                 <!-- 体重统计 -->
-                <div class="tab-pane fade" id="weight-stats" role="tabpanel">
+                <div class="tab-pane fade {% if first_active.module == 'weight' %}show active{% endif %}" id="weight-stats" role="tabpanel">
                     <div class="d-flex justify-content-between align-items-center mb-2">
                         <h6 class="mb-0 fw-bold" style="color: #00897B;"><i class="bi bi-speedometer me-2"></i>体重管理</h6>
                         {% if stats.latest_bmi %}
@@ -2710,9 +2775,11 @@
                     </div>
                     {% endif %}
                 </div>
+                {% endif %}{# end weight pane #}
             </div>
         </div>
     </div>
+    {% endif %}{# end stats card (active_modules > 0) #}
 
     <!-- 预测对比图模态框 -->
     <div class="modal fade" id="predictionComparisonModal" tabindex="-1">
@@ -3405,6 +3472,11 @@
                             <i class="bi bi-database me-1"></i>数据管理
                         </button>
                     </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabModules" type="button" role="tab">
+                            <i class="bi bi-grid-3x3-gap me-1"></i>功能模块
+                        </button>
+                    </li>
                 </ul>
 
                 <!-- Tab 内容 -->
@@ -3414,34 +3486,34 @@
                         <form id="userSettingsForm">
                             <div class="row g-3">
                                 <div class="col-md-6">
-                                    <label class="form-label" style="font-size: 1rem;">姓名</label>
-                                    <input type="text" id="set_name" class="form-control" value="{{ stats.user.name }}" style="font-size: 1.1rem; padding: 12px;">
+                                    <label class="form-label">姓名</label>
+                                    <input type="text" id="set_name" class="form-control" value="{{ stats.user.name }}">
                                 </div>
                                 <div class="col-md-6">
-                                    <label class="form-label" style="font-size: 1rem;">出生年份</label>
-                                    <input type="number" id="set_birth" class="form-control" value="{{ stats.user.birth_year }}" style="font-size: 1.1rem; padding: 12px;">
+                                    <label class="form-label">出生年份</label>
+                                    <input type="number" id="set_birth" class="form-control" value="{{ stats.user.birth_year }}">
                                 </div>
                                 <div class="col-md-6">
-                                    <label class="form-label" style="font-size: 1rem;">身高 (cm)</label>
-                                    <input type="number" id="set_height" class="form-control" value="{{ stats.user.height }}" style="font-size: 1.1rem; padding: 12px;">
+                                    <label class="form-label">身高 (cm)</label>
+                                    <input type="number" id="set_height" class="form-control" value="{{ stats.user.height }}">
                                 </div>
                                 <div class="col-md-6">
-                                    <label class="form-label" style="font-size: 1rem;">体重 (kg)</label>
-                                    <input type="number" step="0.1" id="set_weight" class="form-control" value="{{ stats.user.weight }}" style="font-size: 1.1rem; padding: 12px;">
+                                    <label class="form-label">体重 (kg)</label>
+                                    <input type="number" step="0.1" id="set_weight" class="form-control" value="{{ stats.user.weight }}">
                                 </div>
                                 <div class="col-md-6">
-                                    <label class="form-label" style="font-size: 1rem;">目标体重 (kg)</label>
-                                    <input type="number" step="0.1" id="set_target_weight" class="form-control" value="{{ stats.target_weight or '' }}" placeholder="选填" style="font-size: 1.1rem; padding: 12px;">
+                                    <label class="form-label">目标体重 (kg)</label>
+                                    <input type="number" step="0.1" id="set_target_weight" class="form-control" value="{{ stats.target_weight or '' }}" placeholder="选填">
                                 </div>
                                 <div class="col-md-6">
-                                    <label class="form-label" style="font-size: 1rem;">性别</label>
-                                    <select id="set_gender" class="form-select" style="font-size: 1.1rem; padding: 12px;">
+                                    <label class="form-label">性别</label>
+                                    <select id="set_gender" class="form-select">
                                         <option value="male" {% if stats.user.gender == 'male' %}selected{% endif %}>男</option>
                                         <option value="female" {% if stats.user.gender == 'female' %}selected{% endif %}>女</option>
                                     </select>
                                 </div>
-                                <div class="col-12">
-                                    <button type="button" class="btn btn-primary w-100" onclick="saveUserSettings()" style="font-size: 1.1rem; padding: 12px;">
+                                <div class="col-12 mt-2">
+                                    <button type="button" class="btn btn-primary w-100" onclick="saveUserSettings()">
                                         <i class="bi bi-check-lg me-2"></i>保存资料
                                     </button>
                                 </div>
@@ -3452,158 +3524,163 @@
                     <!-- Tab 2: 用户管理 -->
                     <div class="tab-pane fade" id="tabUsers" role="tabpanel">
                         <div id="settingsUserList" class="mb-3"></div>
-                        <hr>
-                        <!-- 修改用户名区域 -->
-                        <h6 class="text-muted mb-3"><i class="bi bi-person-badge me-2"></i>修改用户名</h6>
-                        <div class="row g-2 mb-3">
-                            <div class="col-md-8">
-                                <input type="text" id="newUsername" class="form-control" placeholder="新用户名（英文）" style="font-size: 1rem; padding: 10px;">
-                            </div>
-                            <div class="col-md-4">
-                                <button class="btn btn-outline-primary w-100" onclick="changeUsername()" style="font-size: 1rem; padding: 10px;">
-                                    <i class="bi bi-check-lg me-1"></i>修改用户名
-                                </button>
-                            </div>
-                        </div>
-                        <hr>
-                        <!-- 账号绑定区域 -->
-                        <h6 class="text-muted mb-3"><i class="bi bi-link-45deg me-2"></i>账号绑定</h6>
-                        <div id="accountBindingSection">
-                            <!-- 手机号绑定 -->
-                            <div class="row g-2 mb-2 align-items-center">
-                                <div class="col-auto" style="min-width: 60px;">
-                                    <span class="text-muted" style="font-size: 0.9rem;">手机号</span>
+
+                        <div class="bg-light rounded-3 p-3 mb-3">
+                            <div class="row g-2 align-items-end">
+                                <div class="col-md-5">
+                                    <label class="form-label small text-muted">新用户名</label>
+                                    <input type="text" id="newUsername" class="form-control" placeholder="英文">
                                 </div>
-                                <div class="col">
-                                    <div id="phoneBound" style="display:none;">
-                                        <span class="badge bg-success-subtle text-success me-2" id="phoneMasked"></span>
-                                        <button class="btn btn-outline-danger btn-sm" onclick="unbindProvider('phone')">
-                                            <i class="bi bi-x-lg me-1"></i>解绑
-                                        </button>
-                                    </div>
-                                    <div id="phoneUnbound" class="d-flex gap-2">
-                                        <input type="text" id="bindPhone" class="form-control form-control-sm" placeholder="输入手机号" style="max-width: 200px;">
-                                        <button class="btn btn-outline-primary btn-sm" onclick="bindPhone()">
-                                            <i class="bi bi-check-lg me-1"></i>绑定
-                                        </button>
-                                    </div>
+                                <div class="col-md-3">
+                                    <button class="btn btn-outline-secondary w-100" onclick="changeUsername()">修改</button>
                                 </div>
                             </div>
-                            <!-- 邮箱绑定 -->
-                            <div class="row g-2 mb-2 align-items-center">
-                                <div class="col-auto" style="min-width: 60px;">
-                                    <span class="text-muted" style="font-size: 0.9rem;">邮箱</span>
+                            <hr class="my-3 opacity-25">
+                            <div class="row g-2 align-items-end">
+                                <div class="col-md-4">
+                                    <label class="form-label small text-muted">当前密码</label>
+                                    <input type="password" id="oldPassword" class="form-control" placeholder="">
                                 </div>
-                                <div class="col">
-                                    <div id="emailBound" style="display:none;">
-                                        <span class="badge bg-success-subtle text-success me-2" id="emailMasked"></span>
-                                        <button class="btn btn-outline-danger btn-sm" onclick="unbindProvider('email')">
-                                            <i class="bi bi-x-lg me-1"></i>解绑
-                                        </button>
-                                    </div>
-                                    <div id="emailUnbound" class="d-flex gap-2">
-                                        <input type="email" id="bindEmail" class="form-control form-control-sm" placeholder="输入邮箱" style="max-width: 200px;">
-                                        <button class="btn btn-outline-primary btn-sm" onclick="bindEmail()">
-                                            <i class="bi bi-check-lg me-1"></i>绑定
-                                        </button>
-                                    </div>
+                                <div class="col-md-4">
+                                    <label class="form-label small text-muted">新密码</label>
+                                    <input type="password" id="newPassword" class="form-control" placeholder="至少4位">
+                                </div>
+                                <div class="col-md-4">
+                                    <button class="btn btn-outline-secondary w-100" onclick="changePassword()">修改密码</button>
                                 </div>
                             </div>
                         </div>
-                        <hr>
-                        <!-- 修改密码区域 -->
-                        <h6 class="text-muted mb-3"><i class="bi bi-shield-lock me-2"></i>修改密码</h6>
-                        <div class="row g-2 mb-3">
-                            <div class="col-md-4">
-                                <input type="password" id="oldPassword" class="form-control" placeholder="当前密码" style="font-size: 1rem; padding: 10px;">
-                            </div>
-                            <div class="col-md-4">
-                                <input type="password" id="newPassword" class="form-control" placeholder="新密码（至少4位）" style="font-size: 1rem; padding: 10px;">
-                            </div>
-                            <div class="col-md-4">
-                                <button class="btn btn-outline-primary w-100" onclick="changePassword()" style="font-size: 1rem; padding: 10px;">
-                                    <i class="bi bi-check-lg me-1"></i>修改密码
-                                </button>
+
+                        <div class="bg-light rounded-3 p-3 mb-3">
+                            <div id="accountBindingSection">
+                                <div class="d-flex align-items-center justify-content-between py-2">
+                                    <span class="text-muted">手机号</span>
+                                    <div>
+                                        <div id="phoneBound" style="display:none;">
+                                            <span class="badge bg-success-subtle text-success me-2" id="phoneMasked"></span>
+                                            <button class="btn btn-link text-danger p-0" onclick="unbindProvider('phone')">解绑</button>
+                                        </div>
+                                        <div id="phoneUnbound" class="d-flex gap-2">
+                                            <input type="text" id="bindPhone" class="form-control form-control-sm" placeholder="输入手机号" style="max-width: 160px;">
+                                            <button class="btn btn-outline-secondary btn-sm" onclick="bindPhone()">绑定</button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="d-flex align-items-center justify-content-between py-2">
+                                    <span class="text-muted">邮箱</span>
+                                    <div>
+                                        <div id="emailBound" style="display:none;">
+                                            <span class="badge bg-success-subtle text-success me-2" id="emailMasked"></span>
+                                            <button class="btn btn-link text-danger p-0" onclick="unbindProvider('email')">解绑</button>
+                                        </div>
+                                        <div id="emailUnbound" class="d-flex gap-2">
+                                            <input type="email" id="bindEmail" class="form-control form-control-sm" placeholder="输入邮箱" style="max-width: 160px;">
+                                            <button class="btn btn-outline-secondary btn-sm" onclick="bindEmail()">绑定</button>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
-                        <hr>
-                        <h6 class="text-muted mb-3"><i class="bi bi-person-plus me-2"></i>添加新用户</h6>
-                        <div class="row g-2">
-                            <div class="col-md-6">
-                                <input type="text" id="newUserUsername" class="form-control" placeholder="用户名（英文）" style="font-size: 1rem; padding: 10px;">
-                            </div>
-                            <div class="col-md-6">
-                                <input type="text" id="newUserDisplayName" class="form-control" placeholder="显示名称" style="font-size: 1rem; padding: 10px;">
-                            </div>
-                            <div class="col-md-6">
-                                <input type="password" id="newUserPassword" class="form-control" placeholder="登录密码（至少4位）" style="font-size: 1rem; padding: 10px;">
-                            </div>
-                            <div class="col-md-6">
-                                <button class="btn btn-success w-100" onclick="createNewUser()" style="font-size: 1rem; padding: 10px;">
-                                    <i class="bi bi-plus-circle me-1"></i>创建用户
-                                </button>
+
+                        <div class="bg-light rounded-3 p-3">
+                            <div class="row g-2">
+                                <div class="col-md-4">
+                                    <input type="text" id="newUserUsername" class="form-control" placeholder="用户名（英文）">
+                                </div>
+                                <div class="col-md-4">
+                                    <input type="text" id="newUserDisplayName" class="form-control" placeholder="显示名称">
+                                </div>
+                                <div class="col-md-4">
+                                    <input type="password" id="newUserPassword" class="form-control" placeholder="密码（至少4位）">
+                                </div>
+                                <div class="col-12 mt-2">
+                                    <button class="btn btn-primary w-100" onclick="createNewUser()">
+                                        <i class="bi bi-plus-circle me-1"></i>创建用户
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     </div>
 
                     <!-- Tab 3: 数据管理 -->
                     <div class="tab-pane fade" id="tabData" role="tabpanel">
-                        <div class="row g-3">
-                            <div class="col-md-6">
-                                <div class="card h-100">
-                                    <div class="card-body text-center">
-                                        <i class="bi bi-download text-success" style="font-size: 2rem;"></i>
-                                        <h6 class="mt-2">备份数据库</h6>
-                                        <p class="text-muted small">下载完整数据库文件（含所有用户数据）</p>
-                                        <button class="btn btn-outline-success w-100" onclick="backupDatabase()">
-                                            <i class="bi bi-download me-1"></i>下载备份
-                                        </button>
+                        <div class="d-flex flex-column gap-2">
+                            <div class="d-flex align-items-center justify-content-between p-3 bg-light rounded-3">
+                                <div class="d-flex align-items-center gap-3">
+                                    <i class="bi bi-download text-secondary fs-4"></i>
+                                    <div>
+                                        <div class="fw-medium">备份数据库</div>
+                                        <div class="text-muted small">下载完整数据库文件</div>
                                     </div>
                                 </div>
+                                <button class="btn btn-outline-secondary" onclick="backupDatabase()">下载</button>
                             </div>
-                            <div class="col-md-6">
-                                <div class="card h-100">
-                                    <div class="card-body text-center">
-                                        <i class="bi bi-upload text-warning" style="font-size: 2rem;"></i>
-                                        <h6 class="mt-2">恢复数据库</h6>
-                                        <p class="text-muted small">上传备份文件恢复（当前数据会自动备份）</p>
-                                        <button class="btn btn-outline-warning w-100" onclick="restoreDatabase()">
-                                            <i class="bi bi-upload me-1"></i>上传恢复
-                                        </button>
+                            <div class="d-flex align-items-center justify-content-between p-3 bg-light rounded-3">
+                                <div class="d-flex align-items-center gap-3">
+                                    <i class="bi bi-upload text-secondary fs-4"></i>
+                                    <div>
+                                        <div class="fw-medium">恢复数据库</div>
+                                        <div class="text-muted small">从备份文件恢复数据</div>
                                     </div>
                                 </div>
+                                <button class="btn btn-outline-secondary" onclick="restoreDatabase()">上传</button>
                             </div>
-                            <div class="col-md-6">
-                                <div class="card h-100">
-                                    <div class="card-body text-center">
-                                        <i class="bi bi-file-earmark-spreadsheet text-primary" style="font-size: 2rem;"></i>
-                                        <h6 class="mt-2">导出 CSV</h6>
-                                        <p class="text-muted small">导出当前用户的血糖记录为 CSV 文件</p>
-                                        <a class="btn btn-outline-primary w-100" href="/export">
-                                            <i class="bi bi-file-earmark-arrow-down me-1"></i>导出数据
-                                        </a>
+                            <div class="d-flex align-items-center justify-content-between p-3 bg-light rounded-3">
+                                <div class="d-flex align-items-center gap-3">
+                                    <i class="bi bi-file-earmark-spreadsheet text-secondary fs-4"></i>
+                                    <div>
+                                        <div class="fw-medium">导出 CSV</div>
+                                        <div class="text-muted small">导出当前用户的血糖记录</div>
                                     </div>
                                 </div>
+                                <a class="btn btn-outline-secondary" href="/export">导出</a>
                             </div>
-                            <div class="col-md-6">
-                                <div class="card h-100">
-                                    <div class="card-body text-center">
-                                        <i class="bi bi-file-earmark-arrow-up text-info" style="font-size: 2rem;"></i>
-                                        <h6 class="mt-2">导入数据</h6>
-                                        <p class="text-muted small">导入 CSV/Excel 格式的血糖/CGM 数据</p>
-                                        <button class="btn btn-outline-info w-100" onclick="document.getElementById('importCsvInput').click()">
-                                            <i class="bi bi-file-earmark-arrow-up me-1"></i>导入数据
-                                        </button>
-                                        <input type="file" id="importCsvInput" accept=".csv,.xlsx,.xls" style="display:none" onchange="importCsvFile(this)">
+                            <div class="d-flex align-items-center justify-content-between p-3 bg-light rounded-3">
+                                <div class="d-flex align-items-center gap-3">
+                                    <i class="bi bi-file-earmark-arrow-up text-secondary fs-4"></i>
+                                    <div>
+                                        <div class="fw-medium">导入数据</div>
+                                        <div class="text-muted small">导入 CSV/Excel 格式的数据</div>
                                     </div>
                                 </div>
+                                <button class="btn btn-outline-secondary" onclick="document.getElementById('importCsvInput').click()">导入</button>
+                                <input type="file" id="importCsvInput" accept=".csv,.xlsx,.xls" style="display:none" onchange="importCsvFile(this)">
+                            </div>
+                            {% if is_garmin_user %}
+                            <div class="d-flex align-items-center justify-content-between p-3 bg-light rounded-3">
+                                <div class="d-flex align-items-center gap-3">
+                                    <i class="bi bi-watch text-secondary fs-4"></i>
+                                    <div>
+                                        <div class="fw-medium">Garmin 运动同步</div>
+                                        <div class="text-muted small">从 Garmin Connect 同步运动数据</div>
+                                    </div>
+                                </div>
+                                <button class="btn btn-primary" onclick="syncGarmin()">同步</button>
+                            </div>
+                            {% endif %}
+                            <div class="d-flex align-items-center justify-content-between p-3 bg-light rounded-3">
+                                <div class="d-flex align-items-center gap-3">
+                                    <i class="bi bi-wrench text-secondary fs-4"></i>
+                                    <div>
+                                        <div class="fw-medium">清理重复记录</div>
+                                        <div class="text-muted small">扫描并删除短时间内重复的数据</div>
+                                    </div>
+                                </div>
+                                <button class="btn btn-outline-secondary" onclick="findAndCleanDuplicates()">清理</button>
                             </div>
                         </div>
-                        <!-- 数据清理 -->
-                        <hr class="my-3">
-                        <h6 class="text-muted mb-2"><i class="bi bi-wrench me-2"></i>数据清理</h6>
-                        <button class="btn btn-outline-secondary" onclick="findAndCleanDuplicates()">
-                            <i class="bi bi-search me-1"></i>查找并清理重复记录
+                    </div>
+
+                    <!-- Tab 4: 功能模块 -->
+                    <div class="tab-pane fade" id="tabModules" role="tabpanel">
+                        <p class="text-muted small mb-3">
+                            <i class="bi bi-info-circle me-1"></i>关闭的模块仅隐藏显示，已录入数据不会删除。
+                        </p>
+                        <div id="moduleCheckboxes" class="d-flex flex-column gap-2">
+                            <div class="text-muted small">加载中...</div>
+                        </div>
+                        <button class="btn btn-primary w-100 mt-3" onclick="saveEnabledModules()">
+                            <i class="bi bi-check-lg me-2"></i>保存设置
                         </button>
                     </div>
                 </div>
@@ -3942,11 +4019,13 @@
             const label = days ? `近${days}天` : '全部';
             const dateRange = days ? formatStatsDateRange(days) : '全部数据';
 
+            const labelShort = days ? `近${days}天均值` : '全部均值';
+
             // 血糖
+            if (document.getElementById('glucose-stats')) {
             document.querySelector('#glucose-stats h6').innerHTML = `<i class="bi bi-droplet-fill me-2"></i>血糖监测（${label}）`;
             document.querySelector('#glucose-stats .badge').textContent = `达标率 ${d.glucose.compliance}%`;
             const gCols = document.querySelectorAll('#glucose-stats .col-6');
-            // 更新数值（保留内部的 mmol/L small 元素）
             function setGlucoseValue(col, val) {
                 const el = col.querySelector('.fs-4');
                 const unit = el.querySelector('small');
@@ -3963,23 +4042,17 @@
             setGlucoseValue(gCols[1], d.glucose.avg_post2h);
             setGlucoseValue(gCols[2], d.glucose.max);
             setGlucoseValue(gCols[3], d.glucose.min);
-
-            // 更新详细信息
             function formatGlucoseDetail(detail) {
                 if (!detail || !detail.timestamp) return '&nbsp;<br>&nbsp;';
                 const ts = detail.timestamp.substring(5, 16);
                 return detail.type + '<br>' + ts;
             }
-            const labelShort = days ? `近${days}天均值` : '全部均值';
             gCols[0].querySelector('.glucose-detail').innerHTML = labelShort + '<br>' + dateRange;
             gCols[1].querySelector('.glucose-detail').innerHTML = labelShort + '<br>' + dateRange;
             gCols[2].querySelector('.glucose-detail').innerHTML = formatGlucoseDetail(d.glucose.max_detail);
             gCols[3].querySelector('.glucose-detail').innerHTML = formatGlucoseDetail(d.glucose.min_detail);
+            }
 
-            // 运动 — 更新数值（保留内嵌单位）+ 详情
-            document.querySelector('#exercise-stats h6').innerHTML = `<i class="bi bi-activity me-2"></i>运动记录（${label}）`;
-            document.querySelector('#exercise-stats .badge').textContent = `${d.exercise.count}次运动`;
-            const eCards = document.querySelectorAll('#exercise-stats .rounded');
             function setValueKeepUnit(card, val) {
                 if (!card) return;
                 const el = card.querySelector('.fw-bold');
@@ -3987,6 +4060,12 @@
                 el.textContent = val;
                 if (unit) el.appendChild(unit);
             }
+
+            // 运动 — 更新数值（保留内嵌单位）+ 详情
+            if (document.getElementById('exercise-stats')) {
+            document.querySelector('#exercise-stats h6').innerHTML = `<i class="bi bi-activity me-2"></i>运动记录（${label}）`;
+            document.querySelector('#exercise-stats .badge').textContent = `${d.exercise.count}次运动`;
+            const eCards = document.querySelectorAll('#exercise-stats .rounded');
             setValueKeepUnit(eCards[0], d.exercise.total_distance || '0');
             setValueKeepUnit(eCards[1], d.exercise.total_calories || '0');
             setValueKeepUnit(eCards[2], d.exercise.avg_heart_rate || '-');
@@ -4005,8 +4084,10 @@
                     eDetails[3].innerHTML = '&nbsp;<br>&nbsp;';
                 }
             }
+            }
 
             // 血压 — 更新数值（保留内嵌单位）+ 详情
+            if (document.getElementById('bp-stats')) {
             document.querySelector('#bp-stats h6').innerHTML = `<i class="bi bi-heart-pulse-fill me-2"></i>血压监测（${label}）`;
             document.querySelector('#bp-stats .badge').textContent = `${d.bp.count}次测量`;
             const bCards = document.querySelectorAll('#bp-stats .rounded');
@@ -4017,8 +4098,10 @@
             if (bDetails[0]) bDetails[0].innerHTML = `${labelShort}<br>${dateRange}`;
             if (bDetails[1]) bDetails[1].innerHTML = d.bp.max_timestamp ? `发生于<br>${d.bp.max_timestamp.substring(5, 16)}` : '&nbsp;<br>&nbsp;';
             if (bDetails[2]) bDetails[2].innerHTML = d.bp.min_timestamp ? `发生于<br>${d.bp.min_timestamp.substring(5, 16)}` : '&nbsp;<br>&nbsp;';
+            }
 
             // 体重 — 更新数值（保留内嵌单位）+ 详情
+            if (document.getElementById('weight-stats')) {
             document.querySelector('#weight-stats h6').innerHTML = `<i class="bi bi-speedometer me-2"></i>体重管理`;
             const wCards = document.querySelectorAll('#weight-stats .rounded');
             if (wCards.length >= 4) {
@@ -4042,6 +4125,7 @@
                 wCards[3].querySelector('small:first-child').textContent = days ? `${days}天变化` : '总变化';
                 setValueKeepUnit(wCards[3], d.weight.change !== null ? (d.weight.change > 0 ? '+' : '') + d.weight.change : '-');
                 if (wDetails[3]) wDetails[3].innerHTML = days ? `对比${days}天前<br>&nbsp;` : `对比最早记录<br>&nbsp;`;
+            }
             }
         } catch(e) { console.error('loadHealthStats error:', e); }
     }
@@ -4090,6 +4174,7 @@
 
     function _renderExerciseItem() {
         const el = document.getElementById('overview-exercise-content');
+        if (!el) return;
         const items = window._ovData.exercise;
         const idx = window._ovIdx.exercise;
         if (!items.length) { el.innerHTML = '<div class="text-muted small">暂无运动记录</div>'; return; }
@@ -4111,6 +4196,7 @@
 
     function _renderBpItem() {
         const el = document.getElementById('overview-bp-content');
+        if (!el) return;
         const items = window._ovData.bp;
         const idx = window._ovIdx.bp;
         if (!items.length) { el.innerHTML = '<div class="text-muted small">暂无血压记录</div>'; return; }
@@ -4131,6 +4217,7 @@
 
     function _renderWeightItem() {
         const el = document.getElementById('overview-weight-content');
+        if (!el) return;
         const items = window._ovData.weight;
         const idx = window._ovIdx.weight;
         if (!items.length) { el.innerHTML = '<div class="text-muted small">暂无体重记录</div>'; return; }
@@ -5112,17 +5199,23 @@
         // Initialize Chart.js for glucose trend (使用保存的时间范围)
         // 如果保存的范围超过 90 天，先加载数据再渲染
         const initDays = initialRange === 'all' ? null : parseFloat(initialRange);
+        if (document.getElementById('glucoseChart')) {
         if (initDays === null || initDays > 90) {
             ensureTimelineData(initDays).then(() => initGlucoseChart(initDays));
         } else {
             initGlucoseChart(initDays);
         }
+        }
 
         // Initialize Blood Pressure Chart
+        if (document.getElementById('bloodPressureChart')) {
         initBloodPressureChart(30);
+        }
 
         // Initialize Weight/BMI Chart
+        if (document.getElementById('weightChart')) {
         initWeightChart(30);
+        }
 
         // Initialize Bootstrap Tooltips
         var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
@@ -10287,7 +10380,81 @@
     document.getElementById('userSettingsModal')?.addEventListener('show.bs.modal', function() {
         loadSettingsUserList();
         loadAccountBindings();
+        loadEnabledModules();
     });
+
+    // ========== 功能模块开关 ==========
+    const MODULE_LABELS = {
+        glucose: { icon: '🩸', name: '血糖', desc: '血糖记录、预测、达标统计' },
+        blood_pressure: { icon: '❤️', name: '血压', desc: '收缩压/舒张压/脉搏' },
+        exercise: { icon: '🏃', name: '运动', desc: '跑步/步行/心率等数据' },
+        weight: { icon: '⚖️', name: '体重', desc: '体重/BMI 追踪' },
+        medication: { icon: '💊', name: '用药', desc: '用药计划与补剂管理' }
+    };
+
+    async function loadEnabledModules() {
+        try {
+            const result = await apiCall('/api/user/modules', { method: 'GET' }, { showLoading: false });
+            if (!result || !result.data) return;
+            const container = document.getElementById('moduleCheckboxes');
+            if (!container) return;
+            const active = new Set(result.data.enabled_modules || []);
+            const allModules = result.data.all_modules || [];
+            container.innerHTML = allModules.map(m => {
+                const info = MODULE_LABELS[m] || { icon: '', name: m, desc: '' };
+                const checked = active.has(m) ? 'checked' : '';
+                return `
+                    <label class="d-flex align-items-center gap-3 p-2 rounded" style="cursor: pointer; background: var(--bs-light); border: 1px solid #e0e0e0;">
+                        <input type="checkbox" class="form-check-input module-checkbox" value="${m}" ${checked} style="flex-shrink: 0; margin: 0; width: 20px; height: 20px;">
+                        <span style="font-size: 1.3rem; flex-shrink: 0;">${info.icon}</span>
+                        <div class="d-flex flex-column" style="flex: 1;">
+                            <span class="fw-semibold" style="font-size: 1rem;">${info.name}</span>
+                            <small class="text-muted">${info.desc}</small>
+                        </div>
+                    </label>
+                `;
+            }).join('');
+        } catch (e) {
+            console.error('加载模块配置失败', e);
+            const container = document.getElementById('moduleCheckboxes');
+            if (container) container.innerHTML = '<div class="text-danger small">加载失败</div>';
+        }
+    }
+
+    async function saveEnabledModules() {
+        try {
+            const checked = [...document.querySelectorAll('#moduleCheckboxes .module-checkbox:checked')].map(i => i.value);
+            if (checked.length === 0) {
+                showToast('请至少保留一个功能模块', 'error');
+                return;
+            }
+            const result = await apiCall('/api/user/modules', {
+                method: 'POST',
+                body: JSON.stringify({ enabled_modules: checked })
+            }, { showLoading: false });
+            if (result) {
+                showToast('设置已保存，正在刷新...', 'success');
+                setTimeout(() => window.location.reload(), 600);
+            }
+        } catch (e) {
+            showToast('保存失败: ' + (e.message || e), 'danger');
+        }
+    }
+
+    // ========== Garmin 同步 ==========
+    async function syncGarmin() {
+        showToast('正在同步 Garmin 活动...', 'info');
+        try {
+            const result = await apiCall('/sync_garmin', { method: 'POST' }, { showLoading: false });
+            if (result) {
+                showToast(result.message || '同步完成', 'success');
+                setTimeout(() => window.location.reload(), 1200);
+            }
+        } catch (e) {
+            showToast('Garmin 同步失败: ' + (e.message || e), 'danger');
+        }
+    }
+
     async function findAndCleanDuplicates() {
         try {
             showToast('正在扫描重复记录...', 'info');

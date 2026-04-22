@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "Bash(mkdir:*)",
-      "Bash(uv run:*)"
+      "Bash(uv run:*)",
+      "Bash(curl -s -c /tmp/sugar_cookie -L -X POST -H 'Content-Type: application/json' -d '{\"username\":\"admin\",\"password\":\"admin\"}' http://127.0.0.1:5001/login)",
+      "Bash(curl -s http://127.0.0.1:5001/login)"
     ]
   }
 }
