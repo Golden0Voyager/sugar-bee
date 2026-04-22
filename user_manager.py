@@ -151,6 +151,17 @@ class UserManager:
         conn.commit()
         conn.close()
 
+    def set_enabled_modules(self, user_id, modules):
+        """仅更新用户的启用模块列表（不影响其他 profile 字段）"""
+        conn = sqlite3.connect(self.db_path)
+        c = conn.cursor()
+        c.execute("""
+            UPDATE user_profiles SET enabled_modules = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE user_id = ?
+        """, (json.dumps(modules or []), user_id))
+        conn.commit()
+        conn.close()
+
     def get_user_config(self, user_id):
         """获取用户配置（兼容原 settings 格式）"""
         user = self.get_user(user_id)
@@ -158,19 +169,19 @@ class UserManager:
             return self._get_default_config()
 
         return {
-            'name': user.get('name', '用户'),
-            'birth_year': user.get('birth_year', 1964),
-            'height': user.get('height', 170),
-            'weight': user.get('weight', 75),
-            'gender': user.get('gender', 'male'),
+            'name': user.get('name') or user.get('display_name') or '用户',
+            'birth_year': user.get('birth_year') or 1964,
+            'height': user.get('height') or 170,
+            'weight': user.get('weight') or 75,
+            'gender': user.get('gender') or 'male',
             'avatar': user.get('avatar'),
-            'default_meals': user.get('default_meals', {}),
-            'target': user.get('target_ranges', {
+            'default_meals': user.get('default_meals') or {},
+            'target': user.get('target_ranges') or {
                 'fasting_min': 3.9,
                 'fasting_max': 7.0,
                 'postmeal_max': 7.8,
                 'premeal_max': 6.5
-            }),
+            },
             'glucose_pattern': {
                 'fasting_range': '6.0-7.2',
                 'postmeal_range': '6.5-8.0'

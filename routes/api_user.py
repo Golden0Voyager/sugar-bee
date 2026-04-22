@@ -15,6 +15,8 @@ from utils.db import get_db
 user_manager = UserManager(DB_NAME)
 bp_user = Blueprint('user', __name__)
 
+ALL_MODULES = ['glucose', 'blood_pressure', 'exercise', 'weight', 'medication']
+
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in {'png', 'jpg', 'jpeg', 'gif'}
 
@@ -96,6 +98,37 @@ def update_settings():
     except Exception as e:
         return api_error(str(e), status_code=500)
 
+@bp_user.route('/api/user/modules', methods=['GET'])
+@login_required
+def get_user_modules():
+    """返回当前用户的启用模块"""
+    try:
+        user_id = user_manager.get_current_user_id()
+        user = user_manager.get_user(user_id)
+        modules = (user.get('enabled_modules') if user else None) or ALL_MODULES
+        return api_success(data={
+            'enabled_modules': modules,
+            'all_modules': ALL_MODULES
+        })
+    except Exception as e:
+        return api_error(str(e), status_code=500)
+
+@bp_user.route('/api/user/modules', methods=['POST'])
+@login_required
+def update_user_modules():
+    """更新当前用户的启用模块"""
+    try:
+        data = request.json or {}
+        modules = data.get('enabled_modules', [])
+        if not isinstance(modules, list):
+            return api_error("enabled_modules 必须是数组", status_code=400, error_type='validation_error')
+        valid = [m for m in modules if m in ALL_MODULES]
+        user_manager.set_enabled_modules(user_manager.get_current_user_id(), valid)
+        return api_success(data={'enabled_modules': valid}, message="模块设置已更新")
+    except Exception as e:
+        traceback.print_exc()
+        return api_error(str(e), status_code=500)
+
 @bp_user.route('/upload_avatar', methods=['POST'])
 @login_required
 def upload_avatar():
@@ -103,16 +136,23 @@ def upload_avatar():
         file = request.files.get('avatar')
         if not file or file.filename == '' or not allowed_file(file.filename):
             return api_error("Invalid file", status_code=400)
-        
+
         filename = f"avatar_{int(datetime.datetime.now().timestamp())}.png"
         filepath = os.path.join(current_app.config['UPLOAD_FOLDER'], filename)
         file.save(filepath)
 
-        config = settings.load_config()
-        config['avatar_url'] = f"/static/avatars/{filename}"
-        settings.save_config(config)
-        return api_success(data={"avatar_url": config['avatar_url']}, message="Avatar uploaded")
+        user_id = user_manager.get_current_user_id()
+        db = get_db()
+        c = db.cursor()
+        c.execute("UPDATE app_users SET avatar = ? WHERE id = ?", (filename, user_id))
+        db.commit()
+
+        return api_success(
+            data={"avatar_url": f"/static/avatars/{filename}", "avatar": filename},
+            message="Avatar uploaded"
+        )
     except Exception as e:
+        traceback.print_exc()
         return api_error(str(e), status_code=500)
 
 
@@ -208,3 +248,25 @@ def unbind_provider():
     user_id = user_manager.get_current_user_id()
     user_manager.unbind_provider(user_id, provider)
     return api_success(message='解绑成功')
+
+
+@bp_user.route('/sync_garmin', methods=['POST'])
+@login_required
+def sync_garmin():
+    """手动触发 Garmin 同步 — 仅允许绑定 Garmin 的用户调用"""
+    target_uid = int(os.environ.get('GARMIN_USER_ID', 0) or 0)
+    current_uid = user_manager.get_current_user_id()
+    if not target_uid or not os.environ.get('GARMIN_EMAIL'):
+        return api_error("服务端未配置 Garmin 集成", status_code=400)
+    if current_uid != target_uid:
+        return api_error("当前用户未绑定 Garmin 账号", status_code=403)
+    try:
+        from services.garmin_service import sync_activities
+        result = sync_activities(current_uid, days=30)
+        return api_success(
+            data=result,
+            message=f"同步完成：新增 {result['inserted']} 条，跳过 {result['skipped']} 条"
+        )
+    except Exception as e:
+        traceback.print_exc()
+        return api_error(f"Garmin 同步失败：{e}", status_code=500)
