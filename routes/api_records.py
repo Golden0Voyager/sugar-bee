@@ -134,18 +134,19 @@ def add_record():
             cadence = request.form.get('cadence')
 
         # Auto-calculate BMI if weight is provided but BMI is not
+        current_user_id = user_manager.get_current_user_id()
         if weight and not bmi:
             try:
-                bmi = settings.calculate_bmi(float(weight))
+                bmi = settings.calculate_bmi(float(weight), user_id=current_user_id)
             except (ValueError, TypeError):
                 pass
 
-        # If weight record, update user config weight
+        # If weight record, update user profile weight (per-user, not global)
         if weight:
             try:
-                config = settings.load_config()
-                config['weight'] = float(weight)
-                settings.save_config(config)
+                user_manager.update_user_profile_partial(
+                    current_user_id, {'weight': float(weight)}
+                )
             except (ValueError, TypeError):
                 pass
 
@@ -160,7 +161,6 @@ def add_record():
 
         db = get_db()
         c = db.cursor()
-        current_user_id = user_manager.get_current_user_id()
 
         c.execute("""INSERT INTO records
                      (user_id, value, unit, type, notes, timestamp, calories, diet_analysis, is_predicted,
@@ -210,7 +210,7 @@ def parse_ai():
         db = get_db()
         current_user_id = user_manager.get_current_user_id()
         history_context = get_user_stats(db, current_user_id)
-        results = parse_glucose_input(text, history_context, images_data, mime_type)
+        results = parse_glucose_input(text, history_context, images_data, mime_type, user_id=current_user_id)
 
         try:
             c = db.cursor()
@@ -297,7 +297,7 @@ def batch_add():
             bmi = r.get('bmi')
             if weight and not bmi:
                 try:
-                    bmi = settings.calculate_bmi(float(weight))
+                    bmi = settings.calculate_bmi(float(weight), user_id=current_user_id)
                 except Exception:
                     pass
 
