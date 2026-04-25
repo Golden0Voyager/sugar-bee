@@ -24,7 +24,7 @@ def _preprocess_relative_dates(text):
     return text
 
 
-def parse_glucose_input(text, history_context=None, images_data=None, mime_type=None):
+def parse_glucose_input(text, history_context=None, images_data=None, mime_type=None, user_id: int | None = None):
     current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     # 预处理：将相对日期转为绝对日期
@@ -41,7 +41,7 @@ def parse_glucose_input(text, history_context=None, images_data=None, mime_type=
         """
 
     # 用户健康档案 (从配置中动态获取)
-    user_profile = settings.get_ai_system_prompt()
+    user_profile = settings.get_ai_system_prompt(user_id)
 
     # User Daily Routine Context (从配置中获取)
     routine_str = settings.DAILY_ROUTINE
