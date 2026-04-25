@@ -40,7 +40,7 @@ def api_health_stats():
         db = get_db()
         c = db.cursor()
         current_user_id = user_manager.get_current_user_id()
-        user_config = settings.load_config()
+        user_config = settings.load_config(current_user_id)
         if days:
             cutoff = (datetime.datetime.now() - datetime.timedelta(days=days)).strftime('%Y-%m-%d %H:%M:%S')
         else:
