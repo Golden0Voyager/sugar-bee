@@ -162,6 +162,12 @@ def init_db():
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)''')
 
+        # 用户档案表迁移：目标体重（按用户存储，避免全局污染）
+        try:
+            c.execute("ALTER TABLE user_profiles ADD COLUMN target_weight REAL")
+        except sqlite3.OperationalError:
+            pass
+
         # 聊天记录表
         c.execute('''CREATE TABLE IF NOT EXISTS chat_messages (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
