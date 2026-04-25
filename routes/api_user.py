@@ -86,14 +86,16 @@ def create_user():
 @bp_user.route('/settings', methods=['GET'])
 @login_required
 def get_settings():
-    return jsonify(settings.load_config())
+    return jsonify(settings.load_config(user_manager.get_current_user_id()))
 
 @bp_user.route('/settings', methods=['POST'])
 @login_required
 def update_settings():
     try:
-        new_config = request.json
-        settings.save_config(new_config)
+        new_config = request.json or {}
+        user_manager.update_user_profile_partial(
+            user_manager.get_current_user_id(), new_config
+        )
         return api_success(message="Settings updated")
     except Exception as e:
         return api_error(str(e), status_code=500)
