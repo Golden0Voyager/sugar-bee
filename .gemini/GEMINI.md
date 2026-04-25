@@ -20,7 +20,7 @@
 
 ## 3. 自动化工具链与审美 (Tools & Style)
 - **网络代理**: 识别到 `pip install`, `curl`, 或 `yfinance` 下载任务时，自动注入：
-  `export https_proxy=http://127.0.0.1:8118; export http_proxy=http://127.0.0.1:8118`
+  `export https_proxy=http://127.0.0.1:7897; export http_proxy=http://127.0.0.1:7897`
 - **模型分工**: **Gemini 3.0 Pro** 负责多项目跨目录逻辑重构与长文档清洗；Claude 辅助局部 Snippet 优化。
 - **UI/PPT 规范**: 强制联动 `web-design-guidelines` 技能。
   - 风格：Material Design 3 (MD3)。
