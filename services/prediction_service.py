@@ -127,7 +127,7 @@ def predict_morning_fpg(db, user_id=1):
         cal_in = sum(row[1] for row in yesterday_calories if row[0] not in ['跑步', '运动', '走路', '骑行', '游泳', '健身'])
         cal_out_exercise = sum(row[1] for row in yesterday_calories if row[0] in ['跑步', '运动', '走路', '骑行', '游泳', '健身'])
 
-        user_config = settings.load_config()
+        user_config = settings.load_config(user_id)
         default_meals = user_config.get('default_meals', {})
 
         has_breakfast = has_lunch = has_dinner = False
@@ -165,7 +165,7 @@ def predict_morning_fpg(db, user_id=1):
         cal_in += default_cal
 
         avg_gi = sum(gi_values) / len(gi_values) if gi_values else None
-        user_bmr = settings.calculate_bmr()
+        user_bmr = settings.calculate_bmr(user_id)
         net_calories = cal_in - (user_bmr + cal_out_exercise)
 
         # 4. 近7天空腹血糖趋势（排除血压）
@@ -258,7 +258,7 @@ def predict_morning_fpg(db, user_id=1):
         else:
             med_summary = "当前无用药"
 
-        user_profile = settings.get_ai_system_prompt()
+        user_profile = settings.get_ai_system_prompt(user_id)
 
         prompt = f"""你是一个专业的糖尿病健康管理顾问。基于用户前一天的综合数据，预测今天早晨的空腹血糖值。
 
