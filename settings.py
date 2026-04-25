@@ -234,67 +234,125 @@ def get_badge_for_rate(compliance_rate):
     return BADGE_SYSTEM['encourage']
 
 
-def load_config():
-    if os.path.exists(CONFIG_FILE):
-        with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
-            return json.load(f)
+# ========== 用户档案默认值常量 ==========
+# 由 load_config / calculate_bmr / get_ai_system_prompt 等在用户档案缺字段时兜底使用
+DEFAULT_PROFILE = {
+    "name": "用户",
+    "weight": 75,
+    "height": 170,
+    "birth_year": 1964,
+    "gender": "male",
+    "target_weight": None,
+}
+
+DEFAULT_TARGET = {
+    "fasting_min": 3.9,
+    "fasting_max": 7.0,
+    "postmeal_max": 7.8,
+    "premeal_max": 6.5,
+}
+
+DEFAULT_GLUCOSE_PATTERN = {
+    "fasting_range": "6.0-7.2",
+    "postmeal_range": "6.5-8.0",
+}
+
+DEFAULT_MEALS = {
+    "breakfast": {
+        "calories": 300,
+        "carbs_grams": 45,
+        "gi_value": 65,
+        "time": "09:00",
+        "enabled": True,
+    },
+    "lunch": {
+        "calories": 500,
+        "carbs_grams": 75,
+        "gi_value": 60,
+        "time": "11:30",
+        "enabled": True,
+    },
+    "dinner": {
+        "calories": 500,
+        "carbs_grams": 75,
+        "gi_value": 60,
+        "time": "18:00",
+        "enabled": True,
+    },
+}
+
+
+def load_config(user_id: int | None = None) -> dict:
+    """加载用户配置。
+
+    - 传入 user_id:从 SQLite user_profiles 读取该用户配置(推荐路径)。
+      缺失字段用 DEFAULT_* 常量补齐(default_meals/target/glucose_pattern)。
+    - 不传 user_id:返回 DEFAULT_PROFILE 全量(已废弃的全局兜底)。新代码不应再走此分支。
+    """
+    if user_id is not None:
+        # 延迟 import 避免循环依赖(user_manager 可能反向 import settings)
+        from user_manager import UserManager
+        from core.config import DB_NAME
+        cfg = UserManager(DB_NAME).get_user_config(user_id)
+        # 缺失字段补齐
+        if not cfg.get('default_meals'):
+            cfg['default_meals'] = dict(DEFAULT_MEALS)
+        if not cfg.get('target'):
+            cfg['target'] = dict(DEFAULT_TARGET)
+        if not cfg.get('glucose_pattern'):
+            cfg['glucose_pattern'] = dict(DEFAULT_GLUCOSE_PATTERN)
+        return cfg
+    # 兜底:返回默认 profile 全量(legacy 路径)
     return {
-        "name": "用户", "weight": 75, "height": 170, "birth_year": 1964, "gender": "male", "target_weight": None,
-        "target": {"fasting_min": 3.9, "fasting_max": 7.0, "postmeal_max": 7.8, "premeal_max": 6.5},
-        "glucose_pattern": {"fasting_range": "6.0-7.2", "postmeal_range": "6.5-8.0"},
-        "default_meals": {
-            "breakfast": {
-                "calories": 300,
-                "carbs_grams": 45,
-                "gi_value": 65,
-                "time": "09:00",
-                "enabled": True
-            },
-            "lunch": {
-                "calories": 500,
-                "carbs_grams": 75,
-                "gi_value": 60,
-                "time": "11:30",
-                "enabled": True
-            },
-            "dinner": {
-                "calories": 500,
-                "carbs_grams": 75,
-                "gi_value": 60,
-                "time": "18:00",
-                "enabled": True
-            }
-        }
+        **DEFAULT_PROFILE,
+        "target": dict(DEFAULT_TARGET),
+        "glucose_pattern": dict(DEFAULT_GLUCOSE_PATTERN),
+        "default_meals": dict(DEFAULT_MEALS),
     }
 
+
 def save_config(config):
+    """[DEPRECATED] 写入全局 user_config.json 文件 — 该文件会跨用户污染数据。
+    新代码应使用 UserManager.update_user_profile_partial(user_id, ...)。
+    保留此函数仅为兼容旧迁移脚本。
+    """
+    import warnings
+    warnings.warn(
+        "settings.save_config() writes to a global config file and pollutes data across users. "
+        "Use UserManager.update_user_profile_partial(user_id, ...) instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
         json.dump(config, f, indent=4, ensure_ascii=False)
 
-# 获取当前配置
-USER_PROFILE = load_config()
 
-def calculate_bmr():
-    config = load_config()
+def calculate_bmr(user_id: int) -> int:
+    """根据用户档案计算基础代谢率(BMR,kcal/日)。user_id 必填。"""
+    config = load_config(user_id)
     current_year = datetime.datetime.now().year
-    age = current_year - config["birth_year"]
-    s = 5 if config["gender"] == "male" else -161
-    bmr = int(10 * config["weight"] + 6.25 * config["height"] - 5 * age + s)
-    return bmr
+    age = current_year - (config.get("birth_year") or DEFAULT_PROFILE["birth_year"])
+    gender = config.get("gender") or DEFAULT_PROFILE["gender"]
+    weight = config.get("weight") or DEFAULT_PROFILE["weight"]
+    height = config.get("height") or DEFAULT_PROFILE["height"]
+    s = 5 if gender == "male" else -161
+    return int(10 * weight + 6.25 * height - 5 * age + s)
 
-def calculate_bmi(weight_kg, height_cm=None):
-    """计算 BMI 值
+
+def calculate_bmi(weight_kg, height_cm=None, user_id: int | None = None):
+    """计算 BMI 值。
 
     Args:
         weight_kg: 体重(kg)
-        height_cm: 身高(cm)，默认从用户配置获取
+        height_cm: 身高(cm),优先使用
+        user_id: 当未提供 height_cm 时,从该用户档案读身高;未提供则返回 None(不再回退全局)
 
     Returns:
-        float: BMI 值，保留1位小数；身高无效时返回 None
+        float | None: BMI 值(保留1位小数);任一参数无效返回 None
     """
-    if height_cm is None:
-        config = load_config()
-        height_cm = config.get("height", 0)
+    if height_cm is None and user_id is not None:
+        cfg = load_config(user_id)
+        height_cm = cfg.get("height")
     if not height_cm or height_cm <= 0 or not weight_kg or weight_kg <= 0:
         return None
     height_m = height_cm / 100
@@ -321,15 +379,18 @@ def get_bmi_category(bmi):
         return {'label': '肥胖', 'color': '#EF5350'}
 
 
-def get_ai_system_prompt():
-    config = load_config()
-    glucose_pattern = config.get('glucose_pattern', {
-        'fasting_range': '6.0-7.2',
-        'postmeal_range': '6.5-8.0'
-    })
+def get_ai_system_prompt(user_id: int | None = None) -> str:
+    """生成 AI 系统提示词。user_id 缺失时使用 DEFAULT_PROFILE 兜底(避免崩溃)。"""
+    config = load_config(user_id) if user_id is not None else {
+        **DEFAULT_PROFILE,
+        "glucose_pattern": dict(DEFAULT_GLUCOSE_PATTERN),
+    }
+    glucose_pattern = config.get('glucose_pattern') or dict(DEFAULT_GLUCOSE_PATTERN)
+    gender = config.get('gender') or DEFAULT_PROFILE['gender']
+    birth_year = config.get('birth_year') or DEFAULT_PROFILE['birth_year']
     return f"""
     【用户健康档案】
-    - 身份：二型糖尿病患者（{config['gender']}, {datetime.datetime.now().year - config['birth_year']}岁）
+    - 身份：二型糖尿病患者（{gender}, {datetime.datetime.now().year - birth_year}岁）
     - 控糖状态：血糖控制良好
     - 血糖特点：
       - 空腹通常在 {glucose_pattern['fasting_range']}，餐后通常在 {glucose_pattern['postmeal_range']}
