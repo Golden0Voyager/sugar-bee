@@ -40,7 +40,7 @@ def build_timeline(cursor, user_id, days=90):
             last_values[key] = r['value']
 
     # 3. Group by Date
-    user_bmr = settings.calculate_bmr()
+    user_bmr = settings.calculate_bmr(user_id)
     grouped_records = defaultdict(lambda: {
         'entries': [],
         'medication_plans': [],
@@ -77,7 +77,7 @@ def build_timeline(cursor, user_id, days=90):
 
     now = datetime.datetime.now()
     today_str = now.strftime('%Y-%m-%d')
-    user_config = settings.load_config()
+    user_config = settings.load_config(user_id)
     _default_meals = user_config.get('default_meals', {})
 
     sorted_dates = []
