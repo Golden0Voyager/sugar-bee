@@ -24,7 +24,7 @@ def build_chat_context(db, user_id):
     sections: list[str] = []
 
     # 用户健康档案
-    sections.append(settings.get_ai_system_prompt())
+    sections.append(settings.get_ai_system_prompt(user_id))
 
     # 今日详细数据 (按时间发生顺序排列)
     today_date = now.strftime('%Y-%m-%d')
