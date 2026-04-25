@@ -21,7 +21,7 @@ class UserManager:
         c.execute("""
             SELECT u.id, u.username, u.display_name, u.avatar, u.is_active,
                    u.phone, u.email,
-                   p.name, p.birth_year, p.height, p.weight, p.gender,
+                   p.name, p.birth_year, p.height, p.weight, p.gender, p.target_weight,
                    p.default_meals, p.target_ranges, p.enabled_modules
             FROM app_users u
             LEFT JOIN user_profiles p ON u.id = p.user_id
@@ -151,6 +151,50 @@ class UserManager:
         conn.commit()
         conn.close()
 
+    def update_user_profile_partial(self, user_id, partial_data):
+        """部分更新用户配置 — 仅更新 partial_data 中实际出现的字段。
+
+        与 update_user_profile() 的全量替换语义不同:未传入的字段保持原值,
+        避免 saveUserSettings 这类只提交部分字段的请求误清空 default_meals /
+        target_ranges / enabled_modules / target_weight 等。
+        支持 key:name, birth_year, height, weight, gender, target_weight,
+        default_meals, target_ranges (别名 target), enabled_modules。
+        JSON 字段会自动 dumps。
+        """
+        if not partial_data:
+            return
+
+        JSON_FIELDS = {'default_meals', 'target_ranges', 'enabled_modules'}
+        SCALAR_FIELDS = {'name', 'birth_year', 'height', 'weight', 'gender', 'target_weight'}
+        ALIASES = {'target': 'target_ranges'}
+
+        set_clauses = []
+        values = []
+        for key, value in partial_data.items():
+            col = ALIASES.get(key, key)
+            if col in SCALAR_FIELDS:
+                set_clauses.append(f"{col} = ?")
+                values.append(value)
+            elif col in JSON_FIELDS:
+                default = [] if col == 'enabled_modules' else {}
+                set_clauses.append(f"{col} = ?")
+                values.append(json.dumps(value if value is not None else default))
+
+        if not set_clauses:
+            return
+
+        set_clauses.append("updated_at = CURRENT_TIMESTAMP")
+        values.append(user_id)
+        sql = f"UPDATE user_profiles SET {', '.join(set_clauses)} WHERE user_id = ?"
+
+        conn = sqlite3.connect(self.db_path)
+        c = conn.cursor()
+        # 防御性:为缺失 profile 行的 user_id 自动补一行(影响幂等性最小)
+        c.execute("INSERT OR IGNORE INTO user_profiles (user_id) VALUES (?)", (user_id,))
+        c.execute(sql, values)
+        conn.commit()
+        conn.close()
+
     def set_enabled_modules(self, user_id, modules):
         """仅更新用户的启用模块列表（不影响其他 profile 字段）"""
         conn = sqlite3.connect(self.db_path)
@@ -173,6 +217,7 @@ class UserManager:
             'birth_year': user.get('birth_year') or 1964,
             'height': user.get('height') or 170,
             'weight': user.get('weight') or 75,
+            'target_weight': user.get('target_weight'),
             'gender': user.get('gender') or 'male',
             'avatar': user.get('avatar'),
             'default_meals': user.get('default_meals') or {},
@@ -195,6 +240,7 @@ class UserManager:
             'birth_year': 1964,
             'height': 170,
             'weight': 75,
+            'target_weight': None,
             'gender': 'male',
             'default_meals': {},
             'target': {
