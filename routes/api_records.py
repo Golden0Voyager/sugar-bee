@@ -133,8 +133,17 @@ def add_record():
             max_pace = request.form.get('max_pace')
             cadence = request.form.get('cadence')
 
-        # Auto-calculate BMI if weight is provided but BMI is not
-        current_user_id = user_manager.get_current_user_id()
+        # 防御多标签页 session 竞态：优先使用前端显式声明的 user_id
+        current_user_id = None
+        if request.is_json and request.json:
+            current_user_id = request.json.get('user_id')
+        elif request.form.get('user_id'):
+            try:
+                current_user_id = int(request.form.get('user_id'))
+            except (ValueError, TypeError):
+                pass
+        if not current_user_id:
+            current_user_id = user_manager.get_current_user_id()
         if weight and not bmi:
             try:
                 bmi = settings.calculate_bmi(float(weight), user_id=current_user_id)
@@ -251,7 +260,10 @@ def batch_add():
 
         db = get_db()
         c = db.cursor()
-        current_user_id = user_manager.get_current_user_id()
+        # 防御多标签页 session 竞态：优先使用前端显式声明的 user_id
+        current_user_id = request.json.get('user_id') if request.json else None
+        if not current_user_id:
+            current_user_id = user_manager.get_current_user_id()
 
         # Phase 1: Conflict Detection
         conflicts = []
