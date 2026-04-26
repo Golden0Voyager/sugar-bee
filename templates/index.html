@@ -1856,7 +1856,7 @@
                             {% endif %}
                             <div class="flex-grow-1">
                                 <div class="fw-bold" style="font-size: 1.05rem;">{{ stats.user.name }}</div>
-                                <div class="small text-muted" style="opacity: 0.8;">{{ stats.user.gender == 'male' and '男' or '女' }} · {{ 2025 - stats.user.birth_year }}岁</div>
+                                <div class="small text-muted" style="opacity: 0.8;">{{ stats.user.gender == 'male' and '男' or '女' }} · {{ stats.user.age }}岁</div>
                             </div>
                         </div>
                         <div class="d-flex gap-3 mt-2 pt-2" style="border-top: 1px solid rgba(0,0,0,0.06);">
@@ -1891,6 +1891,9 @@
                             💊 药物管理
                         </a>
                     </li>
+                    <li><hr class="dropdown-divider"></li>
+                    <li class="px-3 py-1"><small class="text-muted fw-semibold">切换用户</small></li>
+                    <li id="userSwitcherList"></li>
                     <li><hr class="dropdown-divider"></li>
                     <li>
                         <a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#userSettingsModal">
@@ -3489,9 +3492,17 @@
                                     <label class="form-label">姓名</label>
                                     <input type="text" id="set_name" class="form-control" value="{{ stats.user.name }}">
                                 </div>
-                                <div class="col-md-6">
-                                    <label class="form-label">出生年份</label>
-                                    <input type="number" id="set_birth" class="form-control" value="{{ stats.user.birth_year }}">
+                                <div class="col-md-2">
+                                    <label class="form-label">出生年</label>
+                                    <input type="number" id="set_birth_year" class="form-control" value="{{ stats.user.birth_year }}">
+                                </div>
+                                <div class="col-md-2">
+                                    <label class="form-label">月</label>
+                                    <input type="number" id="set_birth_month" class="form-control" value="{{ stats.user.birth_month or 1 }}" min="1" max="12">
+                                </div>
+                                <div class="col-md-2">
+                                    <label class="form-label">日</label>
+                                    <input type="number" id="set_birth_day" class="form-control" value="{{ stats.user.birth_day or 1 }}" min="1" max="31">
                                 </div>
                                 <div class="col-md-6">
                                     <label class="form-label">身高 (cm)</label>
@@ -4574,7 +4585,8 @@
                     unit: 'mmol/L',
                     type: typeMap[slotKey] || '',
                     timestamp: timestamp,
-                    notes: ''
+                    notes: '',
+                    user_id: currentUserId
                 })
             });
 
@@ -7525,7 +7537,7 @@
         if (recordData) {
             const result = await apiCall('/batch_add', {
                 method: 'POST',
-                body: JSON.stringify({records: [recordData]})
+                body: JSON.stringify({records: [recordData], user_id: currentUserId})
             }, {
                 showLoading: false,
                 onError: (error) => {
@@ -7981,7 +7993,8 @@
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({
                     records: parsedData,
-                    conflict_resolution: conflictResolution
+                    conflict_resolution: conflictResolution,
+                    user_id: currentUserId
                 })
             });
 
@@ -8731,7 +8744,9 @@
         try {
             const data = {
                 name: document.getElementById('set_name').value,
-                birth_year: parseInt(document.getElementById('set_birth').value),
+                birth_year: parseInt(document.getElementById('set_birth_year').value),
+                birth_month: parseInt(document.getElementById('set_birth_month').value),
+                birth_day: parseInt(document.getElementById('set_birth_day').value),
                 height: parseInt(document.getElementById('set_height').value),
                 weight: parseFloat(document.getElementById('set_weight').value),
                 gender: document.getElementById('set_gender').value,
@@ -8746,6 +8761,14 @@
 
             if (data.birth_year < 1900 || data.birth_year > 2025) {
                 alert('请输入有效的出生年份');
+                return;
+            }
+            if (data.birth_month < 1 || data.birth_month > 12) {
+                alert('请输入有效的出生月份 (1-12)');
+                return;
+            }
+            if (data.birth_day < 1 || data.birth_day > 31) {
+                alert('请输入有效的出生日期 (1-31)');
                 return;
             }
 
@@ -10499,6 +10522,13 @@
 
     // Load current user on page load
     document.addEventListener('DOMContentLoaded', async function() {
+        // 监听其他标签页的用户切换，强制刷新避免 session 竞态
+        const bc = new BroadcastChannel('user_switch');
+        bc.onmessage = (event) => {
+            if (event.data && event.data.action === 'reload') {
+                location.reload();
+            }
+        };
         await loadCurrentUser();
     });
 
@@ -10513,9 +10543,38 @@
             document.getElementById('currentUserName').textContent = displayName;
 
             console.log('Current user loaded:', user);
+            // 加载右上角用户切换列表
+            loadUserSwitcher();
         } catch (e) {
             console.error('Load current user error:', e);
             document.getElementById('currentUserName').textContent = '加载失败';
+        }
+    }
+
+    async function loadUserSwitcher() {
+        try {
+            const res = await fetch('/get_users');
+            const users = await res.json();
+            const container = document.getElementById('userSwitcherList');
+            if (!container) return;
+
+            let html = '';
+            users.forEach(user => {
+                if (user.id === currentUserId) return;
+                html += `
+                    <li>
+                        <a class="dropdown-item d-flex align-items-center gap-2 py-2" href="#" onclick="switchUser(${user.id}); return false;">
+                            <div class="rounded-circle d-flex align-items-center justify-content-center" style="width: 28px; height: 28px; background: linear-gradient(135deg, #6366F1, #A5B4FC);">
+                                <i class="bi bi-person-fill text-white" style="font-size: 0.8rem;"></i>
+                            </div>
+                            <span>${user.display_name || user.username}</span>
+                        </a>
+                    </li>
+                `;
+            });
+            container.innerHTML = html;
+        } catch (e) {
+            console.error('Load user switcher error:', e);
         }
     }
 
@@ -10547,6 +10606,8 @@
 
         if (result) {
             console.log('Switched to user:', result.data?.user);
+            const bc = new BroadcastChannel('user_switch');
+            bc.postMessage({ action: 'reload' });
             location.reload();
         }
     }
