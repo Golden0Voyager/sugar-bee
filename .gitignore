@@ -22,9 +22,12 @@ data/
 # 个人配置（含隐私数据）
 .env
 user_config.json
+user_config.json.legacy.*
 static/avatars/
 user_data/
 .garmin_tokens/
 garmin_cookies.json
 # 日志
 *.log
+# 自动备份
+backups/
