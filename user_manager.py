@@ -21,7 +21,7 @@ class UserManager:
         c.execute("""
             SELECT u.id, u.username, u.display_name, u.avatar, u.is_active,
                    u.phone, u.email,
-                   p.name, p.birth_year, p.height, p.weight, p.gender, p.target_weight,
+                   p.name, p.birth_year, p.birth_month, p.birth_day, p.height, p.weight, p.gender, p.target_weight,
                    p.default_meals, p.target_ranges, p.enabled_modules
             FROM app_users u
             LEFT JOIN user_profiles p ON u.id = p.user_id
@@ -128,6 +128,8 @@ class UserManager:
             UPDATE user_profiles SET
                 name = ?,
                 birth_year = ?,
+                birth_month = ?,
+                birth_day = ?,
                 height = ?,
                 weight = ?,
                 gender = ?,
@@ -139,6 +141,8 @@ class UserManager:
         """, (
             profile_data.get('name'),
             profile_data.get('birth_year'),
+            profile_data.get('birth_month'),
+            profile_data.get('birth_day'),
             profile_data.get('height'),
             profile_data.get('weight'),
             profile_data.get('gender'),
@@ -165,7 +169,7 @@ class UserManager:
             return
 
         JSON_FIELDS = {'default_meals', 'target_ranges', 'enabled_modules'}
-        SCALAR_FIELDS = {'name', 'birth_year', 'height', 'weight', 'gender', 'target_weight'}
+        SCALAR_FIELDS = {'name', 'birth_year', 'birth_month', 'birth_day', 'height', 'weight', 'gender', 'target_weight'}
         ALIASES = {'target': 'target_ranges'}
 
         set_clauses = []
@@ -212,9 +216,23 @@ class UserManager:
         if not user:
             return self._get_default_config()
 
+        birth_year = user.get('birth_year') or 1964
+        birth_month = user.get('birth_month') or 1
+        birth_day = user.get('birth_day') or 1
+        try:
+            from datetime import date
+            birth_date = date(birth_year, birth_month, birth_day)
+            today = date.today()
+            age = today.year - birth_date.year - ((today.month, today.day) < (birth_date.month, birth_date.day))
+        except (ValueError, ImportError):
+            age = datetime.datetime.now().year - birth_year
+
         return {
             'name': user.get('name') or user.get('display_name') or '用户',
-            'birth_year': user.get('birth_year') or 1964,
+            'birth_year': birth_year,
+            'birth_month': birth_month,
+            'birth_day': birth_day,
+            'age': age,
             'height': user.get('height') or 170,
             'weight': user.get('weight') or 75,
             'target_weight': user.get('target_weight'),
@@ -238,6 +256,9 @@ class UserManager:
         return {
             'name': '用户',
             'birth_year': 1964,
+            'birth_month': 1,
+            'birth_day': 1,
+            'age': datetime.datetime.now().year - 1964,
             'height': 170,
             'weight': 75,
             'target_weight': None,
