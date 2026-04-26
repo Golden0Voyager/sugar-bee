@@ -168,6 +168,13 @@ def init_db():
         except sqlite3.OperationalError:
             pass
 
+        # 用户档案表迁移：出生年月日
+        for col_name, col_type in [("birth_month", "INTEGER"), ("birth_day", "INTEGER")]:
+            try:
+                c.execute(f"ALTER TABLE user_profiles ADD COLUMN {col_name} {col_type}")
+            except sqlite3.OperationalError:
+                pass
+
         # 聊天记录表
         c.execute('''CREATE TABLE IF NOT EXISTS chat_messages (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
