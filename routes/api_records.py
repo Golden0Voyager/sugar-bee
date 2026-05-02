@@ -9,7 +9,7 @@ import settings
 from user_manager import UserManager
 from core.config import DB_NAME
 from utils.responses import api_success, api_error
-from utils.auth import login_required
+from utils.auth import login_required, login_or_token_required
 from utils.db import get_db
 from glucose_parser import parse_glucose_input
 from services import (
@@ -69,7 +69,7 @@ def get_user_stats(db, user_id=1):
     return stats
 
 @bp_records.route('/add', methods=['POST'])
-@login_required
+@login_or_token_required
 def add_record():
     try:
         # Support both form data and JSON
@@ -202,7 +202,7 @@ def add_record():
         return f"Error adding record: {e}", 500
 
 @bp_records.route('/parse_ai', methods=['POST'])
-@login_required
+@login_or_token_required
 def parse_ai():
     try:
         data = request.json
@@ -250,7 +250,7 @@ def parse_ai():
         return api_error(str(e), status_code=500, error_type="parse_ai_error")
 
 @bp_records.route('/batch_add', methods=['POST'])
-@login_required
+@login_or_token_required
 def batch_add():
     try:
         data = request.json.get('records')
