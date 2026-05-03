@@ -4288,7 +4288,8 @@
             </div>`;
         }).join('');
 
-        document.querySelector('.today-glucose-timeline .d-flex.justify-content-between.gap-3').innerHTML = slotsHtml;
+        const timelineEl = document.querySelector('.today-glucose-timeline .d-flex.justify-content-between.gap-3');
+        if (timelineEl) timelineEl.innerHTML = slotsHtml;
         // 重新绑定长按事件
         initSlotLongPress();
 
@@ -4312,24 +4313,27 @@
             return `<div class="progress-segment ${cls}"></div>`;
         }).join('');
         const progressEl = document.querySelector('.today-progress');
-        progressEl.innerHTML = barHtml;
-        progressEl.classList.toggle('past-day', !isToday);
+        if (progressEl) {
+            progressEl.innerHTML = barHtml;
+            progressEl.classList.toggle('past-day', !isToday);
 
-        // 进度条下方文字 + 状态胶囊
-        const futurePending = pending - missedCount;
-        let footLeft = `<div class="overview-status"><div class="status-inner"><div class="status-label">实测</div><div class="status-count"><span class="count-measured">${data.completion.measured}</span></div></div>`;
-        if (data.completion.predicted > 0) footLeft += `<span class="status-badge" style="background:rgba(6,182,212,0.12);color:#0891B2;">✦ 预测 ${data.completion.predicted}</span>`;
-        if (missedCount > 0) footLeft += `<span class="status-badge" style="background:rgba(239,83,80,0.10);color:#EF5350;">未测 ${missedCount}</span>`;
-        if (futurePending > 0) footLeft += `<span class="status-badge" style="background:rgba(0,0,0,0.06);color:#6c757d;">待测 ${futurePending}</span>`;
-        footLeft += `</div>`;
+            // 进度条下方文字 + 状态胶囊
+            const futurePending = pending - missedCount;
+            let footLeft = `<div class="overview-status"><div class="status-inner"><div class="status-label">实测</div><div class="status-count"><span class="count-measured">${data.completion.measured}</span></div></div>`;
+            if (data.completion.predicted > 0) footLeft += `<span class="status-badge" style="background:rgba(6,182,212,0.12);color:#0891B2;">✦ 预测 ${data.completion.predicted}</span>`;
+            if (missedCount > 0) footLeft += `<span class="status-badge" style="background:rgba(239,83,80,0.10);color:#EF5350;">未测 ${missedCount}</span>`;
+            if (futurePending > 0) footLeft += `<span class="status-badge" style="background:rgba(0,0,0,0.06);color:#6c757d;">待测 ${futurePending}</span>`;
+            footLeft += `</div>`;
 
-        let footRight = `<div class="overview-status"><div class="status-inner"><div class="status-label">已测量</div><div class="status-count"><span class="count-measured">${data.completion.measured}</span><span class="count-sep">/</span><span>${total}</span></div></div>`;
-        if (data.compliance_badge && data.completion.measured > 0) {
-            footRight += `<span class="status-badge" style="background:${data.compliance_badge.bg_color};color:${data.compliance_badge.text_color};">血糖达标 ${data.compliance_badge.icon} ${data.compliance}%</span>`;
+            let footRight = `<div class="overview-status"><div class="status-inner"><div class="status-label">已测量</div><div class="status-count"><span class="count-measured">${data.completion.measured}</span><span class="count-sep">/</span><span>${total}</span></div></div>`;
+            if (data.compliance_badge && data.completion.measured > 0) {
+                footRight += `<span class="status-badge" style="background:${data.compliance_badge.bg_color};color:${data.compliance_badge.text_color};">血糖达标 ${data.compliance_badge.icon} ${data.compliance}%</span>`;
+            }
+            footRight += `</div>`;
+
+            const footEl = progressEl.nextElementSibling;
+            if (footEl) footEl.innerHTML = footLeft + footRight;
         }
-        footRight += `</div>`;
-
-        document.querySelector('.today-progress').nextElementSibling.innerHTML = footLeft + footRight;
 
         // 存储数组数据到全局状态，用于箭头切换
         window._ovData = {
@@ -8353,38 +8357,30 @@
     });
 
     async function openEditModal(id) {
-        try {
-            const res = await fetch(`/record/${id}`);
-            const data = await res.json();
-            if (data.error) {
-                alert('记录不存在');
-                return;
-            }
+        const data = await apiCall(`/record/${id}`, {}, {showLoading: false});
+        if (!data) return;
 
-            document.getElementById('editId').value = data.id;
-            document.getElementById('editValue').value = data.value || 0;
-            document.getElementById('editUnit').value = data.unit || 'mmol/L';
-            document.getElementById('editType').value = data.type || '';
-            document.getElementById('editNotes').value = data.notes || '';
-            document.getElementById('editCalories').value = data.calories || '';
-            document.getElementById('editDistance').value = data.distance || '';
-            document.getElementById('editDuration').value = data.duration || '';
-            document.getElementById('editPace').value = data.pace || '';
-            document.getElementById('editMaxPace').value = data.max_pace || '';
-            document.getElementById('editHeartRate').value = data.heart_rate || '';
-            document.getElementById('editVo2max').value = data.vo2max || '';
-            document.getElementById('editMaxHeartRate').value = data.max_heart_rate || '';
-            document.getElementById('editSteps').value = data.steps || '';
+        document.getElementById('editId').value = data.id;
+        document.getElementById('editValue').value = data.value || 0;
+        document.getElementById('editUnit').value = data.unit || 'mmol/L';
+        document.getElementById('editType').value = data.type || '';
+        document.getElementById('editNotes').value = data.notes || '';
+        document.getElementById('editCalories').value = data.calories || '';
+        document.getElementById('editDistance').value = data.distance || '';
+        document.getElementById('editDuration').value = data.duration || '';
+        document.getElementById('editPace').value = data.pace || '';
+        document.getElementById('editMaxPace').value = data.max_pace || '';
+        document.getElementById('editHeartRate').value = data.heart_rate || '';
+        document.getElementById('editVo2max').value = data.vo2max || '';
+        document.getElementById('editMaxHeartRate').value = data.max_heart_rate || '';
+        document.getElementById('editSteps').value = data.steps || '';
 
-            if (data.timestamp) {
-                const ts = data.timestamp.replace(' ', 'T').slice(0, 16);
-                document.getElementById('editTimestamp').value = ts;
-            }
-
-            editModal.show();
-        } catch (e) {
-            alert('获取记录失败: ' + e);
+        if (data.timestamp) {
+            const ts = data.timestamp.replace(' ', 'T').slice(0, 16);
+            document.getElementById('editTimestamp').value = ts;
         }
+
+        editModal.show();
     }
 
     async function saveEdit() {
@@ -8408,24 +8404,18 @@
             heart_rate: parseInt(document.getElementById('editHeartRate').value) || null,
             vo2max: parseFloat(document.getElementById('editVo2max').value) || null,
             max_heart_rate: parseInt(document.getElementById('editMaxHeartRate').value) || null,
-            steps: parseInt(document.getElementById('editSteps').value) || null
+            steps: parseInt(document.getElementById('editSteps').value) || null,
+            cadence: null
         };
 
-        try {
-            const res = await fetch(`/update/${id}`, {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify(data)
-            });
-            const result = await res.json();
-            if (result.status === 'success') {
-                editModal.hide();
-                window.location.reload();
-            } else {
-                alert('保存失败: ' + result.message);
-            }
-        } catch (e) {
-            alert('保存失败: ' + e);
+        const result = await apiCall(`/update/${id}`, {
+            method: 'POST',
+            body: JSON.stringify(data)
+        }, {showLoading: false});
+
+        if (result) {
+            editModal.hide();
+            window.location.reload();
         }
     }
 
