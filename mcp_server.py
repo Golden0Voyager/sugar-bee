@@ -84,7 +84,7 @@ async def record_blood_pressure(
     timestamp: Optional[str] = None,
     notes: Optional[str] = None,
 ) -> str:
-    """记录一次血压测量。"""
+    """记录一次血压测量。调用前，请向用户展示所有参数并请求确认；仅在用户明确同意后再执行。"""
     payload: dict = {
         "type": "血压测量",
         "value": 0,
@@ -109,7 +109,7 @@ async def record_weight(
     timestamp: Optional[str] = None,
     notes: Optional[str] = None,
 ) -> str:
-    """记录一次体重。会自动计算并更新 BMI。"""
+    """记录一次体重。会自动计算并更新 BMI。调用前，请向用户展示所有参数并请求确认；仅在用户明确同意后再执行。"""
     payload: dict = {
         "type": "体重记录",
         "weight": weight,
@@ -131,7 +131,7 @@ async def record_glucose(
     timestamp: Optional[str] = None,
     notes: Optional[str] = None,
 ) -> str:
-    """记录一次血糖。record_type 示例：空腹、早餐后2小时、午餐后2小时、晚餐后2小时、睡前。"""
+    """记录一次血糖。record_type 示例：空腹、早餐后2小时、午餐后2小时、晚餐后2小时、睡前。调用前，请向用户展示所有参数并请求确认；仅在用户明确同意后再执行。"""
     payload: dict = {
         "type": record_type,
         "value": value,
@@ -147,8 +147,46 @@ async def record_glucose(
 
 
 @mcp.tool()
+async def record_exercise(
+    user_id: int,
+    exercise_type: str,
+    distance: float,
+    duration: Optional[str] = None,
+    pace: Optional[str] = None,
+    heart_rate: Optional[int] = None,
+    steps: Optional[int] = None,
+    calories: Optional[int] = None,
+    notes: Optional[str] = None,
+    timestamp: Optional[str] = None,
+) -> str:
+    """记录一次运动/锻炼。exercise_type 示例：跑步、走路、骑行、游泳、健身。distance 单位为公里。调用前，请向用户展示所有参数并请求确认；仅在用户明确同意后再执行。"""
+    payload: dict = {
+        "type": exercise_type,
+        "value": 0,
+        "distance": distance,
+        "timestamp": timestamp or datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    }
+    if duration:
+        payload["duration"] = duration
+    if pace:
+        payload["pace"] = pace
+    if heart_rate is not None:
+        payload["heart_rate"] = heart_rate
+    if steps is not None:
+        payload["steps"] = steps
+    if calories is not None:
+        payload["calories"] = calories
+    if notes:
+        payload["notes"] = notes
+
+    data = await _api_post(user_id, "/add", payload)
+    rid = data.get("data", {}).get("id", "?")
+    return f"运动记录成功 (ID: {rid})"
+
+
+@mcp.tool()
 async def parse_and_record(user_id: int, text: str) -> str:
-    """用自然语言描述健康数据，AI 解析后自动入库。示例：\"爸爸空腹血糖 6.2，血压 128/80\""""
+    """用自然语言描述健康数据，AI 解析后自动入库。示例：\"爸爸空腹血糖 6.2，血压 128/80\"。调用前，请向用户展示解析结果并请求确认；仅在用户明确同意后再执行批量写入。"""
     # Step 1: parse
     data = await _api_post(user_id, "/parse_ai", {"text": text})
     records = data if isinstance(data, list) else []
@@ -162,6 +200,57 @@ async def parse_and_record(user_id: int, text: str) -> str:
         {"records": records, "conflict_resolution": "overwrite"},
     )
     return f"成功解析并记录 {len(records)} 条数据"
+
+
+@mcp.tool()
+async def undo_last_record(user_id: int) -> str:
+    """撤销（删除）该用户最近一次写入的健康记录。调用前，必须向用户展示将要删除的记录详情并请求确认；仅在用户明确同意后再执行。"""
+    conn = _db()
+    c = conn.cursor()
+
+    # 查出最近一条记录
+    c.execute(
+        """
+        SELECT id, type, value, distance, systolic_pressure, diastolic_pressure,
+               pulse_rate, weight, timestamp, notes
+        FROM records
+        WHERE user_id = ?
+        ORDER BY id DESC
+        LIMIT 1
+        """,
+        (user_id,),
+    )
+    row = c.fetchone()
+
+    if not row:
+        conn.close()
+        return "该用户没有任何记录可撤销"
+
+    rid = row["id"]
+    rtype = row["type"]
+    ts = row["timestamp"]
+
+    # 组装记录描述
+    desc = f"{ts} | {rtype}"
+    if row["systolic_pressure"]:
+        desc += f" | 血压 {row['systolic_pressure']}/{row['diastolic_pressure']}"
+        if row["pulse_rate"]:
+            desc += f" 脉搏{row['pulse_rate']}"
+    elif row["weight"]:
+        desc += f" | 体重 {row['weight']}kg"
+    elif row["distance"]:
+        desc += f" | 距离 {row['distance']}km"
+    else:
+        desc += f" | 血糖 {row['value']} mmol/L"
+    if row["notes"]:
+        desc += f" | 备注: {row['notes']}"
+
+    # 执行删除
+    c.execute("DELETE FROM records WHERE id = ?", (rid,))
+    conn.commit()
+    conn.close()
+
+    return f"已删除记录 (ID: {rid}): {desc}"
 
 
 # ------------------------------------------------------------------
