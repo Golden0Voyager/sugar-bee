@@ -368,10 +368,21 @@ def update_record(id):
         db = get_db()
         current_user_id = user_manager.get_current_user_id()
         c = db.cursor()
-        c.execute("""UPDATE records SET value=?, unit=?, type=?, notes=?, timestamp=?, calories=?, diet_analysis=?
+        c.execute("""UPDATE records SET
+                     value=?, unit=?, type=?, notes=?, timestamp=?, calories=?, diet_analysis=?,
+                     distance=?, duration=?, heart_rate=?, systolic_pressure=?, diastolic_pressure=?,
+                     pulse_rate=?, carbs_grams=?, gi_value=?, weight=?, bmi=?, spo2=?,
+                     vo2max=?, max_heart_rate=?, steps=?, pace=?, max_pace=?, cadence=?
                      WHERE id=? AND user_id=?""",
                   (data.get('value'), data.get('unit'), data.get('type'), data.get('notes'), data.get('timestamp'),
-                   data.get('calories'), data.get('diet_analysis'), id, current_user_id))
+                   data.get('calories'), data.get('diet_analysis'),
+                   data.get('distance'), data.get('duration'), data.get('heart_rate'),
+                   data.get('systolic_pressure'), data.get('diastolic_pressure'),
+                   data.get('pulse_rate'), data.get('carbs_grams'), data.get('gi_value'),
+                   data.get('weight'), data.get('bmi'), data.get('spo2'),
+                   data.get('vo2max'), data.get('max_heart_rate'), data.get('steps'),
+                   data.get('pace'), data.get('max_pace'), data.get('cadence'),
+                   id, current_user_id))
         db.commit()
         return api_success(message="Updated")
     except Exception as e:
