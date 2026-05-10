@@ -234,6 +234,17 @@ def get_badge_for_rate(compliance_rate):
     return BADGE_SYSTEM['encourage']
 
 
+# ========== Emoji 用户映射 ==========
+# 用于批量输入时按 emoji 前缀识别用户身份
+EMOJI_USER_MAP: dict[str, int] = {
+    "🐯": 6,  # 妈妈
+    "🐰": 1,  # 爸爸
+}
+
+# 反向映射：user_id → emoji，用于前端展示
+USER_EMOJI_MAP: dict[int, str] = {v: k for k, v in EMOJI_USER_MAP.items()}
+
+
 # ========== 用户档案默认值常量 ==========
 # 由 load_config / calculate_bmr / get_ai_system_prompt 等在用户档案缺字段时兜底使用
 DEFAULT_PROFILE = {
