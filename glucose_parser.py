@@ -24,6 +24,42 @@ def _preprocess_relative_dates(text):
     return text
 
 
+def split_by_emoji(text: str, emoji_map: dict[str, int] | None = None) -> list[dict]:
+    """按 emoji 前缀拆分文本为多用户段落。
+
+    返回: [{"user_id": int, "text": str}, ...]
+    无 emoji 前缀的文本归 user_id=None（使用当前 session 用户）。
+    """
+    if emoji_map is None:
+        emoji_map = settings.EMOJI_USER_MAP
+
+    # 构造匹配所有已知 emoji 的正则
+    emoji_pattern = "[" + "".join(re.escape(e) for e in emoji_map) + "]"
+    # 匹配 emoji 及其后方文本（直到下一个 emoji 或字符串结尾）
+    segments_re = re.compile(f"({emoji_pattern})\\s*([^{''.join(re.escape(e) for e in emoji_map)}]+)")
+
+    matches = list(segments_re.finditer(text))
+    if not matches:
+        # 没有识别到任何 emoji → 整段文本归默认用户
+        return [{"user_id": None, "text": text.strip()}]
+
+    results = []
+    # 检查开头是否有无 emoji 前缀的文本
+    first_start = matches[0].start()
+    if first_start > 0:
+        prefix = text[:first_start].strip()
+        if prefix:
+            results.append({"user_id": None, "text": prefix})
+
+    for m in matches:
+        emoji_char = m.group(1)
+        segment_text = m.group(2).strip().rstrip("，,、；;")
+        if segment_text:
+            results.append({"user_id": emoji_map.get(emoji_char), "text": segment_text})
+
+    return results
+
+
 def parse_glucose_input(text, history_context=None, images_data=None, mime_type=None, user_id: int | None = None):
     current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
