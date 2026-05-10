@@ -8,6 +8,7 @@ import glob as glob_mod
 import atexit
 import shutil
 from dotenv import load_dotenv
+import settings
 
 load_dotenv()
 
@@ -101,7 +102,8 @@ def index():
         is_garmin_user = bool(garmin_uid and os.environ.get('GARMIN_EMAIL') and current_user_id == garmin_uid)
 
         return render_template('index.html', records=records, stats=stats, timeline=sorted_dates,
-                               enabled_modules=enabled_modules, is_garmin_user=is_garmin_user)
+                               enabled_modules=enabled_modules, is_garmin_user=is_garmin_user,
+                               user_emoji_map=settings.USER_EMOJI_MAP)
     except Exception as e:
         traceback.print_exc()
         return f"Error loading index: {e}", 500

@@ -3805,6 +3805,8 @@
     // 使用后端传递的科学达标标准（基于《中国糖尿病防治指南（2024版）》）
     const GLUCOSE_TARGETS = {{ stats.glucose_targets | tojson }};
     const BADGE_SYSTEM = {{ stats.badge_system | tojson }};
+    const USER_EMOJI_MAP = {{ user_emoji_map | tojson }};  // {user_id: emoji}
+    const USER_EMOJI_MAP_STR = Object.fromEntries(Object.entries(USER_EMOJI_MAP).map(([k,v]) => [String(k), v]));
 
     /**
      * HTML 转义函数，防止 XSS 攻击
@@ -3816,6 +3818,21 @@
         const div = document.createElement('div');
         div.textContent = String(str);
         return div.innerHTML;
+    }
+
+    /** 获取用户 emoji 标识（多用户模式下显示） */
+    function getUserBadge(item) {
+        if (!item.user_id) return '';
+        const emoji = USER_EMOJI_MAP_STR[String(item.user_id)];
+        if (!emoji) return '';
+        return `<span class="me-1" title="用户 ${item.user_id}">${emoji}</span>`;
+    }
+
+    /** 判断是否为多用户解析结果 */
+    function isMultiUser(data) {
+        if (!data || data.length < 2) return false;
+        const ids = new Set(data.map(r => r.user_id).filter(Boolean));
+        return ids.size > 1;
     }
 
     /**
@@ -7773,7 +7790,7 @@
                 container.innerHTML += `
                     <div class="list-group-item ${borderClass} mb-1">
                         <div class="d-flex justify-content-between align-items-start">
-                            ${displayHtml}
+                            ${getUserBadge(item)}${displayHtml}
                             <span class="badge bg-warning text-dark ms-2">${item.type}</span>
                         </div>
                         <div class="mt-1">
@@ -7805,7 +7822,7 @@
                     <div class="list-group-item mb-1" style="border-left: 3px solid #9C27B0;">
                         <div class="d-flex justify-content-between align-items-center">
                             <div>
-                                <strong style="color: #9C27B0; font-size: 1.2rem;">${item.systolic_pressure}/${item.diastolic_pressure} mmHg</strong>
+                                ${getUserBadge(item)}<strong style="color: #9C27B0; font-size: 1.2rem;">${item.systolic_pressure}/${item.diastolic_pressure} mmHg</strong>
                                 <span class="badge bg-${bpColor} ms-2">${bpStatus}</span>
                             </div>
                             <small class="text-muted">${item.datetime}</small>
@@ -7829,7 +7846,7 @@
                     <div class="list-group-item mb-1" style="border-left: 3px solid #00897B;">
                         <div class="d-flex justify-content-between align-items-center">
                             <div>
-                                <strong style="color: #00897B; font-size: 1.2rem;">⚖️ ${item.weight} kg</strong>
+                                ${getUserBadge(item)}<strong style="color: #00897B; font-size: 1.2rem;">⚖️ ${item.weight} kg</strong>
                             </div>
                             <small class="text-muted">${item.datetime}</small>
                         </div>
@@ -7846,7 +7863,7 @@
                 container.innerHTML += `
                     <div class="list-group-item mb-1" style="border-left: 3px solid ${item.type === '加餐' ? '#e91e8c' : '#fd7e14'};">
                         <div class="d-flex justify-content-between align-items-center">
-                            <span class="badge" style="background: ${item.type === '加餐' ? '#e91e8c' : '#fd7e14'};">${escapeHtml(item.type)}</span>
+                            ${getUserBadge(item)}<span class="badge" style="background: ${item.type === '加餐' ? '#e91e8c' : '#fd7e14'};">${escapeHtml(item.type)}</span>
                             <small class="text-muted">${escapeHtml(item.datetime)}</small>
                         </div>
                         <p class="mb-1">${escapeHtml(item.notes) || '未识别食物'}</p>
@@ -7865,7 +7882,7 @@
                 container.innerHTML += `
                     <div class="list-group-item mb-1" style="border-left: 3px solid #7cb889;">
                         <div class="d-flex justify-content-between align-items-center">
-                            <span class="badge" style="background: #7cb889;">${item.type}</span>
+                            ${getUserBadge(item)}<span class="badge" style="background: #7cb889;">${item.type}</span>
                             <small class="text-muted">${item.datetime}</small>
                         </div>
                         <div class="mt-1">
@@ -7919,7 +7936,7 @@
                 container.innerHTML += `
                     <div class="list-group-item mb-1" style="border-left: 3px solid ${borderColor};">
                         <div class="d-flex justify-content-between align-items-center">
-                            <strong>${iconHtml}${escapeHtml(item.medication_name)}</strong>
+                            ${getUserBadge(item)}<strong>${iconHtml}${escapeHtml(item.medication_name)}</strong>
                             ${item.medication_dosage ? `<span class="badge bg-secondary">${escapeHtml(item.medication_dosage)}</span>` : ''}
                         </div>
                         <div class="small text-muted mt-1">
@@ -8056,6 +8073,14 @@
         conflicts.forEach((conflict, idx) => {
             const existing = conflict.existing_record;
             const newRec = conflict.new_record;
+
+            // 根据记录类型显示不同格式
+            function fmtRecord(rec) {
+                if (rec.systolic_pressure) return `${rec.systolic_pressure}/${rec.diastolic_pressure} mmHg`;
+                if (rec.weight) return `${rec.weight} kg`;
+                return `${rec.value} mmol/L`;
+            }
+
             conflictListHtml += `
                 <div class="border rounded p-3 mb-2" style="background: #fff8e6;">
                     <div class="d-flex justify-content-between align-items-start">
@@ -8067,7 +8092,7 @@
                     <div class="mt-2 d-flex gap-3">
                         <div class="flex-fill p-2 rounded" style="background: #ffebee;">
                             <div class="small text-muted">已有记录</div>
-                            <div class="fw-bold text-danger">${existing.value} mmol/L</div>
+                            <div class="fw-bold text-danger">${fmtRecord(existing)}</div>
                             ${existing.notes ? `<div class="small text-muted text-truncate" style="max-width: 150px;">${existing.notes}</div>` : ''}
                         </div>
                         <div class="d-flex align-items-center">
@@ -8075,7 +8100,7 @@
                         </div>
                         <div class="flex-fill p-2 rounded" style="background: #e8f5e9;">
                             <div class="small text-muted">新记录</div>
-                            <div class="fw-bold text-success">${newRec.value} mmol/L</div>
+                            <div class="fw-bold text-success">${fmtRecord(newRec)}</div>
                             ${newRec.notes ? `<div class="small text-muted text-truncate" style="max-width: 150px;">${newRec.notes}</div>` : ''}
                         </div>
                     </div>
