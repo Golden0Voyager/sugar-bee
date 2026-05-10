@@ -30,6 +30,7 @@ Claude Desktop 配置示例 (~/Library/Application Support/Claude/claude_desktop
 """
 import argparse
 import os
+import re
 import sqlite3
 from datetime import datetime
 from typing import Optional
@@ -42,6 +43,21 @@ API_BASE = os.environ.get("API_BASE", "http://127.0.0.1:5001")
 AGENT_API_TOKEN = os.environ.get("AGENT_API_TOKEN", "")
 
 mcp = FastMCP("sugar-bee")
+
+
+def _normalize_timestamp(ts: Optional[str] = None) -> str:
+    """校验并补全时间戳，确保格式为 YYYY-MM-DD HH:MM:SS。"""
+    if not ts:
+        return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    # 已经是完整格式
+    if re.match(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}", ts):
+        return ts
+    # 缺少年份：-MM-DD HH:MM 或 MM-DD HH:MM → 补当年
+    m = re.match(r"^-?(\d{2}-\d{2} \d{2}:\d{2}.*)$", ts)
+    if m:
+        return f"{datetime.now().year}-{m.group(1)}"
+    # 其他无法识别的格式，回退到当前时间
+    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
 def _api_headers(user_id: int) -> dict:
@@ -59,7 +75,7 @@ def _db() -> sqlite3.Connection:
 
 
 async def _api_post(user_id: int, endpoint: str, payload: dict) -> dict:
-    """向 Flask API 发 POST，返回 JSON。"""
+    """向 Flask API 发 POST，返回 JSON。409 冲突不抛异常，返回含 error 的 dict。"""
     async with httpx.AsyncClient(trust_env=False) as client:
         r = await client.post(
             f"{API_BASE}{endpoint}",
@@ -67,13 +83,44 @@ async def _api_post(user_id: int, endpoint: str, payload: dict) -> dict:
             json=payload,
             timeout=30.0,
         )
+        if r.status_code == 409:
+            return r.json()
         r.raise_for_status()
         return r.json()
+
+
+def _is_dup_error(data: dict) -> str | None:
+    """检查 API 返回是否为重复记录冲突，返回错误信息或 None。"""
+    if data.get("status") == "error" and data.get("error_type") == "duplicate":
+        return data.get("message", "重复记录")
+    return None
 
 
 # ------------------------------------------------------------------
 # 写操作 → 走 Flask HTTP API，复用业务逻辑（BMI / 预测关联 / 校验）
 # ------------------------------------------------------------------
+
+def _user_label(user_id: int) -> str:
+    """返回用户标识（emoji + 名字），用于 MCP 响应展示。"""
+    from settings import USER_EMOJI_MAP
+    conn = _db()
+    c = conn.cursor()
+    c.execute("SELECT display_name FROM app_users WHERE id = ?", (user_id,))
+    row = c.fetchone()
+    conn.close()
+    name = row["display_name"] if row else f"用户{user_id}"
+    emoji = USER_EMOJI_MAP.get(user_id, "")
+    return f"{emoji} {name}".strip()
+
+
+def _bp_status(systolic: int, diastolic: int) -> str:
+    """血压状态评估。"""
+    if systolic > 140 or diastolic > 90:
+        return "偏高"
+    if systolic > 130 or diastolic > 85:
+        return "警戒"
+    return "正常"
+
 
 @mcp.tool()
 async def record_blood_pressure(
@@ -85,12 +132,13 @@ async def record_blood_pressure(
     notes: Optional[str] = None,
 ) -> str:
     """记录一次血压测量。调用前，请向用户展示所有参数并请求确认；仅在用户明确同意后再执行。"""
+    ts = _normalize_timestamp(timestamp)
     payload: dict = {
         "type": "血压测量",
         "value": 0,
         "systolic_pressure": systolic,
         "diastolic_pressure": diastolic,
-        "timestamp": timestamp or datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "timestamp": ts,
     }
     if pulse_rate is not None:
         payload["pulse_rate"] = pulse_rate
@@ -98,8 +146,18 @@ async def record_blood_pressure(
         payload["notes"] = notes
 
     data = await _api_post(user_id, "/add", payload)
+    dup = _is_dup_error(data)
+    if dup:
+        return f"⚠️ {dup}"
     rid = data.get("data", {}).get("id", "?")
-    return f"血压记录成功 (ID: {rid})"
+    label = _user_label(user_id)
+    status = _bp_status(systolic, diastolic)
+    parts = [f"✅ {label} 血压记录成功"]
+    parts.append(f"   {systolic}/{diastolic} mmHg [{status}]")
+    if pulse_rate is not None:
+        parts.append(f"   脉搏 {pulse_rate} bpm")
+    parts.append(f"   时间 {ts} (ID: {rid})")
+    return "\n".join(parts)
 
 
 @mcp.tool()
@@ -110,17 +168,27 @@ async def record_weight(
     notes: Optional[str] = None,
 ) -> str:
     """记录一次体重。会自动计算并更新 BMI。调用前，请向用户展示所有参数并请求确认；仅在用户明确同意后再执行。"""
+    ts = _normalize_timestamp(timestamp)
     payload: dict = {
         "type": "体重记录",
         "weight": weight,
-        "timestamp": timestamp or datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "timestamp": ts,
     }
     if notes:
         payload["notes"] = notes
 
     data = await _api_post(user_id, "/add", payload)
+    dup = _is_dup_error(data)
+    if dup:
+        return f"⚠️ {dup}"
     rid = data.get("data", {}).get("id", "?")
-    return f"体重记录成功 (ID: {rid})"
+    label = _user_label(user_id)
+    bmi = data.get("data", {}).get("bmi", "")
+    parts = [f"✅ {label} 体重记录成功"]
+    bmi_str = f"，BMI {bmi}" if bmi else ""
+    parts.append(f"   {weight} kg{bmi_str}")
+    parts.append(f"   时间 {ts} (ID: {rid})")
+    return "\n".join(parts)
 
 
 @mcp.tool()
@@ -132,18 +200,29 @@ async def record_glucose(
     notes: Optional[str] = None,
 ) -> str:
     """记录一次血糖。record_type 示例：空腹、早餐后2小时、午餐后2小时、晚餐后2小时、睡前。调用前，请向用户展示所有参数并请求确认；仅在用户明确同意后再执行。"""
+    ts = _normalize_timestamp(timestamp)
     payload: dict = {
         "type": record_type,
         "value": value,
         "unit": "mmol/L",
-        "timestamp": timestamp or datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "timestamp": ts,
     }
     if notes:
         payload["notes"] = notes
 
     data = await _api_post(user_id, "/add", payload)
+    dup = _is_dup_error(data)
+    if dup:
+        return f"⚠️ {dup}"
     rid = data.get("data", {}).get("id", "?")
-    return f"血糖记录成功 (ID: {rid})"
+    label = _user_label(user_id)
+    from settings import check_glucose_compliance
+    result = check_glucose_compliance(value, record_type)
+    badge = "达标" if result["is_compliant"] else "未达标"
+    parts = [f"✅ {label} 血糖记录成功"]
+    parts.append(f"   {value} mmol/L ({record_type}) [{badge}]")
+    parts.append(f"   时间 {ts} (ID: {rid})")
+    return "\n".join(parts)
 
 
 @mcp.tool()
@@ -160,11 +239,12 @@ async def record_exercise(
     timestamp: Optional[str] = None,
 ) -> str:
     """记录一次运动/锻炼。exercise_type 示例：跑步、走路、骑行、游泳、健身。distance 单位为公里。调用前，请向用户展示所有参数并请求确认；仅在用户明确同意后再执行。"""
+    ts = _normalize_timestamp(timestamp)
     payload: dict = {
         "type": exercise_type,
         "value": 0,
         "distance": distance,
-        "timestamp": timestamp or datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "timestamp": ts,
     }
     if duration:
         payload["duration"] = duration
@@ -181,7 +261,22 @@ async def record_exercise(
 
     data = await _api_post(user_id, "/add", payload)
     rid = data.get("data", {}).get("id", "?")
-    return f"运动记录成功 (ID: {rid})"
+    label = _user_label(user_id)
+    parts = [f"✅ {label} 运动记录成功"]
+    detail = f"   {exercise_type} {distance}km"
+    if duration:
+        detail += f"，{duration}"
+    if pace:
+        detail += f"，配速 {pace}"
+    if heart_rate:
+        detail += f"，心率 {heart_rate}bpm"
+    if steps:
+        detail += f"，{steps}步"
+    if calories:
+        detail += f"，{calories}kcal"
+    parts.append(detail)
+    parts.append(f"   时间 {ts} (ID: {rid})")
+    return "\n".join(parts)
 
 
 @mcp.tool()
@@ -200,6 +295,69 @@ async def parse_and_record(user_id: int, text: str) -> str:
         {"records": records, "conflict_resolution": "overwrite"},
     )
     return f"成功解析并记录 {len(records)} 条数据"
+
+
+@mcp.tool()
+async def batch_parse_and_record(text: str) -> str:
+    """批量解析含 emoji 标记的多用户健康数据并自动入库。
+
+    支持格式：🐯103/69、64，54.20，🐰122/68、59，69.90
+    其中 🐯=妈妈，🐰=爸爸，依次是血压/心率/体重。
+    也支持混合自然语言，如"🐰122/68，爸爸空腹 6.2"。
+    无 emoji 前缀的文本归默认用户。
+
+    调用前，请向用户展示解析结果并请求确认；仅在用户明确同意后再执行。
+    """
+    from settings import USER_EMOJI_MAP
+    auth_user_id = 1
+    data = await _api_post(auth_user_id, "/parse_ai", {"text": text})
+    records = data if isinstance(data, list) else []
+    if not records:
+        return "未解析到有效记录"
+
+    # 执行写入
+    result = await _api_post(
+        auth_user_id,
+        "/batch_add",
+        {"records": records, "conflict_resolution": "overwrite"},
+    )
+    dup = _is_dup_error(result)
+    if dup:
+        return f"⚠️ {dup}"
+
+    # 按用户分组汇总
+    user_records: dict[int, list] = {}
+    for r in records:
+        uid = r.get('user_id', auth_user_id)
+        user_records.setdefault(uid, []).append(r)
+
+    lines = [f"✅ 已成功记录 {len(records)} 条数据\n"]
+    for uid, recs in user_records.items():
+        label = _user_label(uid)
+        lines.append(f"{'─' * 30}")
+        lines.append(f"📋 {label}")
+        lines.append(f"{'─' * 30}")
+        for r in recs:
+            rtype = r.get('type', '')
+            ts = r.get('datetime', '')
+            time_str = ts.split(' ')[-1][:5] if ' ' in ts else ts
+            if r.get('systolic_pressure'):
+                status = _bp_status(r['systolic_pressure'], r['diastolic_pressure'])
+                line = f"  血压 {r['systolic_pressure']}/{r['diastolic_pressure']} [{status}]"
+                if r.get('pulse_rate'):
+                    line += f"，脉搏 {r['pulse_rate']}bpm"
+                lines.append(line)
+            if r.get('weight'):
+                lines.append(f"  体重 {r['weight']}kg")
+            if r.get('value') and r.get('value') > 0:
+                from settings import check_glucose_compliance
+                result = check_glucose_compliance(r['value'], rtype)
+                badge = "达标" if result["is_compliant"] else "未达标"
+                lines.append(f"  血糖 {r['value']} mmol/L ({rtype}) [{badge}]")
+            lines.append(f"  ⏰ {time_str}  (ID: {r.get('id', '?')})")
+        lines.append("")
+
+    return "\n".join(lines)
 
 
 @mcp.tool()
@@ -253,9 +411,51 @@ async def undo_last_record(user_id: int) -> str:
     return f"已删除记录 (ID: {rid}): {desc}"
 
 
-# ------------------------------------------------------------------
-# 读操作 → 直连 SQLite（Flask 暂无列表型读接口）
-# ------------------------------------------------------------------
+@mcp.tool()
+async def today_summary(user_id: int) -> str:
+    """查看指定用户今天的全部健康数据摘要。用于验证记录是否成功入库。"""
+    conn = _db()
+    c = conn.cursor()
+    c.execute("""
+        SELECT id, type, value, systolic_pressure, diastolic_pressure,
+               pulse_rate, weight, bmi, timestamp, notes
+        FROM records
+        WHERE user_id = ? AND date(timestamp) = date('now')
+        ORDER BY timestamp DESC
+    """, (user_id,))
+    rows = c.fetchall()
+    conn.close()
+
+    label = _user_label(user_id)
+    if not rows:
+        return f"📋 {label} 今日暂无记录"
+
+    lines = [f"📋 {label} 今日健康数据"]
+    lines.append(f"{'─' * 30}")
+
+    for r in rows:
+        ts = r["timestamp"]
+        time_str = ts.split(" ")[-1][:5] if " " in ts else ts
+        rtype = r["type"]
+
+        if r["systolic_pressure"]:
+            status = _bp_status(r["systolic_pressure"], r["diastolic_pressure"])
+            line = f"  血压 {r['systolic_pressure']}/{r['diastolic_pressure']} [{status}]"
+            if r["pulse_rate"]:
+                line += f"，脉搏 {r['pulse_rate']}bpm"
+        elif r["weight"]:
+            bmi_str = f"，BMI {r['bmi']}" if r["bmi"] else ""
+            line = f"  体重 {r['weight']}kg{bmi_str}"
+        elif r["value"] and r["value"] > 0:
+            line = f"  血糖 {r['value']} mmol/L ({rtype})"
+        else:
+            line = f"  {rtype}"
+
+        lines.append(f"{line}  ⏰ {time_str}")
+
+    lines.append(f"{'─' * 30}")
+    lines.append(f"共 {len(rows)} 条记录")
+    return "\n".join(lines)
 
 @mcp.tool()
 async def list_today_records(user_id: int) -> str:
