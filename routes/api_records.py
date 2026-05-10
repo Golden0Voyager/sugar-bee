@@ -11,7 +11,7 @@ from core.config import DB_NAME
 from utils.responses import api_success, api_error
 from utils.auth import login_required, login_or_token_required
 from utils.db import get_db
-from glucose_parser import parse_glucose_input
+from glucose_parser import parse_glucose_input, split_by_emoji
 from services import (
     link_prediction_to_real_record
 )
@@ -171,6 +171,49 @@ def add_record():
         db = get_db()
         c = db.cursor()
 
+        # === 重复记录检测 ===
+        if request.is_json:
+            dup = None
+            if systolic_pressure and diastolic_pressure:
+                # 血压：同用户、同数值、3 分钟内
+                c.execute("""SELECT id, timestamp, systolic_pressure, diastolic_pressure, pulse_rate
+                    FROM records WHERE user_id = ? AND systolic_pressure = ? AND diastolic_pressure = ?
+                    AND timestamp BETWEEN datetime(?, '-3 minutes') AND datetime(?, '+3 minutes')
+                    LIMIT 1""",
+                    (current_user_id, systolic_pressure, diastolic_pressure, timestamp, timestamp))
+                dup = c.fetchone()
+                if dup:
+                    return api_error(
+                        f"3 分钟内已有相同血压记录 (ID: {dup['id']}, 时间: {dup['timestamp']})",
+                        status_code=409, error_type="duplicate",
+                    )
+            elif weight:
+                # 体重：同用户、同数值、3 分钟内
+                c.execute("""SELECT id, timestamp, weight
+                    FROM records WHERE user_id = ? AND weight = ?
+                    AND timestamp BETWEEN datetime(?, '-3 minutes') AND datetime(?, '+3 minutes')
+                    LIMIT 1""",
+                    (current_user_id, weight, timestamp, timestamp))
+                dup = c.fetchone()
+                if dup:
+                    return api_error(
+                        f"3 分钟内已有相同体重记录 (ID: {dup['id']}, 时间: {dup['timestamp']})",
+                        status_code=409, error_type="duplicate",
+                    )
+            elif value and float(value) > 0 and not is_predicted:
+                # 血糖：同用户、同类型、同一天
+                c.execute("""SELECT id, timestamp, value
+                    FROM records WHERE user_id = ? AND type = ? AND date(timestamp) = date(?)
+                    AND is_predicted = 0 AND value > 0 AND systolic_pressure IS NULL AND weight IS NULL
+                    LIMIT 1""",
+                    (current_user_id, r_type, timestamp))
+                dup = c.fetchone()
+                if dup:
+                    return api_error(
+                        f"今日已有「{r_type}」记录 (ID: {dup['id']}, 值: {dup['value']}, 时间: {dup['timestamp']})",
+                        status_code=409, error_type="duplicate",
+                    )
+
         c.execute("""INSERT INTO records
                      (user_id, value, unit, type, notes, timestamp, calories, diet_analysis, is_predicted,
                       distance, duration, heart_rate, systolic_pressure, diastolic_pressure, pulse_rate,
@@ -218,12 +261,32 @@ def parse_ai():
 
         db = get_db()
         current_user_id = user_manager.get_current_user_id()
-        history_context = get_user_stats(db, current_user_id)
-        results = parse_glucose_input(text, history_context, images_data, mime_type, user_id=current_user_id)
+
+        # 检测是否含 emoji 用户标记
+        has_emoji = any(e in text for e in settings.EMOJI_USER_MAP)
+
+        if has_emoji:
+            # 多用户模式：按 emoji 拆分，每段独立解析
+            segments = split_by_emoji(text)
+            results = []
+            for seg in segments:
+                uid = seg['user_id'] or current_user_id
+                history_context = get_user_stats(db, uid)
+                seg_results = parse_glucose_input(
+                    seg['text'], history_context, images_data, mime_type, user_id=uid
+                )
+                for r in seg_results:
+                    r['user_id'] = uid
+                results.extend(seg_results)
+        else:
+            # 单用户模式（向后兼容）
+            history_context = get_user_stats(db, current_user_id)
+            results = parse_glucose_input(text, history_context, images_data, mime_type, user_id=current_user_id)
 
         try:
             c = db.cursor()
             for record in results:
+                uid = record.get('user_id', current_user_id)
                 if record.get('value') and record.get('value') > 0 and record.get('datetime'):
                     timestamp = record.get('datetime')
                     c.execute("""
@@ -234,7 +297,7 @@ def parse_ai():
                         AND value > 0
                         AND systolic_pressure IS NULL
                         ORDER BY created_at DESC LIMIT 1
-                    """, (current_user_id, timestamp))
+                    """, (uid, timestamp))
                     existing_prediction = c.fetchone()
                     if existing_prediction:
                         record['predicted_value'] = existing_prediction[0]
@@ -270,17 +333,41 @@ def batch_add():
         for idx, r in enumerate(data):
             if 'value' not in r or 'type' not in r:
                 continue
+            record_uid = r.get('user_id') or current_user_id
             is_pred = r.get('is_predicted', False)
             timestamp = r.get('datetime')
-            record_value = r.get('value', 0)
-            if timestamp and not is_pred and record_value > 0:
-                c.execute("""SELECT id, value, type, timestamp, notes FROM records
-                           WHERE user_id = ? AND strftime('%Y-%m-%d %H:%M', timestamp) = strftime('%Y-%m-%d %H:%M', ?)
-                           AND is_predicted = 0 AND value > 0 AND systolic_pressure IS NULL""",
-                         (current_user_id, timestamp))
+
+            if not timestamp or is_pred:
+                continue
+
+            existing = None
+            if r.get('systolic_pressure') and r.get('diastolic_pressure'):
+                # 血压：同用户、同数值、3 分钟内
+                c.execute("""SELECT id, systolic_pressure, diastolic_pressure, timestamp FROM records
+                    WHERE user_id = ? AND systolic_pressure = ? AND diastolic_pressure = ?
+                    AND timestamp BETWEEN datetime(?, '-3 minutes') AND datetime(?, '+3 minutes')
+                    LIMIT 1""",
+                    (record_uid, r['systolic_pressure'], r['diastolic_pressure'], timestamp, timestamp))
                 existing = c.fetchone()
-                if existing:
-                    conflicts.append({'index': idx, 'new_record': r, 'existing_record': dict(existing)})
+            elif r.get('weight') and r['weight'] > 0:
+                # 体重：同用户、同数值、3 分钟内
+                c.execute("""SELECT id, weight, timestamp FROM records
+                    WHERE user_id = ? AND weight = ?
+                    AND timestamp BETWEEN datetime(?, '-3 minutes') AND datetime(?, '+3 minutes')
+                    LIMIT 1""",
+                    (record_uid, r['weight'], timestamp, timestamp))
+                existing = c.fetchone()
+            elif r.get('value', 0) > 0:
+                # 血糖：同用户、同类型、同一天
+                c.execute("""SELECT id, value, type, timestamp, notes FROM records
+                    WHERE user_id = ? AND type = ? AND date(timestamp) = date(?)
+                    AND is_predicted = 0 AND value > 0 AND systolic_pressure IS NULL AND weight IS NULL
+                    LIMIT 1""",
+                    (record_uid, r['type'], timestamp))
+                existing = c.fetchone()
+
+            if existing:
+                conflicts.append({'index': idx, 'new_record': r, 'existing_record': dict(existing)})
 
         if conflicts and conflict_resolution == 'ask':
             return jsonify({'status': 'conflict', 'message': f'发现 {len(conflicts)} 条冲突', 'conflicts': conflicts, 'total_records': len(data)})
@@ -290,15 +377,16 @@ def batch_add():
         for r in data:
             if 'value' not in r or 'type' not in r:
                 continue
+            record_uid = r.get('user_id') or current_user_id
             is_pred = 1 if r.get('is_predicted', False) else 0
             timestamp = r.get('datetime')
             r_type = r['type']
-            
+
             if timestamp:
                 if is_pred:
-                    c.execute("DELETE FROM records WHERE user_id = ? AND strftime('%Y-%m-%d %H:%M', timestamp) = strftime('%Y-%m-%d %H:%M', ?) AND type = ? AND is_predicted = 1", (current_user_id, timestamp, r_type))
+                    c.execute("DELETE FROM records WHERE user_id = ? AND strftime('%Y-%m-%d %H:%M', timestamp) = strftime('%Y-%m-%d %H:%M', ?) AND type = ? AND is_predicted = 1", (record_uid, timestamp, r_type))
                 elif conflict_resolution == 'overwrite':
-                    c.execute("DELETE FROM records WHERE user_id = ? AND strftime('%Y-%m-%d %H:%M', timestamp) = strftime('%Y-%m-%d %H:%M', ?) AND is_predicted = 0", (current_user_id, timestamp))
+                    c.execute("DELETE FROM records WHERE user_id = ? AND strftime('%Y-%m-%d %H:%M', timestamp) = strftime('%Y-%m-%d %H:%M', ?) AND is_predicted = 0", (record_uid, timestamp))
                 elif conflict_resolution == 'skip':
                     continue
 
@@ -309,7 +397,7 @@ def batch_add():
             bmi = r.get('bmi')
             if weight and not bmi:
                 try:
-                    bmi = settings.calculate_bmi(float(weight), user_id=current_user_id)
+                    bmi = settings.calculate_bmi(float(weight), user_id=record_uid)
                 except Exception:
                     pass
 
@@ -318,7 +406,7 @@ def batch_add():
                                             pulse_rate, weight, bmi, medication_name, steps, pace, max_pace, cadence, vo2max,
                                             spo2, carbs_grams, gi_value)
                          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                      (current_user_id, r['value'], r.get('unit', 'mmol/L'), r_type, r.get('notes', ''), timestamp,
+                      (record_uid, r['value'], r.get('unit', 'mmol/L'), r_type, r.get('notes', ''), timestamp,
                        r.get('calories', 0), r.get('diet_analysis', ''), is_pred, r.get('distance'), r.get('duration'),
                        r.get('heart_rate'), r.get('max_heart_rate'), systolic, diastolic,
                        r.get('pulse_rate'), weight, bmi, r.get('medication_name'), r.get('steps'),
