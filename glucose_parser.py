@@ -195,15 +195,19 @@ def parse_glucose_input(text, history_context=None, images_data=None, mime_type=
     - 提取信息：
       - systolic_pressure: 收缩压/高压（正常范围90-140 mmHg）
       - diastolic_pressure: 舒张压/低压（正常范围60-90 mmHg）
-      - pulse_rate: 脉搏（可选，正常范围60-100 bpm）
-      - spo2: 血氧饱和度（可选，正常范围95-100%）
+      - pulse_rate: 脉搏/心率（可选，正常范围60-100 bpm，单位不是%）
+      - spo2: 血氧饱和度（可选，正常范围95-100%，必须是百分比值）
       - type: "血压测量"、"空腹血压"、"餐后血压"等
+    - **重要区分**：
+      - `pulse_rate`（脉搏/心率）和 `spo2`（血氧饱和度）绝对不能混淆！
+      - 血氧值不可能低于90%，若遇到60-100之间的整数，一定是脉搏/心率，必须放入 `pulse_rate`，严禁放入 `spo2`！
+      - 只有明确标注"血氧"、"SpO2"或数值在95-100之间的，才能放入 `spo2`。
     - 示例：
       - "早晨空腹基础血压137/73" → type="空腹血压", systolic_pressure=137, diastolic_pressure=73, datetime=今天07:15
       - "中午13:10测的124/68" → type="血压测量", systolic_pressure=124, diastolic_pressure=68, datetime=今天13:10
       - "餐后血压130/75，脉搏82" → type="餐后血压", systolic_pressure=130, diastolic_pressure=75, pulse_rate=82
       - "血压137/73 血氧98" → type="血压测量", systolic_pressure=137, diastolic_pressure=73, spo2=98
-      - "血压119/70、68" → type="血压测量", systolic_pressure=119, diastolic_pressure=70, pulse_rate=68（血压后紧跟的第三个数字为脉搏/心率）
+      - "血压119/70、68" → type="血压测量", systolic_pressure=119, diastolic_pressure=70, pulse_rate=68（血压后紧跟的第三个数字为脉搏/心率，绝不能当成血氧）
 
     **体重识别规则**:
     - 识别特征：包含关键词（体重/称/kg/公斤）；或者在包含血压、血糖等体征数列中，出现合理范围内的无单位数值（通常在 40.0 - 150.0 之间，且多带小数），应自动判定为体重！
@@ -355,6 +359,37 @@ def _postprocess_records(records, original_text=None):
                     r[field] = None
             print(f"[parser] 修正分类: '{record_type}' → '{r['type']}' (检测到餐食特征)")
 
+        # 修正：血压记录中 pulse_rate / spo2 / heart_rate 字段混淆
+        is_bp_record = '血压' in (record_type or '') or (r.get('systolic_pressure') and r.get('diastolic_pressure'))
+        if is_bp_record:
+            # 修正1：AI 可能把脉搏放到 heart_rate，血压记录应统一使用 pulse_rate
+            if r.get('heart_rate') and not r.get('pulse_rate'):
+                r['pulse_rate'] = r['heart_rate']
+                r['heart_rate'] = None
+                print(f"[parser] 修正血压字段: heart_rate → pulse_rate ({r['pulse_rate']})")
+
+            # 修正2：AI 可能把脉搏错放到 spo2（血氧正常范围95-100，低于90不可能是正常血氧）
+            spo2 = r.get('spo2')
+            pulse_rate = r.get('pulse_rate')
+            if spo2 is not None:
+                if spo2 < 90:
+                    if pulse_rate is None:
+                        r['pulse_rate'] = spo2
+                        print(f"[parser] 修正血压字段: spo2={spo2} → pulse_rate={spo2}")
+                    else:
+                        print(f"[parser] 修正血压字段: 清除异常 spo2={spo2}（pulse_rate={pulse_rate} 已存在）")
+                    r['spo2'] = None
+
+            # 修正3：根据原始文本推断血压类型
+            if original_text and r.get('type') == '血压测量':
+                text_lower = original_text.lower()
+                if any(k in text_lower for k in ('空腹', '早', '晨')):
+                    r['type'] = '空腹血压'
+                    print(f"[parser] 修正血压类型: '血压测量' → '空腹血压'")
+                elif any(k in text_lower for k in ('餐后', '饭后', '午餐后', '晚餐后')):
+                    r['type'] = '餐后血压'
+                    print(f"[parser] 修正血压类型: '血压测量' → '餐后血压'")
+
     # 兜底：从原始文本中检测 AI 遗漏的体重数据
     if original_text:
         records = _ensure_weight_captured(records, original_text)
@@ -378,6 +413,14 @@ def _ensure_weight_captured(records, text):
         m = re.search(r'(\d{2,3}(?:\.\d{1,2})?)\s*(?:kg|公斤|千克)', text, re.IGNORECASE)
         if m:
             weight_val = float(m.group(1))
+    if weight_val is None:
+        # 模式3：顿号/逗号后的体重数值（如 "🐯104/60、64，54.50"）
+        # 匹配顿号、逗号后紧跟的 40-150 范围内的数值（可带小数）
+        m = re.search(r'[，,、]\s*(\d{2,3}(?:\.\d{1,2})?)\s*(?:[,，、]|$)', text)
+        if m:
+            candidate = float(m.group(1))
+            if 40 <= candidate <= 150:
+                weight_val = candidate
 
     if weight_val and 30 <= weight_val <= 200:
         # 复用已有记录的时间，没有则用当前时间
