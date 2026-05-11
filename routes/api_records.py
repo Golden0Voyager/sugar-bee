@@ -19,6 +19,47 @@ from services import (
 user_manager = UserManager(DB_NAME)
 bp_records = Blueprint('records', __name__)
 
+
+def _validate_record_data(r: dict) -> list[str]:
+    """校验单条记录的数据范围，返回警告信息列表（空列表表示无警告）。"""
+    warnings: list[str] = []
+    rtype = r.get('type', '')
+
+    # 血压校验
+    systolic = r.get('systolic_pressure')
+    diastolic = r.get('diastolic_pressure')
+    if systolic and diastolic:
+        if systolic < 60 or systolic > 250:
+            warnings.append(f"收缩压 {systolic} 超出正常范围（60-250）")
+        if diastolic < 40 or diastolic > 180:
+            warnings.append(f"舒张压 {diastolic} 超出正常范围（40-180）")
+        if systolic <= diastolic:
+            warnings.append(f"收缩压（{systolic}）不应小于等于舒张压（{diastolic}）")
+
+    # 血氧校验
+    spo2 = r.get('spo2')
+    if spo2 is not None and (spo2 < 90 or spo2 > 100):
+        warnings.append(f"血氧饱和度 {spo2}% 超出正常范围（90-100%），可能被误填")
+
+    # 脉搏/心率校验
+    pulse = r.get('pulse_rate')
+    if pulse is not None and (pulse < 30 or pulse > 220):
+        warnings.append(f"脉搏 {pulse} 超出正常范围（30-220）")
+
+    # 血糖校验（仅血糖记录）
+    value = r.get('value')
+    if value and value > 0 and not systolic and not r.get('weight'):
+        if value < 1.0 or value > 33.3:
+            warnings.append(f"血糖值 {value} 超出正常范围（1.0-33.3 mmol/L）")
+
+    # 体重校验
+    weight = r.get('weight')
+    if weight and weight > 0:
+        if weight < 20.0 or weight > 300.0:
+            warnings.append(f"体重 {weight} 超出正常范围（20-300 kg）")
+
+    return warnings
+
 def get_user_stats(db, user_id=1):
     stats = {}
     try:
@@ -214,6 +255,14 @@ def add_record():
                         status_code=409, error_type="duplicate",
                     )
 
+        # 数据范围校验（允许写入，但收集警告）
+        payload_dict = {
+            'type': r_type, 'value': value, 'systolic_pressure': systolic_pressure,
+            'diastolic_pressure': diastolic_pressure, 'pulse_rate': pulse_rate,
+            'spo2': spo2, 'weight': weight, 'heart_rate': heart_rate,
+        }
+        warnings = _validate_record_data(payload_dict)
+
         c.execute("""INSERT INTO records
                      (user_id, value, unit, type, notes, timestamp, calories, diet_analysis, is_predicted,
                       distance, duration, heart_rate, systolic_pressure, diastolic_pressure, pulse_rate,
@@ -237,7 +286,10 @@ def add_record():
 
         db.commit()
         if request.is_json:
-            return api_success(data={"id": real_record_id}, message="Record added successfully")
+            resp_data = {"id": real_record_id}
+            if warnings:
+                resp_data["warnings"] = warnings
+            return api_success(data=resp_data, message="Record added successfully")
         return redirect(url_for('index'))
     except Exception as e:
         if request.is_json:
@@ -372,8 +424,9 @@ def batch_add():
         if conflicts and conflict_resolution == 'ask':
             return jsonify({'status': 'conflict', 'message': f'发现 {len(conflicts)} 条冲突', 'conflicts': conflicts, 'total_records': len(data)})
 
-        # Phase 2: Insert
+        # Phase 2: Validate + Insert
         inserted_records = []
+        all_warnings: list[str] = []
         for r in data:
             if 'value' not in r or 'type' not in r:
                 continue
@@ -381,6 +434,12 @@ def batch_add():
             is_pred = 1 if r.get('is_predicted', False) else 0
             timestamp = r.get('datetime')
             r_type = r['type']
+
+            # 数据范围校验（允许写入，但收集警告）
+            warnings = _validate_record_data(r)
+            if warnings:
+                label = r.get('type', '未知记录')
+                all_warnings.append(f"[{label}] " + "; ".join(warnings))
 
             if timestamp:
                 if is_pred:
@@ -415,7 +474,10 @@ def batch_add():
             inserted_records.append({'id': c.lastrowid, 'is_pred': is_pred, 'value': r['value'], 'datetime': timestamp, 'type': r_type})
 
         db.commit()
-        return api_success(message="Batch add successful")
+        response_data = {"inserted": len(inserted_records)}
+        if all_warnings:
+            response_data["warnings"] = all_warnings
+        return api_success(data=response_data, message="Batch add successful")
     except Exception as e:
         traceback.print_exc()
         return api_error(str(e), status_code=500)
