@@ -18,7 +18,7 @@ import httpx
 from dotenv import load_dotenv
 import settings
 
-load_dotenv()
+load_dotenv(override=True)
 
 # API Keys
 MODELSCOPE_API_KEY = os.getenv("MODELSCOPE_API_KEY")

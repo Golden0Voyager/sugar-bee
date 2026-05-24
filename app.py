@@ -10,7 +10,7 @@ import shutil
 from dotenv import load_dotenv
 import settings
 
-load_dotenv()
+load_dotenv(override=True)
 
 from user_manager import UserManager  # noqa: E402
 from core.config import DB_NAME, AVATAR_FOLDER  # noqa: E402
@@ -151,7 +151,8 @@ def auto_garmin_sync():
     try:
         user_id = int(os.environ.get('GARMIN_USER_ID', 0) or 0)
         if user_id and os.environ.get('GARMIN_EMAIL'):
-            token_dir = os.environ.get('GARMIN_TOKEN_DIR', '.garmin_tokens')
+            _app_dir = os.path.dirname(os.path.abspath(__file__))
+            token_dir = os.environ.get('GARMIN_TOKEN_DIR', os.path.join(_app_dir, '.garmin_tokens'))
             token_file = os.path.join(token_dir, 'garmin_tokens.json')
             # 首次没有 token 时跳过自动同步，避免撞 Garmin IP 限流；需用户手动触发一次完成首登
             if not os.path.isfile(token_file):

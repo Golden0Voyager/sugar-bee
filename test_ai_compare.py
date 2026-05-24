@@ -8,7 +8,7 @@ import json
 import re
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(override=True)
 
 # ========== 测试用例 ==========
 TEST_CASES = [

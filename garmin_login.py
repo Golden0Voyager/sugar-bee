@@ -15,9 +15,10 @@ import os
 import sys
 
 from dotenv import load_dotenv
-load_dotenv()
+load_dotenv(override=True)
 
-TOKEN_DIR = os.environ.get('GARMIN_TOKEN_DIR', '.garmin_tokens')
+_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+TOKEN_DIR = os.environ.get('GARMIN_TOKEN_DIR', os.path.join(_SCRIPT_DIR, '.garmin_tokens'))
 
 
 def main():
