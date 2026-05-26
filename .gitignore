@@ -31,3 +31,6 @@ garmin_cookies.json
 *.log
 # 自动备份
 backups/
+# Skill-generated analysis artifacts
+.understand-anything/
+.codegraph/
