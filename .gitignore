@@ -34,3 +34,4 @@ backups/
 # Skill-generated analysis artifacts
 .understand-anything/
 .codegraph/
+db_data/
