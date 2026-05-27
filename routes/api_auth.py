@@ -11,6 +11,7 @@ from utils.auth import login_required
 bp_auth = Blueprint('auth', __name__)
 user_manager = UserManager(DB_NAME)
 
+
 @bp_auth.route('/login', methods=['GET', 'POST'])
 def login():
     """登录页面"""
