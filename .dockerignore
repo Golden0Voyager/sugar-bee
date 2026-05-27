@@ -1,0 +1,76 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.venv/
+venv/
+env/
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# AI 工具配置
+.claude/
+.gemini/
+
+# 数据库（由宿主机挂载，不打包进镜像）
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# 个人配置/隐私数据（由宿主机挂载）
+.env
+.env.*
+!.env.example
+user_config.json
+user_config.json.legacy.*
+
+# 上传文件（由宿主机挂载）
+static/avatars/
+user_data/
+
+# Garmin 相关（由宿主机挂载）
+.garmin_tokens/
+garmin_cookies.json
+
+# 日志
+*.log
+logs/
+
+# 备份（由宿主机挂载）
+backups/
+
+# 测试
+.pytest_cache/
+.coverage
+htmlcov/
+tests/
+test_*.py
+
+# 文档
+*.md
+docs/
+
+# Skill-generated artifacts
+.understand-anything/
+.codegraph/
+
+# Docker 自身
+Dockerfile
+docker-compose*.yml
+.dockerignore
+
+# 其他
+.ruff_cache/
+__pycache__/

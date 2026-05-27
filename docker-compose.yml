@@ -1,0 +1,52 @@
+version: '3.8'
+
+services:
+  sugar-bee:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: sugar-bee:latest
+    container_name: sugar-bee
+    restart: unless-stopped
+    ports:
+      - "${SUGAR_BEE_PORT:-5000}:5000"
+    env_file:
+      - .env
+    environment:
+      # 数据库路径（Docker 内使用挂载的目录）
+      - SUGAR_BEE_DB_PATH=/app/db_data/glucose.db
+      # Gunicorn 配置（可通过环境变量覆盖）
+      - GUNICORN_WORKERS=${GUNICORN_WORKERS:-4}
+      - GUNICORN_TIMEOUT=${GUNICORN_TIMEOUT:-120}
+      - GUNICORN_LOG_LEVEL=${GUNICORN_LOG_LEVEL:-info}
+      # Flask 配置
+      - FLASK_ENV=production
+      - PYTHONUNBUFFERED=1
+    volumes:
+      # 数据库目录挂载（使用目录而非文件，避免 Docker 自动创建目录的问题）
+      - ./db_data:/app/db_data
+      # 备份目录
+      - ./backups:/app/backups
+      # 头像上传目录
+      - ./static/avatars:/app/static/avatars
+      # Garmin Token 持久化
+      - ./.garmin_tokens:/app/.garmin_tokens
+      # 用户数据目录
+      - ./user_data:/app/user_data
+      # 环境变量文件（可选，如果已用 env_file）
+      # - ./.env:/app/.env:ro
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+# 可选：使用独立卷管理（更健壮，避免 bind mount 的文件类型问题）
+# volumes:
+#   sugar_bee_data:

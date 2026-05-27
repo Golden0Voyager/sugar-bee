@@ -23,12 +23,49 @@ from services import (  # noqa: E402
     get_dashboard_stats
 )
 
-# 配置
+# ========== 配置 ==========
 app = Flask(__name__)
-app.secret_key = os.environ.get('SECRET_KEY', 'glucose_secret_key_123')
+
+# 运行环境判断
+_is_prod = os.environ.get('FLASK_ENV') == 'production'
+
+# SECRET_KEY：生产环境必须显式配置；开发环境使用临时 key（安全提示）
+_secret_key = os.environ.get('SECRET_KEY')
+if not _secret_key:
+    if _is_prod:
+        raise RuntimeError(
+            "SECRET_KEY 环境变量未设置。"
+            "请执行：export SECRET_KEY=$(python3 -c 'import secrets; print(secrets.token_hex(32))')"
+        )
+    import secrets as _secrets
+    _secret_key = _secrets.token_hex(16)
+    print("[WARN] 使用随机生成的临时 SECRET_KEY（开发模式）。生产环境请务必显式设置。")
+app.secret_key = _secret_key
+
 app.config['UPLOAD_FOLDER'] = AVATAR_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB
+
+# Session 安全配置
+app.config['SESSION_COOKIE_SECURE'] = _is_prod       # 仅 HTTPS 传输 cookie
+app.config['SESSION_COOKIE_HTTPONLY'] = True          # 禁止 JS 访问 cookie
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'         # CSRF 基础防护
+app.config['PERMANENT_SESSION_LIFETIME'] = datetime.timedelta(days=7)
+
 os.makedirs(AVATAR_FOLDER, exist_ok=True)
+
+# ========== 请求限速 ==========
+from flask_limiter import Limiter  # noqa: E402
+from flask_limiter.util import get_remote_address  # noqa: E402
+
+# 生产环境多 worker 时建议配置 REDIS_URL 实现共享限速状态
+_limiter_storage = os.environ.get('REDIS_URL', 'memory://')
+limiter = Limiter(
+    key_func=get_remote_address,
+    app=app,
+    default_limits=["200 per minute", "1000 per hour"],
+    storage_uri=_limiter_storage,
+    strategy="fixed-window",
+)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 user_manager = UserManager(DB_NAME)
@@ -177,6 +214,18 @@ def auto_garmin_sync():
 
 atexit.register(lambda: _garmin_sync_timer.cancel() if _garmin_sync_timer else None)
 
+
+def start_background_tasks():
+    """启动所有后台定时任务（自动备份、Garmin 同步）。
+    
+    由 Gunicorn master 进程通过 when_ready 钩子调用，
+    或在开发模式（python app.py）下直接调用。
+    """
+    auto_backup()
+    if os.environ.get('GARMIN_EMAIL'):
+        auto_garmin_sync()
+
+
 # ========== 蓝图注册 ==========
 from routes.api_auth import bp_auth  # noqa: E402
 from routes.api_chat import bp_chat  # noqa: E402
@@ -198,10 +247,22 @@ app.register_blueprint(bp_user)
 app.register_blueprint(bp_dashboard)
 app.register_blueprint(bp_prediction)
 
+# 为敏感端点添加请求限速（在 Blueprint 注册后配置，避免循环导入）
+# Flask Blueprint view_functions 使用 "blueprint.endpoint" 格式
+app.view_functions['auth.login'] = limiter.limit("10 per minute")(app.view_functions['auth.login'])
+app.view_functions['auth.set_password'] = limiter.limit("5 per minute")(app.view_functions['auth.set_password'])
+app.view_functions['auth.change_password'] = limiter.limit("10 per minute")(app.view_functions['auth.change_password'])
+
+
+# ========== 健康检查 ==========
+@app.route('/health')
+def health_check():
+    """服务健康检查端点（无需认证，用于 Docker/Nginx 探活）。"""
+    return {'status': 'ok', 'service': 'sugar-bee'}, 200
+
+
 if __name__ == '__main__':
     with app.app_context():
         init_db()
-    auto_backup()
-    if os.environ.get('GARMIN_EMAIL'):
-        auto_garmin_sync()
+    start_background_tasks()
     app.run(host='0.0.0.0', debug=True, port=5001)
