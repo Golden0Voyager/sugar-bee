@@ -1,3 +1,10 @@
+## ⚠️ 环境约束（强制）
+
+- **包管理器**：`uv pip install <pkg>`（禁止 `pip` / `python -m pip`）
+- **运行脚本**：`uv run python <script>.py`（禁止直接 `python`）
+
+---
+
 # CLAUDE.md
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
@@ -9,7 +16,6 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## 运行命令
 
 ```bash
-# 安装依赖（使用 uv，不用 pip）
 uv pip install -r requirements.txt
 
 # 启动应用（debug 模式，端口 5001）
