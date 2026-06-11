@@ -34,11 +34,11 @@ for fp in font_search:
             try:
                 pdfmetrics.registerFont(TTFont(name + "Bold", fp, subfontIndex=1))
                 CN_FONT_BOLD = name + "Bold"
-            except Exception:
-                CN_FONT_BOLD = name
+            except Exception:  # pragma: no cover（macOS 系统字体，不可移植）
+                CN_FONT_BOLD = name  # pragma: no cover
             break
-        except Exception:
-            continue
+        except Exception:  # pragma: no cover
+            continue  # pragma: no cover
 
 # ── 颜色 ──
 C_PRIMARY = HexColor("#1565c0")
