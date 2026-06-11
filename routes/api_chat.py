@@ -13,6 +13,17 @@ from utils.db import get_db
 bp_chat = Blueprint('chat', __name__, url_prefix='/api/chat')
 CHAT_HISTORY_LIMIT = 20
 
+
+def _safe_float(val):
+    """安全转换为 float，转换失败返回 None"""
+    if val is None or val == '':
+        return None
+    try:
+        return float(val)
+    except (ValueError, TypeError):
+        return None
+
+
 def get_current_user_id():
     return session.get('current_user_id', 1)
 
@@ -44,17 +55,22 @@ def build_chat_context(db, user_id):
             
             detail_str = f"- {time_str} {t_type or '记录'}: "
             parts: list[str] = []
-            if t_val and float(t_val) > 0:
-                parts.append(f"数值 {float(t_val):.1f}")
-            if t_sys and float(t_sys) > 0 and t_dia and float(t_dia) > 0:
-                # Use float format to be safer with type checking
-                parts.append(f"血压 {int(float(t_sys))}/{int(float(t_dia))}")
-            if t_dist and float(t_dist) > 0:
-                parts.append(f"距离 {float(t_dist):.2f}km")
-            if t_cal and float(t_cal) > 0:
-                parts.append(f"热量 {int(float(t_cal))}kcal")
-            if t_weight and float(t_weight) > 0:
-                parts.append(f"体重 {float(t_weight):.1f}kg")
+            f_val = _safe_float(t_val)
+            if f_val is not None and f_val > 0:
+                parts.append(f"数值 {f_val:.1f}")
+            f_sys = _safe_float(t_sys)
+            f_dia = _safe_float(t_dia)
+            if f_sys is not None and f_sys > 0 and f_dia is not None and f_dia > 0:
+                parts.append(f"血压 {int(f_sys)}/{int(f_dia)}")
+            f_dist = _safe_float(t_dist)
+            if f_dist is not None and f_dist > 0:
+                parts.append(f"距离 {f_dist:.2f}km")
+            f_cal = _safe_float(t_cal)
+            if f_cal is not None and f_cal > 0:
+                parts.append(f"热量 {int(f_cal)}kcal")
+            f_weight = _safe_float(t_weight)
+            if f_weight is not None and f_weight > 0:
+                parts.append(f"体重 {f_weight:.1f}kg")
             if t_med:
                 parts.append(f"用药 {t_med}")
             if t_notes:
