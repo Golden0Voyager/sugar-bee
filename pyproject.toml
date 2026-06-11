@@ -27,5 +27,29 @@ dependencies = [
 [dependency-groups]
 dev = [
     "pytest>=9.0.2",
+    "pytest-cov>=6.1.1",
     "ruff>=0.15.7",
+]
+
+[tool.coverage.run]
+source = ["."]
+omit = [
+    "tests/*",
+    "migrations/*",
+    "wsgi.py",
+    "mcp_server.py",
+    "garmin_login.py",
+    "test_ai_compare.py",
+    "main.py",
+]
+
+[tool.coverage.report]
+fail_under = 95
+show_missing = true
+skip_covered = true
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.:",
+    "def __repr__",
+    "raise NotImplementedError",
 ]
