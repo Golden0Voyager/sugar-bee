@@ -124,6 +124,7 @@ def delete_medication_plan(plan_id):
     try:
         db = get_db()
         c = db.cursor()
+        c.execute("DELETE FROM medication_logs WHERE plan_id = ?", (plan_id,))
         c.execute("DELETE FROM dosage_history WHERE plan_id = ?", (plan_id,))
         c.execute("DELETE FROM medication_plans WHERE id = ?", (plan_id,))
         db.commit()

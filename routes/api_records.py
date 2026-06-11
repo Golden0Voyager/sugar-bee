@@ -149,7 +149,7 @@ def add_record():
             timestamp = request.form.get('timestamp')
 
             # Validation
-            if not value:
+            if value is None or value == '':
                 return "Value is required", 400
 
             # Optional fields
