@@ -1,15 +1,16 @@
 import sqlite3
 from flask import g
-from core.config import DB_NAME
 
+# DB_NAME is imported lazily within functions to allow runtime path changes (e.g. testing)
 def get_db():
     """
     获取数据库连接。
     在 Flask 应用上下文中，数据库连接存储在 g 对象中。
     """
+    from core.config import DB_NAME as db_name
     db = getattr(g, '_database', None)
     if db is None:
-        db = g._database = sqlite3.connect(DB_NAME)
+        db = g._database = sqlite3.connect(db_name)
         db.row_factory = sqlite3.Row
     return db
 
@@ -25,8 +26,10 @@ def init_db():
     """
     初始化数据库表和执行必要的迁移。
     """
+    from core.config import DB_NAME as db_name
+    conn = None
     try:
-        conn = sqlite3.connect(DB_NAME)
+        conn = sqlite3.connect(db_name)
         c = conn.cursor()
         c.execute('''CREATE TABLE IF NOT EXISTS records
                      (id INTEGER PRIMARY KEY AUTOINCREMENT, 
