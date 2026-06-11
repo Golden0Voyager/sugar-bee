@@ -1061,7 +1061,7 @@ async def today_summary(user_id: int) -> str:
         SELECT id, type, value, systolic_pressure, diastolic_pressure,
                pulse_rate, spo2, weight, bmi, timestamp, notes
         FROM records
-        WHERE user_id = ? AND date(timestamp) = date('now')
+        WHERE user_id = ? AND date(timestamp) = date('now', 'localtime')
         ORDER BY timestamp DESC
     """, (user_id,))
     rows = c.fetchall()
@@ -1110,7 +1110,7 @@ async def list_today_records(user_id: int) -> str:
         SELECT type, value, systolic_pressure, diastolic_pressure,
                pulse_rate, spo2, weight, timestamp, notes
         FROM records
-        WHERE user_id = ? AND date(timestamp) = date('now')
+        WHERE user_id = ? AND date(timestamp) = date('now', 'localtime')
         ORDER BY timestamp DESC
         """,
         (user_id,),
