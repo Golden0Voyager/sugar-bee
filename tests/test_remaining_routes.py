@@ -506,7 +506,7 @@ class TestReportFontRegistration:
             importlib.reload(gr)
             assert gr.CN_FONT == 'Helvetica'
 
-    @patch('generate_report.pdfmetrics.registerFont')
+    @patch('reportlab.pdfbase.pdfmetrics.registerFont')
     @patch('generate_report.os.path.exists')
     def test_first_font_registered(self, mock_exists, mock_register):
         """第一个字体路径存在 → 注册并用于 CN_FONT"""

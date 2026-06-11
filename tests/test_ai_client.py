@@ -143,6 +143,7 @@ class TestCallAi:
         with pytest.raises(Exception, match='AI 服务未配置'):
             call_ai('test prompt')
 
+    @patch('ai_client.AI_AVAILABLE', True)
     @patch('ai_client.GEMINI_API_KEY', None)
     @patch('ai_client.VOLC_API_KEY', None)
     @patch('ai_client.MODELSCOPE_API_KEY', 'fake-key')

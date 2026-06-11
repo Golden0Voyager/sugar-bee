@@ -341,9 +341,10 @@ class TestChatRoutes:
         assert result.status_code == 200
 
     def test_chat_stream_missing_params(self, client_authenticated):
-        result = client_authenticated.post('/api/chat/stream', json={
-            'message': '', 'session_id': ''
-        })
+        with patch('routes.api_chat.CHAT_AVAILABLE', True):
+            result = client_authenticated.post('/api/chat/stream', json={
+                'message': '', 'session_id': ''
+            })
         assert result.status_code == 400
 
 
