@@ -51,7 +51,7 @@ tzdata==2025.3
 uritemplate==4.2.0
 urllib3==2.7.0
 websockets==15.0.1
-werkzeug==3.1.4
+werkzeug==3.1.6
 mcp==1.27.0
 Flask-Limiter==4.1.1
 sqlalchemy==2.0.50
