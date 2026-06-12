@@ -1,5 +1,4 @@
 """扩展路由测试 — 覆盖 api_meds, api_admin, api_auth, api_user, api_chat, api_prediction"""
-import json
 import pytest
 from unittest.mock import patch, MagicMock
 
@@ -134,7 +133,7 @@ class TestAuthRoutes:
                                        data={'username': '', 'password': '123'}):
             with patch('routes.api_auth.render_template') as mock_render:
                 mock_render.return_value = 'error'
-                result = login()
+                login()
                 assert 'error' in str(mock_render.call_args[1])
 
     def test_login_post_wrong_password(self):
@@ -305,7 +304,7 @@ class TestUserRoutes:
 
     def test_change_username(self, client_authenticated):
         with patch('routes.api_user.user_manager.get_user_by_username') as mock_gubu, \
-             patch('routes.api_user.user_manager.change_username') as mock_change:
+             patch('routes.api_user.user_manager.change_username'):
             mock_gubu.return_value = None
             result = client_authenticated.post('/change_username', json={'new_username': 'newname'})
             assert result.status_code == 200

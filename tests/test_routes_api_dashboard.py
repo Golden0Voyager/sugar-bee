@@ -1,5 +1,4 @@
 """routes/api_dashboard.py 全覆盖测试 — api_health_stats + api_day_overview 完整 fetchone/fetchall 追踪"""
-import datetime
 import pytest
 from unittest.mock import patch, MagicMock
 
@@ -719,13 +718,9 @@ api_dashboard.py 目标 (10 行):
   L404-405: day_overview every_n_days freq_detail 解析异常 -> except pass
   L419-420: day_overview monthly freq_detail 解析异常 -> except pass
 """
-import os
 import io
-import json
 import base64
-from unittest.mock import patch, MagicMock
 
-import pytest
 
 
 # ============================================================

@@ -200,7 +200,7 @@ api_user.py 剩余未覆盖分支测试 (18 行)
   L265-274: sync_garmin 成功路径 + 异常 -> 200/500
 """
 import json
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 import pytest
 

@@ -1,6 +1,5 @@
 """纯函数测试 — _validate_record_data, _safe_float, get_user_stats 等"""
-import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock
 
 
 class TestValidateRecordData:

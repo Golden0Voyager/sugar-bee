@@ -1,6 +1,5 @@
 """扩展 services 和 routes 测试 — 冲击 80%+"""
 import json
-import datetime
 import pytest
 from unittest.mock import patch, MagicMock
 
@@ -459,7 +458,7 @@ class TestPredictionRoutesExtended:
 
     def test_trigger_prediction_fpg_only(self, client_authenticated):
         with patch('routes.api_prediction.get_db') as mock_get_db, \
-             patch('routes.api_prediction.predict_morning_fpg') as mock_fpg:
+             patch('routes.api_prediction.predict_morning_fpg'):
             mock_db = MagicMock()
             mock_get_db.return_value = mock_db
 

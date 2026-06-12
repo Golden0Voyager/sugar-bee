@@ -338,8 +338,7 @@ ai_client.py 最后覆盖冲刺 (87% → 100%)
   L168-170: call_ai Gemini fallback loop (if/for/try)
   L174-180: Gemini failure + all-failed raise
 """
-import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 
 # ============================================================
@@ -481,7 +480,7 @@ class TestCallAiGeminiFallback:
     @patch('ai_client._try_provider')
     def test_gemini_fallback_when_others_fail(self, mock_try):
         """ModelScope + 火山引擎失败 → Gemini 降级成功"""
-        from ai_client import call_ai, _call_gemini_model
+        from ai_client import call_ai
 
         # ModelScope fails → returns None
         # Volc fails → returns None

@@ -6,12 +6,8 @@
   - timeline_service.py: 89% → ~95% (days=None, avg_glucose, net_cal)
   - prediction_service.py: 85% → ~90% (各遗漏分支)
 """
-import datetime
-import json
 import os
-import sqlite3
-import tempfile
-from unittest.mock import MagicMock, patch, ANY
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -727,7 +723,7 @@ class TestDashboardStatsBranches:
     def test_bp_max_min_dates(self, mock_settings, mock_um):
         """Cover bp_max_date / bp_min_date queries"""
         from services.dashboard_service import get_dashboard_stats
-        from tests.helpers import mock_dashboard_service_settings as _setup, make_minimal_cursor as _make
+        from tests.helpers import mock_dashboard_service_settings as _setup
         _setup(mock_settings, mock_um)
 
         mock_c = MagicMock()

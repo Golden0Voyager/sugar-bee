@@ -1,7 +1,4 @@
 """冲刺 85% 覆盖率: api_prediction (51%→70%), api_meds (64%→80%), api_admin (50%→75%)"""
-import datetime
-import json
-import pytest
 from unittest.mock import patch, MagicMock
 
 
@@ -22,7 +19,7 @@ class TestTriggerPredictionTypes:
 
     def test_trigger_post_exercise(self, client_authenticated):
         with patch('routes.api_prediction.get_db') as mock_get_db, \
-             patch('routes.api_prediction.predict_morning_fpg') as mock_fpg, \
+             patch('routes.api_prediction.predict_morning_fpg'), \
              patch('routes.api_prediction.predict_post_exercise_glucose') as mock_ex:
             mock_get_db.return_value = MagicMock()
             mock_ex.return_value = 5.5

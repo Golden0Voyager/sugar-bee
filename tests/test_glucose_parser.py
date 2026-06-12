@@ -1,18 +1,15 @@
 """
 glucose_parser.py 非 AI 函数测试
 """
-import pytest
 import datetime
-from unittest.mock import patch, MagicMock
 import glucose_parser
-import settings
 
 
 class TestPreprocessRelativeDates:
     """相对日期预处理测试"""
 
     def test_replace_days_ago(self):
-        now = datetime.datetime.now()
+        datetime.datetime.now()
         result = glucose_parser._preprocess_relative_dates("60天前测的")
         assert "天前" not in result
         assert "年" in result
@@ -293,9 +290,6 @@ class TestEnsureWeightCaptured:
         result = glucose_parser._ensure_weight_captured(records, "体重75kg")
         assert len(result) == 1
 """glucose_parser 扩展测试 — _postprocess_records, _ensure_weight_captured, _infer_meal_type"""
-import datetime
-import pytest
-from unittest.mock import patch, MagicMock
 
 
 class TestPostprocessRecords:

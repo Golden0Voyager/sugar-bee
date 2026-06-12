@@ -7,10 +7,8 @@
                    310-312,322-332,355-356,359-360,363-365,387,432,441-442,
                    460-461,479,481-483,497-498,510-511,538-539,552-553,572-573,589,598-599
 """
-import json
 import io
-import pytest
-from unittest.mock import patch, MagicMock, ANY
+from unittest.mock import patch, MagicMock
 
 
 # ============================================================
@@ -471,10 +469,7 @@ class TestRecordsAddExceptionJson:
   - L316-317: CGM 时间解析异常 -> continue
   - L341-344: CGM + predicted 有 verified_by_real_id -> verified
 """
-import json
-from unittest.mock import patch, MagicMock
 
-import pytest
 
 
 class TestPredictionStatusDeep:

@@ -1,5 +1,4 @@
 """user_manager.py 扩展测试 — get_user_config, provider 绑定, 密码管理, update_user_profile_partial"""
-import pytest
 from unittest.mock import patch, MagicMock
 
 
