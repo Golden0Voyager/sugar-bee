@@ -530,7 +530,12 @@ class TestReportBuildPdfEdgeCases:
         mock_doc_instance = MagicMock()
         mock_doc_instance.width = 500
         mock_doc.return_value = mock_doc_instance
-        result = build_pdf('/tmp/test.pdf')
+        # 重置字体状态：test_first_font_registered 的 importlib.reload 污染了 CN_FONT
+        with patch('generate_report.os.path.exists', return_value=False):
+            import importlib
+            import generate_report as gr
+            importlib.reload(gr)
+            result = build_pdf('/tmp/test.pdf')
         assert result == '/tmp/test.pdf'
         # Setup was called internally
         mock_doc_instance.build.assert_called_once()
