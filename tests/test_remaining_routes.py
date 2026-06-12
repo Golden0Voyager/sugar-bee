@@ -506,7 +506,7 @@ class TestReportFontRegistration:
             importlib.reload(gr)
             assert gr.CN_FONT == 'Helvetica'
 
-    @patch('generate_report.TTFont')
+    @patch('reportlab.pdfbase.ttfonts.TTFont')
     @patch('reportlab.pdfbase.pdfmetrics.registerFont')
     @patch('generate_report.os.path.exists')
     def test_first_font_registered(self, mock_exists, mock_register, mock_ttfont):
