@@ -1,6 +1,5 @@
 import datetime
 import json
-import os
 
 CONFIG_FILE = "user_config.json"
 
