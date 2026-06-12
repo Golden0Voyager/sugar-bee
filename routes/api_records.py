@@ -67,7 +67,7 @@ def get_user_stats(db, user_id=1):
         # 1. Avg Fasting (Last 30 days)
         c.execute("""
             SELECT AVG(value) FROM records
-            WHERE user_id = ?
+            WHERE user_id = %s
             AND type LIKE '%空腹%'
             AND type NOT LIKE '%血压%'
             AND systolic_pressure IS NULL
@@ -80,7 +80,7 @@ def get_user_stats(db, user_id=1):
         # 2. Avg Post-meal (Last 30 days)
         c.execute("""
             SELECT AVG(value) FROM records
-            WHERE user_id = ?
+            WHERE user_id = %s
             AND type LIKE '%餐后%'
             AND type NOT LIKE '%血压%'
             AND systolic_pressure IS NULL
@@ -92,7 +92,7 @@ def get_user_stats(db, user_id=1):
 
         # 3. Last record
         c.execute("""SELECT value, type FROM records
-            WHERE user_id = ? AND is_predicted = 0
+            WHERE user_id = %s AND is_predicted = 0
             AND value > 0 AND systolic_pressure IS NULL
             AND type NOT LIKE '%血压%'
             AND type NOT IN ('跑步', '运动', '体重记录')
@@ -218,8 +218,8 @@ def add_record():
             if systolic_pressure and diastolic_pressure:
                 # 血压：同用户、同数值、3 分钟内
                 c.execute("""SELECT id, timestamp, systolic_pressure, diastolic_pressure, pulse_rate
-                    FROM records WHERE user_id = ? AND systolic_pressure = ? AND diastolic_pressure = ?
-                    AND timestamp BETWEEN datetime(?, '-3 minutes') AND datetime(?, '+3 minutes')
+                    FROM records WHERE user_id = %s AND systolic_pressure = %s AND diastolic_pressure = %s
+                    AND timestamp BETWEEN datetime(%s, '-3 minutes') AND datetime(%s, '+3 minutes')
                     LIMIT 1""",
                     (current_user_id, systolic_pressure, diastolic_pressure, timestamp, timestamp))
                 dup = c.fetchone()
@@ -231,8 +231,8 @@ def add_record():
             elif weight:
                 # 体重：同用户、同数值、3 分钟内
                 c.execute("""SELECT id, timestamp, weight
-                    FROM records WHERE user_id = ? AND weight = ?
-                    AND timestamp BETWEEN datetime(?, '-3 minutes') AND datetime(?, '+3 minutes')
+                    FROM records WHERE user_id = %s AND weight = %s
+                    AND timestamp BETWEEN datetime(%s, '-3 minutes') AND datetime(%s, '+3 minutes')
                     LIMIT 1""",
                     (current_user_id, weight, timestamp, timestamp))
                 dup = c.fetchone()
@@ -244,7 +244,7 @@ def add_record():
             elif value and float(value) > 0 and not is_predicted:
                 # 血糖：同用户、同类型、同一天
                 c.execute("""SELECT id, timestamp, value
-                    FROM records WHERE user_id = ? AND type = ? AND date(timestamp) = date(?)
+                    FROM records WHERE user_id = %s AND type = %s AND date(timestamp) = date(%s)
                     AND is_predicted = 0 AND value > 0 AND systolic_pressure IS NULL AND weight IS NULL
                     LIMIT 1""",
                     (current_user_id, r_type, timestamp))
@@ -268,13 +268,14 @@ def add_record():
                       distance, duration, heart_rate, systolic_pressure, diastolic_pressure, pulse_rate,
                       carbs_grams, gi_value, weight, bmi, spo2, vo2max, max_heart_rate, steps,
                       pace, max_pace, cadence)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                     RETURNING id""",
                   (current_user_id, value, unit, r_type, notes, timestamp, calories, diet_analysis, is_predicted,
                    distance, duration, heart_rate, systolic_pressure, diastolic_pressure, pulse_rate,
                    carbs_grams, gi_value, weight, bmi, spo2, vo2max, max_heart_rate, steps,
                    pace, max_pace, cadence))
 
-        real_record_id = c.lastrowid
+        real_record_id = c.fetchone()['id']
         try:
             numeric_value = float(value) if value else 0
             if not is_predicted and numeric_value > 0 and r_type:
@@ -343,8 +344,8 @@ def parse_ai():
                     timestamp = record.get('datetime')
                     c.execute("""
                         SELECT value, notes FROM records
-                        WHERE user_id = ?
-                        AND strftime('%Y-%m-%d %H:%M', timestamp) = strftime('%Y-%m-%d %H:%M', ?)
+                        WHERE user_id = %s
+                        AND strftime('%Y-%m-%d %H:%M', timestamp) = strftime('%Y-%m-%d %H:%M', %s)
                         AND is_predicted = 1
                         AND value > 0
                         AND systolic_pressure IS NULL
@@ -396,23 +397,23 @@ def batch_add():
             if r.get('systolic_pressure') and r.get('diastolic_pressure'):
                 # 血压：同用户、同数值、3 分钟内
                 c.execute("""SELECT id, systolic_pressure, diastolic_pressure, timestamp FROM records
-                    WHERE user_id = ? AND systolic_pressure = ? AND diastolic_pressure = ?
-                    AND timestamp BETWEEN datetime(?, '-3 minutes') AND datetime(?, '+3 minutes')
+                    WHERE user_id = %s AND systolic_pressure = %s AND diastolic_pressure = %s
+                    AND timestamp BETWEEN datetime(%s, '-3 minutes') AND datetime(%s, '+3 minutes')
                     LIMIT 1""",
                     (record_uid, r['systolic_pressure'], r['diastolic_pressure'], timestamp, timestamp))
                 existing = c.fetchone()
             elif r.get('weight') and r['weight'] > 0:
                 # 体重：同用户、同数值、3 分钟内
                 c.execute("""SELECT id, weight, timestamp FROM records
-                    WHERE user_id = ? AND weight = ?
-                    AND timestamp BETWEEN datetime(?, '-3 minutes') AND datetime(?, '+3 minutes')
+                    WHERE user_id = %s AND weight = %s
+                    AND timestamp BETWEEN datetime(%s, '-3 minutes') AND datetime(%s, '+3 minutes')
                     LIMIT 1""",
                     (record_uid, r['weight'], timestamp, timestamp))
                 existing = c.fetchone()
             elif r.get('value', 0) > 0:
                 # 血糖：同用户、同类型、同一天
                 c.execute("""SELECT id, value, type, timestamp, notes FROM records
-                    WHERE user_id = ? AND type = ? AND date(timestamp) = date(?)
+                    WHERE user_id = %s AND type = %s AND date(timestamp) = date(%s)
                     AND is_predicted = 0 AND value > 0 AND systolic_pressure IS NULL AND weight IS NULL
                     LIMIT 1""",
                     (record_uid, r['type'], timestamp))
@@ -443,9 +444,9 @@ def batch_add():
 
             if timestamp:
                 if is_pred:
-                    c.execute("DELETE FROM records WHERE user_id = ? AND strftime('%Y-%m-%d %H:%M', timestamp) = strftime('%Y-%m-%d %H:%M', ?) AND type = ? AND is_predicted = 1", (record_uid, timestamp, r_type))
+                    c.execute("DELETE FROM records WHERE user_id = %s AND strftime('%Y-%m-%d %H:%M', timestamp) = strftime('%Y-%m-%d %H:%M', %s) AND type = %s AND is_predicted = 1", (record_uid, timestamp, r_type))
                 elif conflict_resolution == 'overwrite':
-                    c.execute("DELETE FROM records WHERE user_id = ? AND strftime('%Y-%m-%d %H:%M', timestamp) = strftime('%Y-%m-%d %H:%M', ?) AND is_predicted = 0", (record_uid, timestamp))
+                    c.execute("DELETE FROM records WHERE user_id = %s AND strftime('%Y-%m-%d %H:%M', timestamp) = strftime('%Y-%m-%d %H:%M', %s) AND is_predicted = 0", (record_uid, timestamp))
                 elif conflict_resolution == 'skip':
                     continue
 
@@ -464,14 +465,15 @@ def batch_add():
                                             distance, duration, heart_rate, max_heart_rate, systolic_pressure, diastolic_pressure,
                                             pulse_rate, weight, bmi, medication_name, steps, pace, max_pace, cadence, vo2max,
                                             spo2, carbs_grams, gi_value)
-                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                      (record_uid, r['value'], r.get('unit', 'mmol/L'), r_type, r.get('notes', ''), timestamp,
-                       r.get('calories', 0), r.get('diet_analysis', ''), is_pred, r.get('distance'), r.get('duration'),
-                       r.get('heart_rate'), r.get('max_heart_rate'), systolic, diastolic,
-                       r.get('pulse_rate'), weight, bmi, r.get('medication_name'), r.get('steps'),
-                       r.get('pace'), r.get('max_pace'), r.get('cadence'), r.get('vo2max'),
-                       r.get('spo2'), r.get('carbs_grams'), r.get('gi_value')))
-            inserted_records.append({'id': c.lastrowid, 'is_pred': is_pred, 'value': r['value'], 'datetime': timestamp, 'type': r_type})
+                          VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                          RETURNING id""",
+                       (record_uid, r['value'], r.get('unit', 'mmol/L'), r_type, r.get('notes', ''), timestamp,
+                        r.get('calories', 0), r.get('diet_analysis', ''), is_pred, r.get('distance'), r.get('duration'),
+                        r.get('heart_rate'), r.get('max_heart_rate'), systolic, diastolic,
+                        r.get('pulse_rate'), weight, bmi, r.get('medication_name'), r.get('steps'),
+                        r.get('pace'), r.get('max_pace'), r.get('cadence'), r.get('vo2max'),
+                        r.get('spo2'), r.get('carbs_grams'), r.get('gi_value')))
+            inserted_records.append({'id': c.fetchone()['id'], 'is_pred': is_pred, 'value': r['value'], 'datetime': timestamp, 'type': r_type})
 
         db.commit()
         response_data = {"inserted": len(inserted_records)}
@@ -489,7 +491,7 @@ def delete(id):
         db = get_db()
         c = db.cursor()
         current_user_id = user_manager.get_current_user_id()
-        c.execute("DELETE FROM records WHERE id = ? AND user_id = ?", (id, current_user_id))
+        c.execute("DELETE FROM records WHERE id = %s AND user_id = %s", (id, current_user_id))
         db.commit()
         if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
             return api_success(message="Record deleted")
@@ -504,7 +506,7 @@ def get_record(id):
         db = get_db()
         c = db.cursor()
         current_user_id = user_manager.get_current_user_id()
-        c.execute("SELECT * FROM records WHERE id = ? AND user_id = ?", (id, current_user_id))
+        c.execute("SELECT * FROM records WHERE id = %s AND user_id = %s", (id, current_user_id))
         row = c.fetchone()
         return jsonify(dict(row)) if row else (jsonify({"error": "Not found"}), 404)
     except Exception as e:
@@ -519,11 +521,11 @@ def update_record(id):
         current_user_id = user_manager.get_current_user_id()
         c = db.cursor()
         c.execute("""UPDATE records SET
-                     value=?, unit=?, type=?, notes=?, timestamp=?, calories=?, diet_analysis=?,
-                     distance=?, duration=?, heart_rate=?, systolic_pressure=?, diastolic_pressure=?,
-                     pulse_rate=?, carbs_grams=?, gi_value=?, weight=?, bmi=?, spo2=?,
-                     vo2max=?, max_heart_rate=?, steps=?, pace=?, max_pace=?, cadence=?
-                     WHERE id=? AND user_id=?""",
+                     value=%s, unit=%s, type=%s, notes=%s, timestamp=%s, calories=%s, diet_analysis=%s,
+                     distance=%s, duration=%s, heart_rate=%s, systolic_pressure=%s, diastolic_pressure=%s,
+                     pulse_rate=%s, carbs_grams=%s, gi_value=%s, weight=%s, bmi=%s, spo2=%s,
+                     vo2max=%s, max_heart_rate=%s, steps=%s, pace=%s, max_pace=%s, cadence=%s
+                     WHERE id=%s AND user_id=%s""",
                   (data.get('value'), data.get('unit'), data.get('type'), data.get('notes'), data.get('timestamp'),
                    data.get('calories'), data.get('diet_analysis'),
                    data.get('distance'), data.get('duration'), data.get('heart_rate'),
@@ -544,7 +546,7 @@ def export():
     try:
         db = get_db()
         current_user_id = user_manager.get_current_user_id()
-        df = pd.read_sql_query("SELECT * FROM records WHERE user_id = ? ORDER BY timestamp DESC", db, params=(current_user_id,))
+        df = pd.read_sql_query("SELECT * FROM records WHERE user_id = %s ORDER BY timestamp DESC", db, params=(current_user_id,))
         buffer = io.BytesIO()
         df.to_csv(buffer, index=False, encoding='utf-8-sig')
         buffer.seek(0)
@@ -565,7 +567,7 @@ def import_csv():
         current_user_id = user_manager.get_current_user_id()
         # Simplified import logic for brevity, keeping core functionality
         for _, row in df.iterrows():
-            c.execute("INSERT INTO records (user_id, value, type, timestamp) VALUES (?, ?, ?, ?)",
+            c.execute("INSERT INTO records (user_id, value, type, timestamp) VALUES (%s, %s, %s, %s)",
                      (current_user_id, row.get('value'), row.get('type'), row.get('timestamp')))
         db.commit()
         return api_success(message="Imported")

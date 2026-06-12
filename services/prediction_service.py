@@ -57,15 +57,15 @@ def link_prediction_to_real_record(db, real_record_id, user_id, record_date, rec
         if record_timestamp:
             c.execute(f"""
                 SELECT id, value, timestamp FROM records
-                WHERE user_id = ? AND DATE(timestamp) = ? AND ({type_condition})
+                WHERE user_id = %s AND DATE(timestamp) = %s AND ({type_condition})
                 AND is_predicted = 1 AND verified_by_real_id IS NULL AND value > 0 AND systolic_pressure IS NULL
-                ORDER BY ABS(strftime('%s', timestamp) - strftime('%s', ?))
+                ORDER BY ABS(strftime('%s', timestamp) - strftime('%s', %s))
                 LIMIT 1
             """, (user_id, record_date, record_timestamp))
         else:
             c.execute(f"""
                 SELECT id, value FROM records
-                WHERE user_id = ? AND DATE(timestamp) = ? AND ({type_condition})
+                WHERE user_id = %s AND DATE(timestamp) = %s AND ({type_condition})
                 AND is_predicted = 1 AND verified_by_real_id IS NULL AND value > 0 AND systolic_pressure IS NULL
                 ORDER BY timestamp ASC
                 LIMIT 1
@@ -77,8 +77,8 @@ def link_prediction_to_real_record(db, real_record_id, user_id, record_date, rec
             pred_value = prediction[1]
             error = real_value - pred_value
             c.execute("""
-                UPDATE records SET verified_by_real_id = ?, prediction_error = ?
-                WHERE id = ?
+                UPDATE records SET verified_by_real_id = %s, prediction_error = %s
+                WHERE id = %s
             """, (real_record_id, error, pred_id))
             return {'predicted_value': pred_value, 'error': error}
         return None
@@ -102,7 +102,7 @@ def predict_morning_fpg(db, user_id=1):
         # 1. 检查今天是否已有预测
         c.execute("""
             SELECT id FROM records
-            WHERE user_id = ? AND DATE(timestamp) = ?
+            WHERE user_id = %s AND DATE(timestamp) = %s
             AND (type IN ('空腹', '早空腹') OR (type LIKE '%空腹%' AND type NOT LIKE '%血压%'))
             AND is_predicted = 1 AND value > 0
         """, (user_id, today_str,))
@@ -114,14 +114,14 @@ def predict_morning_fpg(db, user_id=1):
 
         # 2. 昨日血糖数据
         c.execute("""SELECT value, type, timestamp FROM records
-            WHERE user_id = ? AND DATE(timestamp) = ? AND value > 0
+            WHERE user_id = %s AND DATE(timestamp) = %s AND value > 0
             AND is_predicted = 0 AND systolic_pressure IS NULL
             ORDER BY timestamp ASC""", (user_id, yesterday_str,))
         yesterday_glucose = c.fetchall()
 
         # 3. 昨日饮食热量
         c.execute("""SELECT type, calories, timestamp, carbs_grams, gi_value FROM records
-            WHERE user_id = ? AND DATE(timestamp) = ? AND calories > 0""", (user_id, yesterday_str,))
+            WHERE user_id = %s AND DATE(timestamp) = %s AND calories > 0""", (user_id, yesterday_str,))
         yesterday_calories = c.fetchall()
 
         cal_in = sum(row[1] for row in yesterday_calories if row[0] not in ['跑步', '运动', '走路', '骑行', '游泳', '健身'])
@@ -170,9 +170,9 @@ def predict_morning_fpg(db, user_id=1):
 
         # 4. 近7天空腹血糖趋势（排除血压）
         c.execute("""SELECT value, timestamp FROM records
-            WHERE user_id = ? AND (type IN ('空腹', '早空腹') OR (type LIKE '%空腹%' AND type NOT LIKE '%血压%'))
+            WHERE user_id = %s AND (type IN ('空腹', '早空腹') OR (type LIKE '%空腹%' AND type NOT LIKE '%血压%'))
             AND value > 0 AND is_predicted = 0 AND systolic_pressure IS NULL
-            AND timestamp > datetime('now', '-7 days')
+            AND timestamp > NOW() - INTERVAL '7 days'
             ORDER BY timestamp DESC""", (user_id,))
         recent_fpg = c.fetchall()
 
@@ -180,15 +180,15 @@ def predict_morning_fpg(db, user_id=1):
         c.execute("""
             SELECT p.value AS predicted, r.value AS actual, p.prediction_error, r.timestamp AS actual_time
             FROM records p JOIN records r ON p.verified_by_real_id = r.id
-            WHERE p.user_id = ? AND p.is_predicted = 1 AND p.prediction_error IS NOT NULL
+            WHERE p.user_id = %s AND p.is_predicted = 1 AND p.prediction_error IS NOT NULL
             AND p.type LIKE '%空腹%' AND p.type NOT LIKE '%血压%'
-            AND r.timestamp > datetime('now', '-14 days')
+            AND r.timestamp > NOW() - INTERVAL '14 days'
             ORDER BY r.timestamp DESC""", (user_id,))
         prediction_history = c.fetchall()
 
         # 6. 当前用药
         c.execute("""SELECT medication_name, dosage, dose_quantity, dose_unit, times_per_day, timing_notes
-            FROM medication_plans WHERE user_id = ? AND is_active = 1""", (user_id,))
+            FROM medication_plans WHERE user_id = %s AND is_active = 1""", (user_id,))
         medications = c.fetchall()
 
         # === 构建详细 prompt ===
@@ -282,7 +282,7 @@ def predict_morning_fpg(db, user_id=1):
 {{"predicted_value": float, "reasoning": "string (1-2句话)"}}"""
 
         raw_text = call_ai(prompt)
-        match = re.search(r'\{[\s\S]*?\}', raw_text)
+        match = re.search(r'\{[\s\S]*%s\}', raw_text)
         if not match:
             return
 
@@ -291,8 +291,8 @@ def predict_morning_fpg(db, user_id=1):
         if not settings.is_valid_prediction(pred_v, 'fasting'):
             return
 
-        c.execute("DELETE FROM records WHERE user_id = ? AND DATE(timestamp) = ? AND (type IN ('空腹', '早空腹') OR (type LIKE '%空腹%' AND type NOT LIKE '%血压%')) AND is_predicted = 1", (user_id, today_str))
-        c.execute("INSERT INTO records (user_id, value, unit, type, notes, timestamp, calories, diet_analysis, is_predicted) VALUES (?, ?, 'mmol/L', '空腹', ?, ?, 0, '', 1)",
+        c.execute("DELETE FROM records WHERE user_id = %s AND DATE(timestamp) = %s AND (type IN ('空腹', '早空腹') OR (type LIKE '%空腹%' AND type NOT LIKE '%血压%')) AND is_predicted = 1", (user_id, today_str))
+        c.execute("INSERT INTO records (user_id, value, unit, type, notes, timestamp, calories, diet_analysis, is_predicted) VALUES (%s, %s, 'mmol/L', '空腹', %s, %s, 0, '', 1)",
                   (user_id, pred_v, f"AI预测: {result.get('reasoning')}", f"{today_str} 07:15:00"))
         db.commit()
         print(f"✓ FPG 预测: {pred_v} mmol/L ({today_str})")
@@ -309,17 +309,17 @@ def predict_post_exercise_glucose(db, user_id=1, target_date=None, force_update=
         target_date = datetime.datetime.now().strftime('%Y-%m-%d')
     try:
         c = db.cursor()
-        c.execute("SELECT id, is_predicted FROM records WHERE user_id = ? AND DATE(timestamp) = ? AND type = '运动后' AND value > 0", (user_id, target_date))
+        c.execute("SELECT id, is_predicted FROM records WHERE user_id = %s AND DATE(timestamp) = %s AND type = '运动后' AND value > 0", (user_id, target_date))
         existing = c.fetchone()
         if existing and (not existing[1] or not force_update):
             return None
 
-        c.execute("SELECT value FROM records WHERE user_id = ? AND DATE(timestamp) = ? AND (type IN ('空腹', '早空腹') OR (type LIKE '%空腹%' AND type NOT LIKE '%血压%')) AND is_predicted = 0 AND value > 0 AND systolic_pressure IS NULL LIMIT 1", (user_id, target_date))
+        c.execute("SELECT value FROM records WHERE user_id = %s AND DATE(timestamp) = %s AND (type IN ('空腹', '早空腹') OR (type LIKE '%空腹%' AND type NOT LIKE '%血压%')) AND is_predicted = 0 AND value > 0 AND systolic_pressure IS NULL LIMIT 1", (user_id, target_date))
         fpg = c.fetchone()
         if not fpg:
             return None
 
-        c.execute("SELECT distance, duration, heart_rate, calories, timestamp FROM records WHERE user_id = ? AND DATE(timestamp) = ? AND (type IN ('跑步', '运动') OR distance > 0) ORDER BY timestamp DESC LIMIT 1", (user_id, target_date))
+        c.execute("SELECT distance, duration, heart_rate, calories, timestamp FROM records WHERE user_id = %s AND DATE(timestamp) = %s AND (type IN ('跑步', '运动') OR distance > 0) ORDER BY timestamp DESC LIMIT 1", (user_id, target_date))
         ex = c.fetchone()
         if not ex:
             return None
@@ -329,15 +329,15 @@ def predict_post_exercise_glucose(db, user_id=1, target_date=None, force_update=
 返回JSON：{{"predicted_value": float, "reasoning": "string"}}"""
 
         raw_text = call_ai(prompt)
-        match = re.search(r'\{[\s\S]*?\}', raw_text)
+        match = re.search(r'\{[\s\S]*%s\}', raw_text)
         if match:
             result = json.loads(match.group(0))
             pred_v = result.get('predicted_value')
             if settings.is_valid_prediction(pred_v, 'post_exercise'):
                 if existing:
-                    c.execute("UPDATE records SET value = ?, notes = ? WHERE id = ?", (pred_v, f"AI预测: {result.get('reasoning')}", existing[0]))
+                    c.execute("UPDATE records SET value = %s, notes = %s WHERE id = %s", (pred_v, f"AI预测: {result.get('reasoning')}", existing[0]))
                 else:
-                    c.execute("INSERT INTO records (user_id, value, unit, type, notes, timestamp, is_predicted) VALUES (?, ?, 'mmol/L', '运动后', ?, ?, 1)", (user_id, pred_v, f"AI预测: {result.get('reasoning')}", f"{target_date} 08:45:00"))
+                    c.execute("INSERT INTO records (user_id, value, unit, type, notes, timestamp, is_predicted) VALUES (%s, %s, 'mmol/L', '运动后', %s, %s, 1)", (user_id, pred_v, f"AI预测: {result.get('reasoning')}", f"{target_date} 08:45:00"))
                 db.commit()
                 return pred_v
     except Exception as e:
@@ -378,7 +378,7 @@ def predict_remaining_glucose_slots(db, user_id=1, target_date=None, force_updat
         c = db.cursor()
         # 查找今日已有实测数据
         c.execute("""SELECT value, type, timestamp FROM records
-            WHERE user_id = ? AND DATE(timestamp) = ? AND value > 0
+            WHERE user_id = %s AND DATE(timestamp) = %s AND value > 0
             AND is_predicted = 0 AND systolic_pressure IS NULL
             ORDER BY timestamp ASC""", (user_id, target_date))
         measured = c.fetchall()
@@ -396,7 +396,7 @@ def predict_remaining_glucose_slots(db, user_id=1, target_date=None, force_updat
 
         # 找出缺失的槽位（只看实测记录，已有预测的可以覆盖）
         c.execute("""SELECT type FROM records
-            WHERE user_id = ? AND DATE(timestamp) = ? AND value > 0
+            WHERE user_id = %s AND DATE(timestamp) = %s AND value > 0
             AND is_predicted = 0 AND systolic_pressure IS NULL""",
             (user_id, target_date))
         measured_types = set(row[0] for row in c.fetchall())
@@ -422,7 +422,7 @@ def predict_remaining_glucose_slots(db, user_id=1, target_date=None, force_updat
 [{{"type": "时间点类型", "value": float, "reasoning": "string"}}]"""
 
         raw_text = call_ai(prompt)
-        match = re.search(r'\[[\s\S]*?\]', raw_text)
+        match = re.search(r'\[[\s\S]*%s\]', raw_text)
         if not match:
             return []
 
@@ -444,14 +444,14 @@ def predict_remaining_glucose_slots(db, user_id=1, target_date=None, force_updat
                 continue
 
             if not force_update:
-                c.execute("SELECT id FROM records WHERE user_id = ? AND DATE(timestamp) = ? AND type = ? AND is_predicted = 1",
+                c.execute("SELECT id FROM records WHERE user_id = %s AND DATE(timestamp) = %s AND type = %s AND is_predicted = 1",
                           (user_id, target_date, pred_type))
                 if c.fetchone():
                     continue
 
-            c.execute("DELETE FROM records WHERE user_id = ? AND DATE(timestamp) = ? AND type = ? AND is_predicted = 1",
+            c.execute("DELETE FROM records WHERE user_id = %s AND DATE(timestamp) = %s AND type = %s AND is_predicted = 1",
                       (user_id, target_date, pred_type))
-            c.execute("INSERT INTO records (user_id, value, unit, type, notes, timestamp, is_predicted) VALUES (?, ?, 'mmol/L', ?, ?, ?, 1)",
+            c.execute("INSERT INTO records (user_id, value, unit, type, notes, timestamp, is_predicted) VALUES (%s, %s, 'mmol/L', %s, %s, %s, 1)",
                       (user_id, pred_value, pred_type, f"AI预测: {pred.get('reasoning', '')}", f"{target_date} {slot_time}"))
             results.append(pred)
 
@@ -468,11 +468,11 @@ def check_daily_data_complete(db, user_id=1, target_date=None):
         target_date = datetime.datetime.now().strftime('%Y-%m-%d')
     try:
         c = db.cursor()
-        c.execute("SELECT COUNT(*) FROM records WHERE user_id = ? AND DATE(timestamp) = ? AND value > 0 AND type NOT IN ('跑步', '运动') AND type NOT LIKE '%血压%' AND systolic_pressure IS NULL", (user_id, target_date))
+        c.execute("SELECT COUNT(*) FROM records WHERE user_id = %s AND DATE(timestamp) = %s AND value > 0 AND type NOT IN ('跑步', '运动') AND type NOT LIKE '%血压%' AND systolic_pressure IS NULL", (user_id, target_date))
         has_g = c.fetchone()[0] > 0
-        c.execute("SELECT COUNT(*) FROM records WHERE user_id = ? AND DATE(timestamp) = ? AND systolic_pressure > 0", (user_id, target_date))
+        c.execute("SELECT COUNT(*) FROM records WHERE user_id = %s AND DATE(timestamp) = %s AND systolic_pressure > 0", (user_id, target_date))
         has_bp = c.fetchone()[0] > 0
-        c.execute("SELECT COUNT(*) FROM records WHERE user_id = ? AND DATE(timestamp) = ? AND (type IN ('跑步', '运动') OR distance > 0)", (user_id, target_date))
+        c.execute("SELECT COUNT(*) FROM records WHERE user_id = %s AND DATE(timestamp) = %s AND (type IN ('跑步', '运动') OR distance > 0)", (user_id, target_date))
         has_ex = c.fetchone()[0] > 0
         return {'complete': has_g and has_bp and has_ex, 'has_glucose': has_g, 'has_blood_pressure': has_bp, 'has_exercise': has_ex}
     except Exception:
