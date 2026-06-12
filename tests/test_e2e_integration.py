@@ -8,7 +8,6 @@
 每个测试前将 core.config.DB_NAME 指向独立临时 SQLite 文件。
 """
 import io
-import os
 import datetime
 import pytest
 from unittest.mock import patch

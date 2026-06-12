@@ -8,12 +8,10 @@
 """
 import datetime
 import os
-import shutil
 import tempfile
 import threading
-from unittest.mock import patch, MagicMock, PropertyMock, DEFAULT
+from unittest.mock import patch, MagicMock, DEFAULT
 
-import pytest
 
 
 # ============================================================
@@ -111,8 +109,7 @@ class TestAutoBackup:
     """auto_backup 函数"""
 
     def test_backup_creates_file(self, monkeypatch):
-        from app import auto_backup, AUTO_BACKUP_DIR
-        import time
+        from app import auto_backup
         with tempfile.TemporaryDirectory() as tmp:
             db_path = os.path.join(tmp, 'test.db')
             with open(db_path, 'w') as f:
@@ -122,7 +119,6 @@ class TestAutoBackup:
             # Prevent timer from starting
             monkeypatch.setattr('app._auto_backup_timer', MagicMock())
             backup_started = [False]
-            original_timer = threading.Timer
 
             def fake_timer(*args, **kwargs):
                 backup_started[0] = True
@@ -140,7 +136,6 @@ class TestAutoBackup:
         monkeypatch.setattr('app.DB_NAME', '/nonexistent/db.db')
         monkeypatch.setattr('app._auto_backup_timer', MagicMock())
         backup_called = [False]
-        original_timer = threading.Timer
         def fake_timer(*args, **kwargs):
             backup_called[0] = True
             return MagicMock()
@@ -211,7 +206,7 @@ class TestAutoGarminSync:
 
     def test_sync_no_token_file(self, monkeypatch):
         from app import auto_garmin_sync
-        with tempfile.TemporaryDirectory() as tmp:
+        with tempfile.TemporaryDirectory():
             monkeypatch.setattr('os.environ', {
                 'GARMIN_USER_ID': '1',
                 'GARMIN_EMAIL': 'test@test.com',
@@ -341,13 +336,10 @@ app.py 未覆盖分支补全测试
   - L172-173: 备份外层异常 → except 打印（外层）
   - L208-209: Garmin 自动同步异常
 """
-import os
 import sys
 import subprocess
 import importlib
-from unittest.mock import patch, MagicMock
 
-import pytest
 
 
 # ============================================================
@@ -655,14 +647,12 @@ class TestConfigEnvOverride:
 
     def test_db_name_from_env(self, monkeypatch):
         monkeypatch.setenv('SUGAR_BEE_DB_PATH', '/tmp/test_custom.db')
-        import importlib
         import core.config
         importlib.reload(core.config)
         assert core.config.DB_NAME == '/tmp/test_custom.db'
 
     def test_db_name_default(self, monkeypatch):
         monkeypatch.delenv('SUGAR_BEE_DB_PATH', raising=False)
-        import importlib
         import core.config
         importlib.reload(core.config)
         assert core.config.DB_NAME.endswith('glucose.db')

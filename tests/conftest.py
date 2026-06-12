@@ -4,7 +4,6 @@ Pytest 配置和共享 fixtures
 import os
 import tempfile
 import pytest
-import sqlite3
 
 # 强制测试环境配置
 os.environ.setdefault('SECRET_KEY', 'test-secret-key-not-for-production')

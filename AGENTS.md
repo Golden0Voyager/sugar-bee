@@ -64,6 +64,35 @@ Migrations run in `init_db()` using `ALTER TABLE ... ADD COLUMN` + `try/except` 
 
 Modelscope (text) → Volc Engine (text) → Gemini direct API (text) → Gemini fallback → all-failed raise
 
+## Linting
+
+- **Tool**: ruff (in dev deps: `uv pip install ruff`)
+- **Global config**: `~/.config/ruff/ruff.toml` — all projects inherit this
+- **Project config**: `pyproject.toml` extends global, adds project-specific ignores
+
+```bash
+# Check code
+uv run ruff check .
+
+# Auto-fix
+uv run ruff check . --fix
+
+# Check specific file
+uv run ruff check app.py
+```
+
+**ruff config in `pyproject.toml`**:
+```toml
+[tool.ruff]
+extend = "~/.config/ruff/ruff.toml"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "C4", "SIM"]
+ignore = ["E501", "E402", "E702"]  # E402/E702 for test files
+```
+
+**Global rules**: `E` (errors), `F` (Pyflakes), `W` (warnings), `I` (imports), `N` (naming), `UP` (pyupgrade), `B` (bugbear)
+
 ## Testing
 
 - **Framework**: pytest 9.x, 30 test files, **1030 tests** + 2 skipped

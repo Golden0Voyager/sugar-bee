@@ -15,7 +15,6 @@ import json
 import sqlite3
 from unittest.mock import patch, MagicMock
 
-import pytest
 
 
 # ============================================================
@@ -188,7 +187,7 @@ class TestChatStream:
         with patch('routes.api_chat.call_chat_stream') as mock_stream, \
              patch('routes.api_chat.build_chat_context', return_value='test context'), \
              patch('routes.api_chat.get_db') as mock_get_db, \
-             patch('routes.api_chat.sqlite3.connect') as mock_sqlite, \
+             patch('routes.api_chat.sqlite3.connect'), \
              patch('routes.api_chat.CHAT_AVAILABLE', True):
             mock_stream.return_value = chunks
             mock_c = MagicMock()
@@ -1363,11 +1362,7 @@ class TestDashboardSlotMatchingDeep:
   - L57-58:  restore_database 无文件 → 400
   - L91-96:  restore_database 外层 except → 500
 """
-import os
-import json
-from unittest.mock import patch, MagicMock, PropertyMock
 
-import pytest
 
 
 class TestAdminBackupDeep:

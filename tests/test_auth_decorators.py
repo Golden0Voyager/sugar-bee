@@ -1,9 +1,8 @@
 """
 认证装饰器测试
 """
-import pytest
 from unittest.mock import patch, MagicMock
-from flask import Flask, g
+from flask import g
 import utils.auth
 
 
@@ -97,7 +96,7 @@ class TestLoginRequired:
 
     def test_token_auth_fallback_to_session(self, app):
         """无 token header 时 fallback 到 session 认证"""
-        fn = utils.auth.login_or_token_required(lambda: ("ok", 200))
+        utils.auth.login_or_token_required(lambda: ("ok", 200))
         with app.test_client() as c:
             resp = c.get('/health')
             assert resp.status_code == 200
@@ -105,7 +104,6 @@ class TestLoginRequired:
 认证相关测试
 """
 
-import sqlite3
 
 
 def test_login_with_invalid_credentials(client, app):

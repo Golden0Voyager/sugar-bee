@@ -23,7 +23,7 @@ bp_records = Blueprint('records', __name__)
 def _validate_record_data(r: dict) -> list[str]:
     """校验单条记录的数据范围，返回警告信息列表（空列表表示无警告）。"""
     warnings: list[str] = []
-    rtype = r.get('type', '')
+    r.get('type', '')
 
     # 血压校验
     systolic = r.get('systolic_pressure')

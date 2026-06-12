@@ -385,10 +385,10 @@ def _postprocess_records(records, original_text=None):
                 text_lower = original_text.lower()
                 if any(k in text_lower for k in ('空腹', '早', '晨')):
                     r['type'] = '空腹血压'
-                    print(f"[parser] 修正血压类型: '血压测量' → '空腹血压'")
+                    print("[parser] 修正血压类型: '血压测量' → '空腹血压'")
                 elif any(k in text_lower for k in ('餐后', '饭后', '午餐后', '晚餐后')):
                     r['type'] = '餐后血压'
-                    print(f"[parser] 修正血压类型: '血压测量' → '餐后血压'")
+                    print("[parser] 修正血压类型: '血压测量' → '餐后血压'")
 
     # 兜底：从原始文本中检测 AI 遗漏的体重数据
     if original_text:

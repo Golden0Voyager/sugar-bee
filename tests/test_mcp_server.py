@@ -12,7 +12,7 @@ import datetime
 import os
 import re
 import tempfile
-from unittest.mock import MagicMock, PropertyMock, patch, AsyncMock
+from unittest.mock import MagicMock, patch, AsyncMock
 
 import pytest
 
@@ -849,7 +849,7 @@ class TestBatchParseAndRecord:
 
     @pytest.mark.asyncio
     async def test_regex_fast_path(self, patch_db):
-        from mcp_server import batch_parse_and_record, _try_regex_parse
+        from mcp_server import batch_parse_and_record
         ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         # Patch EMOJI_USER_MAP in settings (imported inside _try_regex_parse)
         # and mock _api_post to avoid HTTP calls on the fallback path

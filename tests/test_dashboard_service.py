@@ -1,6 +1,5 @@
 """冲刺 dashboard_service 覆盖率 (56% → 85%): 用药频率判断 + CGM 匹配 + 边界"""
 import datetime
-import pytest
 from unittest.mock import patch, MagicMock
 
 from tests.helpers import (
@@ -464,7 +463,6 @@ class TestDashboardTodayLists:
 
 class TestDashboardHealthAnalysis:
     def _make_health_mock(self, score, recommendations=None, days=7):
-        import json
         health = MagicMock()
         health.keys.return_value = ['id', 'health_score', 'recommendations', 'days', 'created_at']
         data = {'id': 1, 'health_score': score, 'recommendations': recommendations,

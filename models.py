@@ -7,8 +7,8 @@ Sugar Bee - SQLAlchemy 模型定义
 """
 
 from sqlalchemy import (
-    Column, Integer, String, Text, DateTime, Date, Boolean, Float,
-    ForeignKey, Index, MetaData, create_engine
+    Column, Integer, Text, DateTime, Date, Boolean, Float,
+    ForeignKey, Index, MetaData
 )
 from sqlalchemy.orm import declarative_base
 from sqlalchemy.sql import func

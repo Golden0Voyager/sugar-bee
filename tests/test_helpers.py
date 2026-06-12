@@ -1,7 +1,6 @@
 """单元测试: tests/helpers.py — 11 个共享 mock 辅助函数"""
 import datetime
-import json
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 from tests.helpers import (
     mock_health_settings,

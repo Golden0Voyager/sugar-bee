@@ -1,5 +1,4 @@
 """generate_report.py 测试 — 覆盖 PDF 生成的纯逻辑部分"""
-import pytest
 from unittest.mock import patch, MagicMock
 
 
@@ -145,8 +144,7 @@ glucose_parser.py + generate_report.py 最后覆盖冲刺
   generate_report.py:37-38 — font registration bold subfont except
   generate_report.py:40-41 — font registration main font except
 """
-import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 
 # ============================================================

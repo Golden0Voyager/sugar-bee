@@ -1,5 +1,4 @@
 """扩展 routes 层覆盖率：api_records (64%→82%), api_dashboard (46%→68%), api_chat (74%→85%)"""
-import json
 import io
 import pytest
 from unittest.mock import patch, MagicMock
