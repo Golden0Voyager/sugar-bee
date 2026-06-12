@@ -231,7 +231,7 @@ def get_badge_for_rate(compliance_rate):
                 'key': badge_key,
                 **badge
             }
-    return BADGE_SYSTEM['encourage']
+
 
 
 # ========== Emoji 用户映射 ==========
