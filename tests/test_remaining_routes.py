@@ -526,16 +526,15 @@ class TestReportBuildPdfEdgeCases:
     @patch('generate_report.SimpleDocTemplate')
     def test_build_pdf_uses_correct_fonts(self, mock_doc):
         """build_pdf 使用正确的字体"""
-        from generate_report import CN_FONT, CN_FONT_BOLD, build_pdf
+        import generate_report as gr
+        # 重置字体状态：test_first_font_registered 的 importlib.reload 污染了 CN_FONT
+        gr.CN_FONT = 'Helvetica'
+        gr.CN_FONT_BOLD = 'Helvetica-Bold'
+        from generate_report import build_pdf
         mock_doc_instance = MagicMock()
         mock_doc_instance.width = 500
         mock_doc.return_value = mock_doc_instance
-        # 重置字体状态：test_first_font_registered 的 importlib.reload 污染了 CN_FONT
-        with patch('generate_report.os.path.exists', return_value=False):
-            import importlib
-            import generate_report as gr
-            importlib.reload(gr)
-            result = build_pdf('/tmp/test.pdf')
+        result = build_pdf('/tmp/test.pdf')
         assert result == '/tmp/test.pdf'
         # Setup was called internally
         mock_doc_instance.build.assert_called_once()
