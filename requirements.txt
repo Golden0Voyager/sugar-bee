@@ -33,7 +33,7 @@ pillow==12.1.1
 pip==26.1
 proto-plus==1.27.0
 protobuf==5.29.5
-pyasn1==0.6.1
+pyasn1==0.6.3
 pyasn1-modules==0.4.2
 pydantic==2.12.5
 pydantic-core==2.41.5
