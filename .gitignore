@@ -19,6 +19,13 @@ venv/
 *.db
 data/
 
+# Coverage 产物
+.coverage*
+*,cover
+
+# 数据库恢复备份
+*.db.before_*
+
 # 个人配置（含隐私数据）
 .env
 user_config.json
