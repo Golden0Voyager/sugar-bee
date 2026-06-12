@@ -506,11 +506,13 @@ class TestReportFontRegistration:
             importlib.reload(gr)
             assert gr.CN_FONT == 'Helvetica'
 
+    @patch('generate_report.TTFont')
     @patch('reportlab.pdfbase.pdfmetrics.registerFont')
     @patch('generate_report.os.path.exists')
-    def test_first_font_registered(self, mock_exists, mock_register):
+    def test_first_font_registered(self, mock_exists, mock_register, mock_ttfont):
         """第一个字体路径存在 → 注册并用于 CN_FONT"""
         mock_exists.side_effect = lambda p: p == "/System/Library/Fonts/STHeiti Medium.ttc"
+        mock_ttfont.return_value = MagicMock()  # 避免 TTFont 实际打开文件
         import importlib
         import generate_report as gr
         importlib.reload(gr)
