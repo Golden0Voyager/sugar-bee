@@ -1791,9 +1791,10 @@
             .btn-fab {
                 bottom: calc(1rem + env(safe-area-inset-bottom, 0)) !important;
             }
-            /* 图表容器不溢出 */
+            /* 图表容器不溢出，留足边距 */
             .card-body canvas {
                 max-width: 100%;
+                padding: 0 4px;
             }
 
             /* ---- Modal 底部弹出 (Bottom Sheet) ---- */
