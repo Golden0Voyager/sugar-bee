@@ -256,7 +256,7 @@
                          style="cursor: pointer;"
                          title="{% if slot.status == 'predicted' %}AI预测值，长按录入实测值{% elif slot.status == 'pending' %}长按录入血糖值{% else %}已测量，长按修改{% endif %}">
                         <!-- 图标 -->
-                        <div class="mb-1" style="font-size: 1.1rem;">
+                        <div class="mb-1 slot-icon">
                             {% if slot.key == 'fasting' %}
                             🌅
                             {% elif slot.key == 'post_exercise' %}
@@ -276,7 +276,7 @@
                             {% endif %}
                         </div>
                         <!-- 数值 -->
-                        <div class="fw-bold" style="font-size: 1rem;">
+                        <div class="fw-bold slot-value">
                             {% if slot.value %}
                                 <span class="{% if slot.status == 'predicted' %}text-info{% elif slot.compliance == 'optimal' %}text-success{% elif slot.compliance == 'high' or slot.compliance == 'low' %}text-danger{% else %}text-warning{% endif %}">
                                     {{ "%.1f"|format(slot.value) }}
@@ -293,9 +293,9 @@
                             {% endif %}
                         </div>
                         <!-- 名称 -->
-                        <div class="text-muted" style="font-size: 0.8rem;">{{ slot.name }}</div>
+                        <div class="text-muted slot-name">{{ slot.name }}</div>
                         <!-- 时间 -->
-                        <div class="text-muted" style="font-size: 0.75rem;">{{ slot.time }}</div>
+                        <div class="text-muted slot-time">{{ slot.time }}</div>
                     </div>
                     {% endfor %}
                 </div>
@@ -2514,10 +2514,10 @@
                 valueHtml = `<span class="${cls}">${s.value.toFixed(1)}</span>${badge}`;
             }
             return `<div class="text-center glucose-slot slot-${s.status}" data-slot-key="${s.key}" style="cursor:pointer;">
-                <div class="mb-1" style="font-size:1.1rem;">${s.icon}</div>
-                <div class="fw-bold" style="font-size:0.9rem;">${valueHtml}</div>
-                <div class="text-muted" style="font-size:0.7rem;">${s.name}</div>
-                <div class="text-muted" style="font-size:0.65rem;">${s.time}</div>
+                <div class="mb-1 slot-icon">${s.icon}</div>
+                <div class="fw-bold slot-value">${valueHtml}</div>
+                <div class="text-muted slot-name">${s.name}</div>
+                <div class="text-muted slot-time">${s.time}</div>
             </div>`;
         }).join('');
 
