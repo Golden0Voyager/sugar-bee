@@ -1807,7 +1807,7 @@
             }
             .modal-content {
                 border-radius: 20px 20px 0 0;
-                max-height: 85vh;
+                max-height: 90vh;
                 display: flex;
                 flex-direction: column;
             }
@@ -1821,10 +1821,42 @@
                 margin: 8px auto 0;
                 flex-shrink: 0;
             }
+            .modal-header {
+                padding: 16px 20px;
+            }
+            .modal-title {
+                font-size: 1.3rem;
+                font-weight: 600;
+            }
             .modal-body {
                 overflow-y: auto;
                 overscroll-behavior: contain;
                 -webkit-overflow-scrolling: touch;
+                padding: 16px 20px;
+            }
+            .modal-footer {
+                padding: 12px 20px;
+            }
+            .modal-footer .btn {
+                min-height: 48px;
+                font-size: 1.1rem;
+            }
+            /* 表单控件放大 */
+            .form-control, .form-select {
+                font-size: 1.1rem;
+                padding: 14px 16px;
+                min-height: 52px;
+            }
+            .form-label {
+                font-size: 1.05rem;
+                margin-bottom: 8px;
+                font-weight: 500;
+            }
+            .form-check-label {
+                font-size: 1rem;
+            }
+            .mb-3, .mb-2 {
+                margin-bottom: 12px !important;
             }
             .modal.fade .modal-dialog {
                 transform: translateY(100%);
