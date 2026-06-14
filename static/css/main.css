@@ -143,6 +143,11 @@
             background: rgba(0, 0, 0, 0.04);
             opacity: 0.7;
         }
+        /* 血糖槽位文字层级 */
+        .slot-icon { font-size: 1.1rem; line-height: 1; }
+        .slot-value { font-size: 1rem; line-height: 1; }
+        .slot-name { font-size: 0.8rem; line-height: 1; }
+        .slot-time { font-size: 0.75rem; line-height: 1; }
         .glucose-slot.slot-active {
             box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.3);
         }
@@ -1728,6 +1733,54 @@
                 min-height: 32px;
                 display: inline-flex;
                 align-items: center;
+            }
+            /* 血糖槽位手机端不挤压 */
+            .glucose-slot {
+                padding: 12px 6px;
+                min-width: 60px;
+                gap: 4px;
+            }
+            .slot-icon { font-size: 1.2rem !important; }
+            .slot-value { font-size: 1.05rem !important; }
+            .slot-name { font-size: 0.9rem !important; }
+            .slot-time { font-size: 0.85rem !important; }
+            /* 概览状态胶囊允许换行 */
+            .overview-status {
+                flex-wrap: wrap;
+                gap: 6px;
+                padding: 8px 12px;
+            }
+            .overview-status .status-label {
+                font-size: 0.9rem;
+            }
+            .overview-status .status-count {
+                font-size: 1.1rem;
+            }
+            .overview-status .status-badge {
+                padding: 6px 10px;
+                font-size: 0.85rem;
+            }
+            /* 小日历和导航按钮加大 */
+            .mini-calendar {
+                width: 48px;
+                height: 56px;
+                border-radius: 12px;
+            }
+            .mini-cal-month {
+                font-size: 0.75rem;
+                padding: 4px 0;
+            }
+            .mini-cal-day {
+                font-size: 1.4rem;
+                padding: 6px 0 4px;
+            }
+            .btn-overview-nav {
+                width: 40px;
+                height: 56px;
+                border-radius: 12px;
+            }
+            .btn-overview-nav i {
+                font-size: 1.1rem;
             }
             /* 时间轴缩进减少 */
             .timeline-item {
