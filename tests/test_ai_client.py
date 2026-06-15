@@ -198,6 +198,7 @@ class TestCallAi:
 class TestCallChatStream:
     """call_chat_stream() 流式聊天测试"""
 
+    @patch('ai_client.SENSENOVA_API_KEY', 'fake-key')
     @patch('openai.OpenAI')
     def test_yields_chunks(self, mock_openai_cls):
         from ai_client import call_chat_stream
