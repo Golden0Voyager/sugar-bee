@@ -205,7 +205,7 @@
     {% set ALL_MODULES = ['glucose', 'blood_pressure', 'exercise', 'weight', 'medication'] %}
     {% set active_modules = enabled_modules if enabled_modules else ALL_MODULES %}
     {# tab 按钮顺序（与下方 tab 按钮渲染顺序一致），用于计算第一个启用的模块以决定 active 状态 #}
-    {% set BUTTON_ORDER = ['glucose', 'exercise', 'blood_pressure', 'weight', 'medication'] %}
+    {% set BUTTON_ORDER = ['glucose', 'exercise', 'blood_pressure', 'weight'] %}
     {% set first_active = namespace(module='') %}
     {% for m in BUTTON_ORDER %}{% if first_active.module == '' and m in active_modules %}{% set first_active.module = m %}{% endif %}{% endfor %}
 
@@ -726,15 +726,6 @@
                 </li>
                 {% set ns.first_tab = false %}
                 {% endif %}
-                {% if 'medication' in active_modules %}
-                <li class="nav-item" role="presentation">
-                    <button class="nav-link {% if ns.first_tab %}active{% endif %} py-2" id="med-tab" data-bs-toggle="pill" data-bs-target="#med-stats" type="button" role="tab">
-                        <i class="bi bi-capsule me-1" style="color: #5E35B1;"></i>
-                        <span>用药</span>
-                    </button>
-                </li>
-                {% set ns.first_tab = false %}
-                {% endif %}
             </ul>
 
             <!-- 标签页内容 -->
@@ -888,64 +879,6 @@
                     </div>
                 </div>
                 {% endif %}{# end blood_pressure pane #}
-
-                {% if 'medication' in active_modules %}
-                <!-- 用药统计 -->
-                <div class="tab-pane fade {% if first_active.module == 'medication' %}show active{% endif %}" id="med-stats" role="tabpanel">
-                    <div class="d-flex justify-content-between align-items-center mb-2">
-                        <h6 class="mb-0 fw-bold" style="color: #5E35B1;">💊 今日用药</h6>
-                        <span class="overview-status" style="cursor: pointer; padding: 5px 12px;" data-bs-toggle="modal" data-bs-target="#medicationPlanModal">
-                            <span class="status-label" style="font-size: 0.8rem; color: #5E35B1;"><i class="bi bi-gear me-1"></i>管理</span>
-                        </span>
-                    </div>
-                    {% if stats.active_medications and stats.active_medications|length > 0 %}
-                    {% set meds_only = stats.active_medications|selectattr('category', 'ne', 'supplement')|list %}
-                    {% set supps_only = stats.active_medications|selectattr('category', 'eq', 'supplement')|list %}
-                    <div class="med-tab-bar mb-2">
-                        <button class="med-tab-pill active" onclick="switchOverviewMedTab(this, 'overview-med-list')" style="font-size: 0.82rem; padding: 4px 12px;">💊 药物 ({{ meds_only|length }})</button>
-                        <button class="med-tab-pill" onclick="switchOverviewMedTab(this, 'overview-supp-list')" style="font-size: 0.82rem; padding: 4px 12px;">🧬 补剂 ({{ supps_only|length }})</button>
-                    </div>
-                    <div id="overview-med-list" class="row g-2">
-                        {% if meds_only|length > 0 %}
-                        {% for med in meds_only %}
-                        <div class="col-12">
-                            <div class="d-flex align-items-center px-2 py-1 bg-light rounded" style="font-size: 0.85rem;">
-                                <i class="bi bi-capsule-pill me-2" style="color: #5E35B1;"></i>
-                                <span class="fw-semibold">{{ med.name }}</span>
-                                <span class="text-muted ms-2">{% if med.dosage %}{{ med.dosage }} · {% endif %}{{ med.times }}次/天</span>
-                            </div>
-                        </div>
-                        {% endfor %}
-                        {% else %}
-                        <div class="col-12 text-center text-muted py-3" style="font-size: 0.85rem;">暂无药物</div>
-                        {% endif %}
-                    </div>
-                    <div id="overview-supp-list" class="row g-2" style="display: none;">
-                        {% if supps_only|length > 0 %}
-                        {% for med in supps_only %}
-                        <div class="col-12">
-                            <div class="d-flex align-items-center px-2 py-1 bg-light rounded" style="font-size: 0.85rem;">
-                                <i class="bi bi-capsule-pill me-2" style="color: #00897B;"></i>
-                                <span class="fw-semibold">{{ med.name }}</span>
-                                <span class="text-muted ms-2">{% if med.dosage %}{{ med.dosage }} · {% endif %}{{ med.times }}次/天</span>
-                            </div>
-                        </div>
-                        {% endfor %}
-                        {% else %}
-                        <div class="col-12 text-center text-muted py-3" style="font-size: 0.85rem;">暂无补剂</div>
-                        {% endif %}
-                    </div>
-                    {% else %}
-                    <div class="text-center text-muted py-4">
-                        <i class="bi bi-info-circle d-block fs-3 mb-2"></i>
-                        <div>暂无用药计划</div>
-                        <button class="btn btn-sm btn-primary mt-2" data-bs-toggle="modal" data-bs-target="#medicationPlanModal">
-                            <i class="bi bi-plus-lg me-1"></i>添加用药
-                        </button>
-                    </div>
-                    {% endif %}
-                </div>
-                {% endif %}{# end medication pane #}
 
                 {% if 'weight' in active_modules %}
                 <!-- 体重统计 -->
