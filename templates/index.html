@@ -3234,7 +3234,6 @@
                 },
                 scales: {
                     y: {
-                        position: IS_MOBILE ? 'right' : 'left',
                         beginAtZero: false,
                         min: 4,
                         max: 10,
@@ -3735,7 +3734,6 @@
                             grid: { color: 'rgba(0,0,0,0.05)' }
                         },
                         y: {
-                            position: IS_MOBILE ? 'right' : 'left',
                             beginAtZero: false, min: 4, max: 12,
                             title: { display: !IS_MOBILE, text: '血糖值 (mmol/L)', font: { size: IS_MOBILE ? 11 : 14, weight: 'bold' } },
                             ticks: { stepSize: 1, callback: v => Number.isInteger(v) ? v : '', font: { size: IS_MOBILE ? 9 : 12, weight: 'bold' } },
@@ -3983,7 +3981,6 @@
                         }
                     },
                     y: {
-                        position: IS_MOBILE ? 'right' : 'left',
                         beginAtZero: false,
                         min: yMin,
                         max: yMax,
@@ -4248,7 +4245,6 @@
                         grid: { color: (!days || days > 14) ? 'rgba(0,0,0,0.1)' : 'rgba(0,0,0,0.05)' }
                     },
                     y: {
-                        position: IS_MOBILE ? 'right' : 'left',
                         beginAtZero: false,
                         min: 4, max: 12,
                         title: { display: !IS_MOBILE, text: '血糖值 (mmol/L)', font: { size: IS_MOBILE ? 11 : 14, weight: 'bold' } },
@@ -4549,7 +4545,6 @@
                         }
                     },
                     y: {
-                        position: IS_MOBILE ? 'right' : 'left',
                         beginAtZero: false,
                         min: yMin,
                         max: yMax,
@@ -4642,7 +4637,6 @@
                             grid: { color: 'rgba(0,0,0,0.05)' }
                         },
                         y: {
-                            position: IS_MOBILE ? 'right' : 'left',
                             beginAtZero: false,
                             min: pulseMin,
                             max: pulseMax,
@@ -4840,7 +4834,7 @@
                         grid: { color: 'rgba(0,0,0,0.05)' }
                     },
                     y: {
-                        position: IS_MOBILE ? 'right' : 'left',
+                        position: 'left',
                         beginAtZero: false,
                         min: weightMin,
                         max: weightMax,
