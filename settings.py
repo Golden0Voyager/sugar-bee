@@ -11,7 +11,7 @@ CONFIG_FILE = "user_config.json"
 # ModelScope 模型配置（国内可用，免费2000次/天，单模型500次/天，OpenAI 兼容接口）
 # 三类任务使用不同模型，有效容量翻3倍（每模型独立500次/天）
 MODELSCOPE_MODELS = {
-    'text': ['Qwen/Qwen3.5-35B-A3B'],               # JSON解析/预测（结构化输出稳定）
+    'text': ['deepseek-ai/DeepSeek-V4-Pro'],          # JSON解析/预测
     'vision': ['Qwen/Qwen3-VL-235B-A22B-Instruct', 'Qwen/Qwen3-VL-8B-Thinking', 'Qwen/Qwen3.5-397B-A17B'],   # 截图识别，兜底用 397B
     'report': ['Qwen/Qwen3.5-397B-A17B'],      # 报告分析
     'chat': ['deepseek-ai/DeepSeek-V4-Pro'],   # 健康助手 fallback（ModelScope 可用）
