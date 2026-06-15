@@ -14,6 +14,7 @@ MODELSCOPE_MODELS = {
     'text': ['Qwen/Qwen3.5-35B-A3B'],               # JSON解析/预测（结构化输出稳定）
     'vision': ['Qwen/Qwen3-VL-235B-A22B-Instruct', 'Qwen/Qwen3-VL-8B-Thinking', 'Qwen/Qwen3.5-397B-A17B'],   # 截图识别，兜底用 397B
     'report': ['Qwen/Qwen3.5-397B-A17B'],      # 报告分析
+    'chat': ['deepseek-ai/DeepSeek-V4-Pro'],   # 健康助手 fallback（ModelScope 可用）
     'extra_body': {'enable_thinking': False},        # 仅对 text 任务生效（Qwen3 标准模型需关闭思考模式）
 }
 MODELSCOPE_BASE_URL = 'https://api-inference.modelscope.cn/v1'
