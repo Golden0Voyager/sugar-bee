@@ -1919,11 +1919,12 @@
     Chart.defaults.plugins.legend.labels.boxWidth = IS_MOBILE ? 8 : 10;
     Chart.defaults.plugins.legend.labels.boxHeight = IS_MOBILE ? 8 : 10;
     Chart.defaults.plugins.legend.labels.usePointStyle = true;
-    Chart.defaults.scale.ticks.font = { size: IS_MOBILE ? 10 : 12, family: "'Noto Sans SC', sans-serif" };
+    Chart.defaults.scale.ticks.font = { size: IS_MOBILE ? 9 : 12, family: "'Noto Sans SC', sans-serif" };
+    Chart.defaults.scale.ticks.padding = IS_MOBILE ? 2 : 6;
     Chart.defaults.scale.title.font = { size: IS_MOBILE ? 11 : 14, family: "'Noto Sans SC', sans-serif", weight: 'bold' };
     Chart.defaults.scale.ticks.maxTicksLimit = IS_MOBILE ? 6 : null;
     Chart.defaults.aspectRatio = IS_MOBILE ? 1.1 : 2;
-    Chart.defaults.layout.padding = { top: 4, right: 4, bottom: IS_MOBILE ? 8 : 12, left: 4 };
+    Chart.defaults.layout.padding = { top: 4, right: IS_MOBILE ? 0 : 4, bottom: IS_MOBILE ? 8 : 12, left: IS_MOBILE ? 0 : 4 };
 
     // Injected from server (初始 90 天，按需加载更多)
     let timelineData = {{ timeline | tojson }};
@@ -3735,7 +3736,7 @@
                         y: {
                             beginAtZero: false, min: 4, max: 12,
                             title: { display: !IS_MOBILE, text: '血糖值 (mmol/L)', font: { size: IS_MOBILE ? 11 : 14, weight: 'bold' } },
-                            ticks: { stepSize: 1, callback: v => Number.isInteger(v) ? v : '', font: { size: IS_MOBILE ? 10 : 12, weight: 'bold' } },
+                            ticks: { stepSize: 1, callback: v => Number.isInteger(v) ? v : '', font: { size: IS_MOBILE ? 9 : 12, weight: 'bold' } },
                             grid: { color: 'rgba(0,0,0,0.05)' }
                         }
                     }
@@ -3969,7 +3970,7 @@
                                 }
                                 return h + ':00';
                             },
-                            font: { size: IS_MOBILE ? 10 : 12, family: "'Roboto', 'Helvetica Neue', sans-serif" }
+                            font: { size: IS_MOBILE ? 9 : 12, family: "'Roboto', 'Helvetica Neue', sans-serif" }
                         },
                         title: { display: false },
                         afterFit: function(axis) {
@@ -3993,7 +3994,7 @@
                             callback: function(value) {
                                 return Number.isInteger(value) ? value : '';
                             },
-                            font: { size: IS_MOBILE ? 10 : 12, weight: 'bold' }
+                            font: { size: IS_MOBILE ? 9 : 12, weight: 'bold' }
                         },
                         grid: {
                             color: function(context) {
@@ -4235,7 +4236,7 @@
                                 }
                                 return h + ':00';
                             },
-                            font: { size: IS_MOBILE ? 10 : 12, family: "'Roboto', 'Helvetica Neue', sans-serif" }
+                            font: { size: IS_MOBILE ? 9 : 12, family: "'Roboto', 'Helvetica Neue', sans-serif" }
                         },
                         title: { display: false },
                         afterFit: function(axis) {
@@ -4247,7 +4248,7 @@
                         beginAtZero: false,
                         min: 4, max: 12,
                         title: { display: !IS_MOBILE, text: '血糖值 (mmol/L)', font: { size: IS_MOBILE ? 11 : 14, weight: 'bold' } },
-                        ticks: { stepSize: 1, callback: v => Number.isInteger(v) ? v : '', font: { size: IS_MOBILE ? 10 : 12, weight: 'bold' } },
+                        ticks: { stepSize: 1, callback: v => Number.isInteger(v) ? v : '', font: { size: IS_MOBILE ? 9 : 12, weight: 'bold' } },
                         grid: {
                             color: function(context) {
                                 if (context.tick.value === 7.8 || context.tick.value === 10.0 || context.tick.value === 3.9) return 'rgba(220, 53, 69, 0.2)';
@@ -4554,7 +4555,7 @@
                         },
                         ticks: {
                             stepSize: 10,
-                            font: { size: IS_MOBILE ? 10 : 12, weight: 'bold' }
+                            font: { size: IS_MOBILE ? 9 : 12, weight: 'bold' }
                         },
                         grid: {
                             color: function(context) {
@@ -4640,7 +4641,7 @@
                             min: pulseMin,
                             max: pulseMax,
                             title: { display: !IS_MOBILE, text: '脉搏 (bpm)', font: { size: IS_MOBILE ? 11 : 14, weight: 'bold' }, color: '#FF6F00' },
-                            ticks: { stepSize: 10, font: { size: IS_MOBILE ? 10 : 12, weight: 'bold' }, color: '#FF6F00' },
+                            ticks: { stepSize: 10, font: { size: IS_MOBILE ? 9 : 12, weight: 'bold' }, color: '#FF6F00' },
                             grid: { color: 'rgba(0,0,0,0.05)' }
                         }
                     }
@@ -4840,7 +4841,7 @@
                         title: {
                             display: !IS_MOBILE,
                             text: '体重 (kg)',
-                            font: { size: IS_MOBILE ? 10 : 12, weight: 'bold' },
+                            font: { size: IS_MOBILE ? 9 : 12, weight: 'bold' },
                             color: '#00897B'
                         },
                         ticks: {
