@@ -107,6 +107,21 @@
             transform: rotate(0deg);
         }
 
+        /* 今日记录折叠面板标题 */
+        .overview-quick-header {
+            cursor: pointer;
+            user-select: none;
+            padding: 8px 0;
+            border-bottom: 1px solid var(--border-color);
+        }
+        .overview-quick-header:hover {
+            opacity: 0.8;
+        }
+        .overview-quick-header h5 {
+            font-size: 1.05rem;
+            font-weight: 600;
+        }
+
         /* Glucose Slot Styling - 今日概览血糖槽位 */
         .glucose-slot {
             padding: 10px 4px;
@@ -1790,6 +1805,19 @@
                 min-height: 40px;
                 padding: 8px 16px;
                 font-size: 0.95rem;
+            }
+            /* 今日记录折叠标题手机端 */
+            .overview-quick-header {
+                padding: 12px 0;
+            }
+            .overview-quick-header h5 {
+                font-size: 1.15rem !important;
+            }
+            .overview-quick-header .collapse-toggle-icon {
+                font-size: 1.1rem;
+            }
+            .empty-quick-info {
+                font-size: 1rem;
             }
             /* 概览状态胶囊允许换行 */
             .overview-status {
