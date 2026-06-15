@@ -1769,19 +1769,19 @@
                 justify-content: flex-start !important;
             }
             #statsTab .nav-item {
-                flex: 0 0 calc(33.333% - 6px) !important;
-                width: calc(33.333% - 6px) !important;
+                flex: 0 0 calc(50% - 4px) !important;
+                width: calc(50% - 4px) !important;
                 text-align: center;
             }
             #statsTab .nav-link {
                 white-space: normal;
                 min-width: auto !important;
                 width: 100%;
-                padding: 10px 4px;
-                font-size: 0.95rem;
+                padding: 12px 4px;
+                font-size: 1rem;
             }
             #statsTab .nav-link i {
-                font-size: 1.1rem;
+                font-size: 1.2rem;
             }
             /* 统计卡片手机端单列、字大 */
             .tab-pane .row.g-2 > .col-6 {
