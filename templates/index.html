@@ -2506,8 +2506,6 @@
 
         const timelineEl = document.querySelector('.today-glucose-timeline .glucose-slots-row');
         if (timelineEl) timelineEl.innerHTML = slotsHtml;
-        // 重新绑定长按事件
-        initSlotLongPress();
 
         // 进度条：每个slot对应一个等宽分段（时间感知）
         const total = data.completion.total;
@@ -2672,42 +2670,87 @@
     };
 
     function initSlotLongPress() {
-        document.querySelectorAll('.glucose-slot').forEach(el => {
-            let timer = null;
-            let triggered = false;
+        const container = document.querySelector('.glucose-slots-row');
+        if (!container) return;
 
-            const start = (e) => {
-                triggered = false;
-                timer = setTimeout(() => {
-                    triggered = true;
-                    // 震动反馈（移动端）
-                    if (navigator.vibrate) navigator.vibrate(30);
-                    const key = el.dataset.slotKey;
-                    if (key) openGlucoseInput(key);
-                }, 500);
-            };
-            const cancel = () => { clearTimeout(timer); };
-            const end = (e) => {
-                clearTimeout(timer);
-                if (!triggered) {
-                    // 短按：显示提示
-                    const key = el.dataset.slotKey;
-                    const name = slotTypeMap[key] || '';
-                    showToast(`长按可录入${name}血糖`, 'info');
-                }
-            };
+        let activeKey = null;
+        let activeTimer = null;
+        let activeTriggered = false;
 
-            // 鼠标事件
-            el.addEventListener('mousedown', start);
-            el.addEventListener('mouseleave', cancel);
-            el.addEventListener('mouseup', end);
-            // 触摸事件
-            el.addEventListener('touchstart', (e) => { start(e); }, { passive: true });
-            el.addEventListener('touchmove', cancel);
-            el.addEventListener('touchend', end);
-            el.addEventListener('touchcancel', cancel);
-            // 禁止长按默认菜单
-            el.addEventListener('contextmenu', (e) => e.preventDefault());
+        const clearActive = () => {
+            if (activeTimer) clearTimeout(activeTimer);
+            activeTimer = null;
+            activeKey = null;
+            activeTriggered = false;
+        };
+
+        const startSlot = (key) => {
+            clearActive();
+            activeKey = key;
+            activeTriggered = false;
+            activeTimer = setTimeout(() => {
+                activeTriggered = true;
+                if (navigator.vibrate) navigator.vibrate(30);
+                openGlucoseInput(key);
+            }, 500);
+        };
+
+        const endSlot = (key) => {
+            if (activeKey !== key) return;
+            clearTimeout(activeTimer);
+            activeTimer = null;
+            const wasTriggered = activeTriggered;
+            activeKey = null;
+            activeTriggered = false;
+            if (!wasTriggered) {
+                const name = slotTypeMap[key] || '';
+                showToast(`长按可录入${name}血糖`, 'info');
+            }
+        };
+
+        const cancelSlot = (key) => {
+            if (activeKey === key) clearActive();
+        };
+
+        const slotFromEvent = (e) => e.target.closest('.glucose-slot');
+
+        container.addEventListener('mousedown', (e) => {
+            const slot = slotFromEvent(e);
+            if (!slot) return;
+            startSlot(slot.dataset.slotKey);
+        });
+        container.addEventListener('mouseup', (e) => {
+            const slot = slotFromEvent(e);
+            if (!slot) return;
+            endSlot(slot.dataset.slotKey);
+        });
+        container.addEventListener('touchstart', (e) => {
+            const slot = slotFromEvent(e);
+            if (!slot) return;
+            startSlot(slot.dataset.slotKey);
+        }, { passive: true });
+        container.addEventListener('touchmove', (e) => {
+            const slot = slotFromEvent(e);
+            if (!slot) return;
+            cancelSlot(slot.dataset.slotKey);
+        });
+        container.addEventListener('touchend', (e) => {
+            const slot = slotFromEvent(e);
+            if (!slot) return;
+            endSlot(slot.dataset.slotKey);
+        });
+        container.addEventListener('touchcancel', (e) => {
+            const slot = slotFromEvent(e);
+            if (!slot) return;
+            cancelSlot(slot.dataset.slotKey);
+        });
+        container.addEventListener('contextmenu', (e) => {
+            if (slotFromEvent(e)) e.preventDefault();
+        });
+
+        // 鼠标在容器外松开时，清理当前计时器（不显示短按提示）
+        document.addEventListener('mouseup', () => {
+            if (activeKey && !activeTriggered) clearActive();
         });
     }
 
