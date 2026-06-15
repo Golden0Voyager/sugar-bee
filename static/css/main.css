@@ -107,6 +107,21 @@
             transform: rotate(0deg);
         }
 
+        /* 今日记录折叠面板标题 */
+        .overview-quick-header {
+            cursor: pointer;
+            user-select: none;
+            padding: 8px 0;
+            border-bottom: 1px solid var(--border-color);
+        }
+        .overview-quick-header:hover {
+            opacity: 0.8;
+        }
+        .overview-quick-header h5 {
+            font-size: 1.05rem;
+            font-weight: 600;
+        }
+
         /* Glucose Slot Styling - 今日概览血糖槽位 */
         .glucose-slot {
             padding: 10px 4px;
@@ -143,8 +158,20 @@
             background: rgba(0, 0, 0, 0.04);
             opacity: 0.7;
         }
+        /* 血糖槽位文字层级 */
+        .slot-icon { font-size: 1.1rem; line-height: 1; }
+        .slot-value { font-size: 1rem; line-height: 1; }
+        .slot-name { font-size: 0.8rem; line-height: 1; }
+        .slot-time { font-size: 0.75rem; line-height: 1; }
         .glucose-slot.slot-active {
             box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.3);
+        }
+
+        /* 血糖槽位横向滚动容器 */
+        .glucose-slots-row {
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
         }
 
         /* Progress Bar Animation */
@@ -1576,19 +1603,6 @@
                 padding: 4px 10px;
                 font-size: 0.8rem;
             }
-            .btn-ai-predict {
-                padding: 6px 0;
-                font-size: 0.7rem;
-            }
-            /* 血糖时间轴横向滚动 */
-            .glucose-slots-container {
-                overflow-x: auto;
-                -webkit-overflow-scrolling: touch;
-                scrollbar-width: none;
-            }
-            .glucose-slots-container::-webkit-scrollbar {
-                display: none;
-            }
             /* 弹窗近全宽 + safe area */
             .modal-dialog {
                 margin: 8px;
@@ -1624,6 +1638,153 @@
                 padding: 6px 10px !important;
                 font-size: 0.85rem !important;
             }
+            /* 手机端每日复盘只显示单日视图 */
+            #calendar,
+            #calendarViewBtns,
+            #calendarPrevBtn,
+            #calendarNextBtn,
+            #mobileShowCalendarBtn {
+                display: none !important;
+            }
+            #mobileDayView {
+                display: block !important;
+            }
+            #mobileDayView .btn-overview-nav {
+                width: 40px;
+                height: 40px;
+            }
+            #mobileDayView .d-flex.justify-content-between.align-items-center {
+                flex-direction: row !important;
+                align-items: center !important;
+            }
+            /* 单日视图内容手机端适配 */
+            #mobileDayBody .d-flex.gap-2.mb-3.small {
+                display: grid !important;
+                grid-template-columns: 1fr 1fr !important;
+                gap: 10px !important;
+                padding: 14px 4px !important;
+            }
+            #mobileDayBody .d-flex.gap-2.mb-3.small > span:not(.border-start) {
+                font-size: 1.05rem;
+                text-align: center;
+            }
+            #mobileDayBody .d-flex.gap-2.mb-3.small .border-start {
+                display: none !important;
+            }
+            /* 用药方案默认可折叠 */
+            .day-med-details {
+                border-radius: 12px;
+                background: #f8f9fa;
+                padding: 12px;
+            }
+            .day-med-summary {
+                list-style: none;
+                cursor: pointer;
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                font-size: 1rem;
+                font-weight: 600;
+                padding: 4px;
+            }
+            .day-med-summary::-webkit-details-marker {
+                display: none;
+            }
+            .day-med-summary .collapse-toggle-icon {
+                transition: transform 0.2s ease;
+                font-size: 0.9rem;
+            }
+            .day-med-details[open] .collapse-toggle-icon {
+                transform: rotate(180deg);
+            }
+            .day-med-content .card-body {
+                padding: 12px;
+            }
+            #mobileDayBody .timeline-item {
+                padding: 16px 0 16px 36px;
+                margin-left: 8px;
+            }
+            #mobileDayBody .timeline-item > .d-flex.w-100 {
+                flex-wrap: wrap !important;
+                gap: 6px;
+            }
+            #mobileDayBody .timeline-item > .d-flex > .me-3 {
+                min-width: auto !important;
+                font-size: 0.9rem;
+                color: #6c757d;
+                flex: 0 0 100%;
+                margin-bottom: 4px;
+            }
+            #mobileDayBody .timeline-dot {
+                width: 14px;
+                height: 14px;
+                left: -8px;
+                top: 18px;
+            }
+            #mobileDayBody .timeline-item .text-nowrap.overflow-auto {
+                white-space: normal !important;
+                overflow: visible !important;
+                display: flex;
+                flex-wrap: wrap;
+                gap: 6px;
+            }
+            #mobileDayBody .timeline-item .text-nowrap.overflow-auto > span {
+                font-size: 0.85rem;
+            }
+            #mobileDayBody .timeline-item .ms-2.d-flex.gap-1 {
+                margin-left: 0 !important;
+                width: 100%;
+                justify-content: flex-end;
+                margin-top: 8px;
+                gap: 12px !important;
+            }
+            #mobileDayBody .timeline-item .btn-sm {
+                min-height: 44px;
+                min-width: 44px;
+                padding: 10px 12px;
+                font-size: 1rem;
+                border-radius: 10px;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+            }
+            #mobileDayBody .timeline-item h5 {
+                font-size: 1.05rem;
+            }
+            /* 月视图手机端适配 */
+            .fc-daygrid-day {
+                min-height: 110px !important;
+            }
+            .fc-daygrid-day-number {
+                font-size: 0.8rem !important;
+                padding: 3px !important;
+            }
+            .fc-daygrid-day-events {
+                padding: 0 1px 1px !important;
+            }
+            .fc-event {
+                font-size: 0.65rem !important;
+                padding: 1px 3px !important;
+                margin-bottom: 1px !important;
+                border-radius: 3px !important;
+                line-height: 1.15 !important;
+            }
+            .summary-event {
+                font-size: 0.6rem !important;
+                padding: 1px 2px !important;
+                border-radius: 3px !important;
+            }
+            .fc-event-title {
+                white-space: nowrap !important;
+                overflow: hidden !important;
+                text-overflow: ellipsis !important;
+            }
+            .fc-daygrid-more-link {
+                font-size: 0.65rem !important;
+                padding: 0 3px !important;
+                color: var(--md-primary) !important;
+                font-weight: 600 !important;
+            }
             /* 下拉菜单适配 */
             .dropdown-menu {
                 max-width: calc(100vw - 24px);
@@ -1649,12 +1810,16 @@
         /* Phone */
         @media (max-width: 480px) {
             body {
-                font-size: 16px;
+                font-size: 18px;
                 padding-bottom: env(safe-area-inset-bottom, 0);
                 -webkit-text-size-adjust: 100%;
             }
             /* 禁用双击缩放 */
             * { touch-action: manipulation; }
+            /* 小号文字在手机端也不能过小 */
+            .small, .text-muted {
+                font-size: 0.9rem !important;
+            }
             h3 {
                 font-size: 1.4rem;
             }
@@ -1666,8 +1831,12 @@
             }
             /* 保持按钮最小触控目标 */
             .btn {
-                min-height: 44px;
+                min-height: 48px;
                 font-size: 1rem;
+            }
+            .btn-sm {
+                min-height: 44px;
+                font-size: 0.95rem;
             }
             .btn-circle-icon {
                 width: 44px;
@@ -1675,8 +1844,20 @@
             }
             /* 下拉菜单项触摸目标 */
             .dropdown-item {
-                padding: 12px 16px;
-                min-height: 44px;
+                padding: 14px 16px;
+                min-height: 48px;
+                font-size: 1rem;
+            }
+            /* 用户下拉菜单不超出屏幕 */
+            .dropdown-menu.dropdown-menu-end[style*="min-width: 300px"] {
+                min-width: calc(100vw - 32px) !important;
+                max-width: calc(100vw - 32px);
+            }
+            /* 侧滑聊天面板全宽 */
+            .chat-panel {
+                width: 100vw;
+                min-width: 100vw;
+                max-width: 100vw;
             }
             /* 药物标签触摸目标 + 字体 */
             .med-tab-pill {
@@ -1684,13 +1865,22 @@
                 padding: 6px 12px;
                 font-size: 0.85rem;
             }
-            /* Nav pills 在极窄屏幕上可滚动 */
+            /* Nav pills 在极窄屏幕上可滚动，统一格式 */
+            .nav.nav-fill {
+                display: flex !important;
+                justify-content: flex-start !important;
+            }
+            .nav.nav-fill .nav-item {
+                flex: 0 0 auto !important;
+                text-align: center;
+            }
             .nav-pills {
                 flex-wrap: nowrap;
                 overflow-x: auto;
                 -webkit-overflow-scrolling: touch;
                 scrollbar-width: none;
                 padding-bottom: 4px;
+                gap: 8px;
             }
             .nav-pills::-webkit-scrollbar {
                 display: none;
@@ -1698,16 +1888,191 @@
             .nav-pills .nav-link {
                 white-space: nowrap;
                 flex-shrink: 0;
+                min-width: 84px;
+                padding: 10px 16px;
+                font-size: 0.95rem;
+                font-weight: 500;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                gap: 6px;
+                border-radius: 10px;
+            }
+            .nav-pills .nav-link i {
+                font-size: 1.05rem;
+                line-height: 1;
+            }
+            .nav-pills .nav-link.active {
+                font-weight: 600;
+            }
+            /* 首页 5 个模块标签：手机端上 3 下 2 排列 */
+            #statsTab {
+                flex-wrap: wrap !important;
+                overflow-x: visible !important;
+                -webkit-overflow-scrolling: auto;
+                scrollbar-width: auto;
+                padding-bottom: 0;
+                gap: 8px;
+                justify-content: flex-start !important;
+            }
+            #statsTab .nav-item {
+                flex: 0 0 calc(50% - 4px) !important;
+                width: calc(50% - 4px) !important;
+                text-align: center;
+            }
+            #statsTab .nav-link {
+                white-space: normal;
+                min-width: auto !important;
+                width: 100%;
+                padding: 12px 4px;
+                font-size: 1rem;
+            }
+            #statsTab .nav-link i {
+                font-size: 1.2rem;
+            }
+            .card-body {
+                padding: 8px;
+            }
+            /* 统计卡片手机端单列、字大 */
+            .tab-pane .row.g-2 > .col-6 {
+                width: 100% !important;
+            }
+            .tab-pane .row.g-2 > .col-6 > div {
+                padding: 18px 16px;
+            }
+            .tab-pane .row.g-2 > .col-6 small {
+                font-size: 1rem !important;
+            }
+            .tab-pane .row.g-2 > .col-6 .fs-4 {
+                font-size: 2.2rem !important;
+            }
+            .tab-pane .row.g-2 > .col-6 .glucose-detail {
+                font-size: 0.9rem !important;
             }
             /* 概览卡片数值缩放 */
             .stats-card .value {
-                font-size: 1.8rem;
+                font-size: 2.2rem;
             }
             .stats-card .label {
-                font-size: 0.8rem;
+                font-size: 0.9rem;
                 min-height: 32px;
                 display: inline-flex;
                 align-items: center;
+            }
+            /* 血糖槽位手机端改为 4+3 居中网格 */
+            .glucose-slots-row {
+                overflow-x: visible;
+                -webkit-overflow-scrolling: auto;
+                scrollbar-width: auto;
+                flex-wrap: wrap !important;
+                justify-content: center !important;
+                gap: 8px !important;
+                padding-bottom: 0;
+            }
+            .glucose-slots-row::-webkit-scrollbar {
+                display: none;
+            }
+            .glucose-slot {
+                flex: 0 0 calc(25% - 6px) !important;
+                width: calc(25% - 6px);
+                padding: 12px 4px;
+                min-width: auto;
+                min-height: 96px;
+                gap: 6px;
+                aspect-ratio: auto;
+                overflow: visible;
+            }
+            .slot-icon { font-size: 1.2rem !important; }
+            .slot-value { font-size: 1.05rem !important; }
+            .slot-name { font-size: 0.85rem !important; white-space: nowrap; }
+            .slot-time { font-size: 0.8rem !important; white-space: nowrap; }
+            /* AI 预测按钮手机端保持可读宽度 */
+            .btn-ai-predict {
+                font-size: 0.85rem;
+                padding: 6px 10px;
+                min-height: 40px;
+            }
+            /* 今日快捷信息卡片手机端单列放大 */
+            .overview-quick-card {
+                margin-bottom: 12px;
+            }
+            .overview-quick-card > div {
+                padding: 16px;
+                min-height: auto;
+            }
+            .overview-quick-card .fw-semibold,
+            .overview-quick-card .text-muted {
+                font-size: 1rem !important;
+            }
+            .overview-quick-card .small {
+                font-size: 1rem !important;
+            }
+            .overview-quick-card .overview-card-nav button {
+                min-width: 36px;
+                min-height: 36px;
+                font-size: 1.2rem;
+                padding: 0 6px;
+                border-radius: 6px;
+            }
+            .overview-quick-card .overview-card-nav .nav-idx {
+                font-size: 0.85rem;
+                min-width: 36px;
+            }
+            .overview-quick-card .med-tab-pill {
+                min-height: 40px;
+                padding: 8px 16px;
+                font-size: 0.95rem;
+            }
+            /* 今日记录折叠标题手机端 */
+            .overview-quick-header {
+                padding: 12px 0;
+            }
+            .overview-quick-header h5 {
+                font-size: 1.15rem !important;
+            }
+            .overview-quick-header .collapse-toggle-icon {
+                font-size: 1.1rem;
+            }
+            .empty-quick-info {
+                font-size: 1rem;
+            }
+            /* 概览状态胶囊允许换行 */
+            .overview-status {
+                flex-wrap: wrap;
+                gap: 6px;
+                padding: 8px 12px;
+            }
+            .overview-status .status-label {
+                font-size: 0.9rem;
+            }
+            .overview-status .status-count {
+                font-size: 1.1rem;
+            }
+            .overview-status .status-badge {
+                padding: 6px 10px;
+                font-size: 0.85rem;
+            }
+            /* 小日历和导航按钮加大 */
+            .mini-calendar {
+                width: 48px;
+                height: 56px;
+                border-radius: 12px;
+            }
+            .mini-cal-month {
+                font-size: 0.75rem;
+                padding: 4px 0;
+            }
+            .mini-cal-day {
+                font-size: 1.4rem;
+                padding: 6px 0 4px;
+            }
+            .btn-overview-nav {
+                width: 40px;
+                height: 56px;
+                border-radius: 12px;
+            }
+            .btn-overview-nav i {
+                font-size: 1.1rem;
             }
             /* 时间轴缩进减少 */
             .timeline-item {
@@ -1718,9 +2083,10 @@
             .btn-fab {
                 bottom: calc(1rem + env(safe-area-inset-bottom, 0)) !important;
             }
-            /* 图表容器不溢出 */
+            /* 图表容器不溢出，留足边距 */
             .card-body canvas {
                 max-width: 100%;
+                padding: 0 4px;
             }
 
             /* ---- Modal 底部弹出 (Bottom Sheet) ---- */
@@ -1734,7 +2100,7 @@
             }
             .modal-content {
                 border-radius: 20px 20px 0 0;
-                max-height: 85vh;
+                max-height: 90vh;
                 display: flex;
                 flex-direction: column;
             }
@@ -1748,10 +2114,42 @@
                 margin: 8px auto 0;
                 flex-shrink: 0;
             }
+            .modal-header {
+                padding: 16px 20px;
+            }
+            .modal-title {
+                font-size: 1.3rem;
+                font-weight: 600;
+            }
             .modal-body {
                 overflow-y: auto;
                 overscroll-behavior: contain;
                 -webkit-overflow-scrolling: touch;
+                padding: 16px 20px;
+            }
+            .modal-footer {
+                padding: 12px 20px;
+            }
+            .modal-footer .btn {
+                min-height: 48px;
+                font-size: 1.1rem;
+            }
+            /* 表单控件放大 */
+            .form-control, .form-select {
+                font-size: 1.1rem;
+                padding: 14px 16px;
+                min-height: 52px;
+            }
+            .form-label {
+                font-size: 1.05rem;
+                margin-bottom: 8px;
+                font-weight: 500;
+            }
+            .form-check-label {
+                font-size: 1rem;
+            }
+            .mb-3, .mb-2 {
+                margin-bottom: 12px !important;
             }
             .modal.fade .modal-dialog {
                 transform: translateY(100%);

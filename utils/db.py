@@ -1,17 +1,155 @@
+import os
 import sqlite3
 from flask import g
+
+
+def get_db_type():
+    """根据环境变量判断当前数据库类型。"""
+    database_url = os.getenv('DATABASE_URL', '')
+    if database_url.startswith('postgres'):
+        return 'postgres'
+    return os.getenv('DB_TYPE', 'sqlite')
+
+
+def _normalize_sql(sql, db_type=None):
+    """
+    统一 SQL 占位符。
+
+    - 代码层统一写 ?
+    - SQLite 目标占位符：?
+    - PostgreSQL 目标占位符：%s
+
+    只替换不在 SQL 字符串字面量内的占位符，保留 strftime('%s', ...) 等用法。
+    """
+    if db_type is None:
+        db_type = get_db_type()
+    if db_type == 'sqlite':
+        source, target = '%s', '?'
+    elif db_type == 'postgres':
+        source, target = '?', '%s'
+    else:
+        return sql
+
+    if source not in sql:
+        return sql
+
+    result = []
+    i = 0
+    n = len(sql)
+    in_str = False
+    while i < n:
+        ch = sql[i]
+        if ch == "'":
+            # 处理转义单引号 ''
+            if in_str and i + 1 < n and sql[i + 1] == "'":
+                result.append("''")
+                i += 2
+                continue
+            in_str = not in_str
+            result.append(ch)
+        elif not in_str and sql.startswith(source, i):
+            result.append(target)
+            i += len(source)
+            continue
+        else:
+            result.append(ch)
+        i += 1
+    return ''.join(result)
+
+
+class CursorWrapper:
+    """透明转换 SQL 占位符的 cursor 包装器。"""
+
+    def __init__(self, cursor, db_type=None):
+        self._cursor = cursor
+        self._db_type = db_type or get_db_type()
+        self._lastrowid = None
+
+    def execute(self, sql, parameters=()):
+        sql = _normalize_sql(sql, self._db_type)
+        self._lastrowid = None
+        result = self._cursor.execute(sql, parameters)
+        if 'RETURNING' in sql.upper():
+            # 先读取 RETURNING 结果，避免 SQLite 上 commit 报 "statements in progress"
+            try:
+                row = self._cursor.fetchone()
+            except Exception:
+                row = None
+            if row is not None:
+                if hasattr(row, 'keys') and 'id' in row.keys():
+                    self._lastrowid = row['id']
+                elif hasattr(row, '__getitem__'):
+                    self._lastrowid = row[0]
+                else:
+                    self._lastrowid = row
+        else:
+            self._lastrowid = getattr(self._cursor, 'lastrowid', None)
+        return result
+
+    def executemany(self, sql, parameters):
+        sql = _normalize_sql(sql, self._db_type)
+        return self._cursor.executemany(sql, parameters)
+
+    @property
+    def lastrowid(self):
+        if self._lastrowid is not None:
+            return self._lastrowid
+        return getattr(self._cursor, 'lastrowid', None)
+
+    def __iter__(self):
+        return iter(self._cursor)
+
+    def __getattr__(self, name):
+        return getattr(self._cursor, name)
+
+
+class ConnectionWrapper:
+    """透明转换 SQL 占位符的连接包装器。"""
+
+    def __init__(self, conn, db_type=None):
+        self._conn = conn
+        self._db_type = db_type or get_db_type()
+
+    def cursor(self):
+        return CursorWrapper(self._conn.cursor(), self._db_type)
+
+    def execute(self, sql, parameters=()):
+        sql = _normalize_sql(sql, self._db_type)
+        return self._conn.execute(sql, parameters)
+
+    def executemany(self, sql, parameters):
+        sql = _normalize_sql(sql, self._db_type)
+        return self._conn.executemany(sql, parameters)
+
+    def __enter__(self):
+        return self._conn.__enter__()
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        return self._conn.__exit__(exc_type, exc_val, exc_tb)
+
+    def __getattr__(self, name):
+        return getattr(self._conn, name)
+
+    def __setattr__(self, name, value):
+        if name in ('_conn', '_db_type'):
+            object.__setattr__(self, name, value)
+        else:
+            setattr(self._conn, name, value)
+
 
 # DB_NAME is imported lazily within functions to allow runtime path changes (e.g. testing)
 def get_db():
     """
     获取数据库连接。
     在 Flask 应用上下文中，数据库连接存储在 g 对象中。
+    返回的连接会自动处理 SQLite / PostgreSQL 占位符差异。
     """
     from core.config import DB_NAME as db_name
     db = getattr(g, '_database', None)
     if db is None:
-        db = g._database = sqlite3.connect(db_name)
-        db.row_factory = sqlite3.Row
+        raw_conn = sqlite3.connect(db_name)
+        raw_conn.row_factory = sqlite3.Row
+        db = g._database = ConnectionWrapper(raw_conn)
     return db
 
 def close_db(exception=None):

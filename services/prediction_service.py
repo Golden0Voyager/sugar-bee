@@ -169,21 +169,23 @@ def predict_morning_fpg(db, user_id=1):
         net_calories = cal_in - (user_bmr + cal_out_exercise)
 
         # 4. 近7天空腹血糖趋势（排除血压）
+        seven_days_ago = (datetime.datetime.now() - datetime.timedelta(days=7)).strftime('%Y-%m-%d %H:%M:%S')
         c.execute("""SELECT value, timestamp FROM records
             WHERE user_id = ? AND (type IN ('空腹', '早空腹') OR (type LIKE '%空腹%' AND type NOT LIKE '%血压%'))
             AND value > 0 AND is_predicted = 0 AND systolic_pressure IS NULL
-            AND timestamp > datetime('now', '-7 days')
-            ORDER BY timestamp DESC""", (user_id,))
+            AND timestamp > ?
+            ORDER BY timestamp DESC""", (user_id, seven_days_ago))
         recent_fpg = c.fetchall()
 
         # 5. 历史预测反馈
+        fourteen_days_ago = (datetime.datetime.now() - datetime.timedelta(days=14)).strftime('%Y-%m-%d %H:%M:%S')
         c.execute("""
             SELECT p.value AS predicted, r.value AS actual, p.prediction_error, r.timestamp AS actual_time
             FROM records p JOIN records r ON p.verified_by_real_id = r.id
             WHERE p.user_id = ? AND p.is_predicted = 1 AND p.prediction_error IS NOT NULL
             AND p.type LIKE '%空腹%' AND p.type NOT LIKE '%血压%'
-            AND r.timestamp > datetime('now', '-14 days')
-            ORDER BY r.timestamp DESC""", (user_id,))
+            AND r.timestamp > ?
+            ORDER BY r.timestamp DESC""", (user_id, fourteen_days_ago))
         prediction_history = c.fetchall()
 
         # 6. 当前用药
@@ -282,7 +284,7 @@ def predict_morning_fpg(db, user_id=1):
 {{"predicted_value": float, "reasoning": "string (1-2句话)"}}"""
 
         raw_text = call_ai(prompt)
-        match = re.search(r'\{[\s\S]*?\}', raw_text)
+        match = re.search(r'\{[\s\S]*\}', raw_text)
         if not match:
             return
 
@@ -329,7 +331,7 @@ def predict_post_exercise_glucose(db, user_id=1, target_date=None, force_update=
 返回JSON：{{"predicted_value": float, "reasoning": "string"}}"""
 
         raw_text = call_ai(prompt)
-        match = re.search(r'\{[\s\S]*?\}', raw_text)
+        match = re.search(r'\{[\s\S]*\}', raw_text)
         if match:
             result = json.loads(match.group(0))
             pred_v = result.get('predicted_value')
@@ -422,7 +424,7 @@ def predict_remaining_glucose_slots(db, user_id=1, target_date=None, force_updat
 [{{"type": "时间点类型", "value": float, "reasoning": "string"}}]"""
 
         raw_text = call_ai(prompt)
-        match = re.search(r'\[[\s\S]*?\]', raw_text)
+        match = re.search(r'\[[\s\S]*\]', raw_text)
         if not match:
             return []
 

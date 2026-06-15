@@ -21,7 +21,8 @@ def add_medication_plan():
 
         c.execute("""INSERT INTO medication_plans
                     (user_id, medication_name, dosage, times_per_day, timing_notes, start_date, end_date, is_active, notes, frequency, frequency_detail, category, dose_quantity, dose_unit, med_type)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             RETURNING id""",
                  (current_user_id,
                   data.get('medication_name'),
                   data.get('dosage'),

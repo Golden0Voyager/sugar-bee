@@ -143,7 +143,7 @@
                     <!-- Text Input -->
                     <div class="flex-grow-1 position-relative">
                         <textarea class="form-control" id="aiInput" rows="1"
-                                  placeholder="输入健康数据或上传图片，如：今天空腹6.5、跑步5公里..."
+                                  placeholder="如：空腹6.5、跑步5公里"
                                   style="resize: none; border-radius: 24px; padding: 12px 20px; font-size: 1rem; min-height: 48px; max-height: 150px; overflow-y: auto;"
                                   oninput="autoResizeTextarea(this)"></textarea>
                     </div>
@@ -205,7 +205,7 @@
     {% set ALL_MODULES = ['glucose', 'blood_pressure', 'exercise', 'weight', 'medication'] %}
     {% set active_modules = enabled_modules if enabled_modules else ALL_MODULES %}
     {# tab 按钮顺序（与下方 tab 按钮渲染顺序一致），用于计算第一个启用的模块以决定 active 状态 #}
-    {% set BUTTON_ORDER = ['glucose', 'exercise', 'blood_pressure', 'weight', 'medication'] %}
+    {% set BUTTON_ORDER = ['glucose', 'exercise', 'blood_pressure', 'weight'] %}
     {% set first_active = namespace(module='') %}
     {% for m in BUTTON_ORDER %}{% if first_active.module == '' and m in active_modules %}{% set first_active.module = m %}{% endif %}{% endfor %}
 
@@ -232,9 +232,9 @@
                     </div>
                 </div>
                 {% if 'glucose' in active_modules %}
-                <div class="d-flex flex-column align-items-end gap-2">
-                    <button type="button" class="btn btn-ai-predict" id="btnAiPredict" onclick="triggerRemainingPredictions()" title="基于已测数据预测剩余时间点" aria-label="预测今日血糖">
-                        ✨ 预测今日血糖
+                <div class="d-flex flex-column align-items-end gap-2 ms-auto flex-shrink-0">
+                    <button type="button" class="btn btn-ai-predict text-nowrap" id="btnAiPredict" onclick="triggerRemainingPredictions()" title="基于已测数据预测剩余时间点" aria-label="预测今日血糖">
+                        ✨ <span class="d-none d-md-inline">预测今日血糖</span><span class="d-md-none">AI预测</span>
                     </button>
                 </div>
                 {% endif %}
@@ -249,14 +249,14 @@
 
             {% if 'glucose' in active_modules %}
             <div class="today-glucose-timeline mb-3">
-                <div class="d-flex justify-content-between gap-3">
+                <div class="d-flex justify-content-between gap-3 glucose-slots-row">
                     {% for slot in stats.today_overview %}
                     <div class="text-center glucose-slot slot-{{ slot.status }}"
                          data-slot-key="{{ slot.key }}"
                          style="cursor: pointer;"
                          title="{% if slot.status == 'predicted' %}AI预测值，长按录入实测值{% elif slot.status == 'pending' %}长按录入血糖值{% else %}已测量，长按修改{% endif %}">
                         <!-- 图标 -->
-                        <div class="mb-1" style="font-size: 1.1rem;">
+                        <div class="mb-1 slot-icon">
                             {% if slot.key == 'fasting' %}
                             🌅
                             {% elif slot.key == 'post_exercise' %}
@@ -276,7 +276,7 @@
                             {% endif %}
                         </div>
                         <!-- 数值 -->
-                        <div class="fw-bold" style="font-size: 1rem;">
+                        <div class="fw-bold slot-value">
                             {% if slot.value %}
                                 <span class="{% if slot.status == 'predicted' %}text-info{% elif slot.compliance == 'optimal' %}text-success{% elif slot.compliance == 'high' or slot.compliance == 'low' %}text-danger{% else %}text-warning{% endif %}">
                                     {{ "%.1f"|format(slot.value) }}
@@ -293,9 +293,9 @@
                             {% endif %}
                         </div>
                         <!-- 名称 -->
-                        <div class="text-muted" style="font-size: 0.8rem;">{{ slot.name }}</div>
+                        <div class="text-muted slot-name">{{ slot.name }}</div>
                         <!-- 时间 -->
-                        <div class="text-muted" style="font-size: 0.75rem;">{{ slot.time }}</div>
+                        <div class="text-muted slot-time">{{ slot.time }}</div>
                     </div>
                     {% endfor %}
                 </div>
@@ -342,10 +342,20 @@
             {% endif %}{# end glucose #}
 
             <!-- 今日快捷信息 -->
-            <div class="row g-2">
-                {% if 'exercise' in active_modules %}
+            {% set has_exercise = 'exercise' in active_modules and stats.today_exercise %}
+            {% set has_bp = 'blood_pressure' in active_modules %}
+            {% set has_weight = 'weight' in active_modules %}
+            {% set has_med = 'medication' in active_modules and stats.today_med_status and (stats.today_med_status.plans or stats.today_med_status.temp_medications) %}
+            {% set has_quick_info = has_exercise or has_bp or has_weight or has_med %}
+            <div class="mt-3 mb-2 d-flex justify-content-between align-items-center overview-quick-header" data-bs-toggle="collapse" data-bs-target="#quickInfoCollapse" aria-expanded="{{ 'true' if has_quick_info else 'false' }}" role="button" style="cursor: pointer;">
+                <h5 class="mb-0" style="font-size: 1.05rem;">今日记录</h5>
+                <i class="bi bi-chevron-down collapse-toggle-icon"></i>
+            </div>
+            <div class="collapse {{ 'show' if has_quick_info else '' }}" id="quickInfoCollapse">
+                <div class="row g-2">
+                {% if has_exercise %}
                 <!-- 运动 -->
-                <div class="col-md-3 col-6">
+                <div class="col-12 col-md-3 overview-quick-card">
                     <div class="p-2 rounded h-100" style="background: var(--bs-light); min-height: 120px;">
                         <div class="d-flex align-items-center gap-1 mb-2">
                             <span style="font-size: 1rem;">🏃</span>
@@ -408,9 +418,9 @@
                     </div>
                 </div>
                 {% endif %}{# end exercise #}
-                {% if 'blood_pressure' in active_modules %}
+                {% if has_bp %}
                 <!-- 血压 -->
-                <div class="col-md-3 col-6">
+                <div class="col-12 col-md-3 overview-quick-card">
                     <div class="p-2 rounded h-100" style="background: var(--bs-light); min-height: 120px;">
                         <div class="d-flex align-items-center gap-1 mb-2">
                             <span style="font-size: 1rem;">❤️</span>
@@ -450,9 +460,9 @@
                     </div>
                 </div>
                 {% endif %}{# end blood_pressure #}
-                {% if 'weight' in active_modules %}
+                {% if has_weight %}
                 <!-- 体重 -->
-                <div class="col-md-3 col-6">
+                <div class="col-12 col-md-3 overview-quick-card">
                     <div class="p-2 rounded h-100" style="background: var(--bs-light); min-height: 120px;">
                         <div class="d-flex align-items-center gap-1 mb-2">
                             <span style="font-size: 1rem;">⚖️</span>
@@ -483,9 +493,9 @@
                     </div>
                 </div>
                 {% endif %}{# end weight #}
-                {% if 'medication' in active_modules %}
+                {% if has_med %}
                 <!-- 用药 -->
-                <div class="col-md-3 col-6">
+                <div class="col-12 col-md-3 overview-quick-card">
                     <div class="p-2 rounded h-100" style="background: var(--bs-light); min-height: 120px;">
                         <div class="d-flex align-items-center gap-1 mb-2">
                             <span style="font-size: 1rem;">🧩</span>
@@ -628,6 +638,12 @@
                     </div>
                 </div>
                 {% endif %}{# end medication #}
+                {% if not has_quick_info %}
+                <div class="col-12 text-center text-muted py-3 empty-quick-info">
+                    今日暂无运动、血压、体重或用药记录
+                </div>
+                {% endif %}
+            </div>
             </div>
         </div>
     </div>
@@ -678,7 +694,7 @@
                 <li class="nav-item" role="presentation">
                     <button class="nav-link {% if ns.first_tab %}active{% endif %} py-2" id="glucose-tab" data-bs-toggle="pill" data-bs-target="#glucose-stats" type="button" role="tab">
                         <i class="bi bi-droplet-fill text-primary me-1"></i>
-                        <span class="d-none d-sm-inline">血糖</span>
+                        <span>血糖</span>
                     </button>
                 </li>
                 {% set ns.first_tab = false %}
@@ -687,7 +703,7 @@
                 <li class="nav-item" role="presentation">
                     <button class="nav-link {% if ns.first_tab %}active{% endif %} py-2" id="exercise-tab" data-bs-toggle="pill" data-bs-target="#exercise-stats" type="button" role="tab">
                         <i class="bi bi-bicycle text-success me-1"></i>
-                        <span class="d-none d-sm-inline">运动</span>
+                        <span>运动</span>
                     </button>
                 </li>
                 {% set ns.first_tab = false %}
@@ -696,7 +712,7 @@
                 <li class="nav-item" role="presentation">
                     <button class="nav-link {% if ns.first_tab %}active{% endif %} py-2" id="bp-tab" data-bs-toggle="pill" data-bs-target="#bp-stats" type="button" role="tab">
                         <i class="bi bi-heart-pulse-fill me-1" style="color: #9C27B0;"></i>
-                        <span class="d-none d-sm-inline">血压</span>
+                        <span>血压</span>
                     </button>
                 </li>
                 {% set ns.first_tab = false %}
@@ -705,16 +721,7 @@
                 <li class="nav-item" role="presentation">
                     <button class="nav-link {% if ns.first_tab %}active{% endif %} py-2" id="weight-tab" data-bs-toggle="pill" data-bs-target="#weight-stats" type="button" role="tab">
                         <i class="bi bi-speedometer me-1" style="color: #00897B;"></i>
-                        <span class="d-none d-sm-inline">体重</span>
-                    </button>
-                </li>
-                {% set ns.first_tab = false %}
-                {% endif %}
-                {% if 'medication' in active_modules %}
-                <li class="nav-item" role="presentation">
-                    <button class="nav-link {% if ns.first_tab %}active{% endif %} py-2" id="med-tab" data-bs-toggle="pill" data-bs-target="#med-stats" type="button" role="tab">
-                        <i class="bi bi-capsule me-1" style="color: #5E35B1;"></i>
-                        <span class="d-none d-sm-inline">用药</span>
+                        <span>体重</span>
                     </button>
                 </li>
                 {% set ns.first_tab = false %}
@@ -835,7 +842,7 @@
                         <span class="badge" style="background: rgba(156,39,176,0.1); color: #9C27B0;">{{ stats.bp_count_7d }}次测量</span>
                     </div>
                     <div class="row g-2">
-                        <div class="col-4">
+                        <div class="col-6 col-md-4">
                             <div class="text-center p-3 bg-light rounded">
                                 <small class="text-muted d-block fw-semibold">平均血压</small>
                                 <div class="fs-4 fw-bold" style="color: #9C27B0;">
@@ -849,7 +856,7 @@
                                 <small class="text-muted d-block bp-detail" style="font-size: 0.7rem; line-height: 1.3; margin-top: 2px;">近7天均值<br><span class="stats-date-range"></span></small>
                             </div>
                         </div>
-                        <div class="col-4">
+                        <div class="col-6 col-md-4">
                             <div class="text-center p-3 bg-light rounded">
                                 <small class="text-muted d-block fw-semibold">最高血压</small>
                                 <div class="fs-4 fw-bold" style="color: #E91E63;">
@@ -859,7 +866,7 @@
                                 <small class="text-muted d-block bp-detail" style="font-size: 0.7rem; line-height: 1.3; margin-top: 2px;">{% if stats.bp_max_timestamp %}发生于<br>{{ stats.bp_max_timestamp[5:16] }}{% else %}&nbsp;<br>&nbsp;{% endif %}</small>
                             </div>
                         </div>
-                        <div class="col-4">
+                        <div class="col-6 col-md-4">
                             <div class="text-center p-3 bg-light rounded">
                                 <small class="text-muted d-block fw-semibold">最低血压</small>
                                 <div class="fs-4 fw-bold" style="color: #7CB342;">
@@ -872,64 +879,6 @@
                     </div>
                 </div>
                 {% endif %}{# end blood_pressure pane #}
-
-                {% if 'medication' in active_modules %}
-                <!-- 用药统计 -->
-                <div class="tab-pane fade {% if first_active.module == 'medication' %}show active{% endif %}" id="med-stats" role="tabpanel">
-                    <div class="d-flex justify-content-between align-items-center mb-2">
-                        <h6 class="mb-0 fw-bold" style="color: #5E35B1;">💊 今日用药</h6>
-                        <span class="overview-status" style="cursor: pointer; padding: 5px 12px;" data-bs-toggle="modal" data-bs-target="#medicationPlanModal">
-                            <span class="status-label" style="font-size: 0.8rem; color: #5E35B1;"><i class="bi bi-gear me-1"></i>管理</span>
-                        </span>
-                    </div>
-                    {% if stats.active_medications and stats.active_medications|length > 0 %}
-                    {% set meds_only = stats.active_medications|selectattr('category', 'ne', 'supplement')|list %}
-                    {% set supps_only = stats.active_medications|selectattr('category', 'eq', 'supplement')|list %}
-                    <div class="med-tab-bar mb-2">
-                        <button class="med-tab-pill active" onclick="switchOverviewMedTab(this, 'overview-med-list')" style="font-size: 0.82rem; padding: 4px 12px;">💊 药物 ({{ meds_only|length }})</button>
-                        <button class="med-tab-pill" onclick="switchOverviewMedTab(this, 'overview-supp-list')" style="font-size: 0.82rem; padding: 4px 12px;">🧬 补剂 ({{ supps_only|length }})</button>
-                    </div>
-                    <div id="overview-med-list" class="row g-2">
-                        {% if meds_only|length > 0 %}
-                        {% for med in meds_only %}
-                        <div class="col-12">
-                            <div class="d-flex align-items-center px-2 py-1 bg-light rounded" style="font-size: 0.85rem;">
-                                <i class="bi bi-capsule-pill me-2" style="color: #5E35B1;"></i>
-                                <span class="fw-semibold">{{ med.name }}</span>
-                                <span class="text-muted ms-2">{% if med.dosage %}{{ med.dosage }} · {% endif %}{{ med.times }}次/天</span>
-                            </div>
-                        </div>
-                        {% endfor %}
-                        {% else %}
-                        <div class="col-12 text-center text-muted py-3" style="font-size: 0.85rem;">暂无药物</div>
-                        {% endif %}
-                    </div>
-                    <div id="overview-supp-list" class="row g-2" style="display: none;">
-                        {% if supps_only|length > 0 %}
-                        {% for med in supps_only %}
-                        <div class="col-12">
-                            <div class="d-flex align-items-center px-2 py-1 bg-light rounded" style="font-size: 0.85rem;">
-                                <i class="bi bi-capsule-pill me-2" style="color: #00897B;"></i>
-                                <span class="fw-semibold">{{ med.name }}</span>
-                                <span class="text-muted ms-2">{% if med.dosage %}{{ med.dosage }} · {% endif %}{{ med.times }}次/天</span>
-                            </div>
-                        </div>
-                        {% endfor %}
-                        {% else %}
-                        <div class="col-12 text-center text-muted py-3" style="font-size: 0.85rem;">暂无补剂</div>
-                        {% endif %}
-                    </div>
-                    {% else %}
-                    <div class="text-center text-muted py-4">
-                        <i class="bi bi-info-circle d-block fs-3 mb-2"></i>
-                        <div>暂无用药计划</div>
-                        <button class="btn btn-sm btn-primary mt-2" data-bs-toggle="modal" data-bs-target="#medicationPlanModal">
-                            <i class="bi bi-plus-lg me-1"></i>添加用药
-                        </button>
-                    </div>
-                    {% endif %}
-                </div>
-                {% endif %}{# end medication pane #}
 
                 {% if 'weight' in active_modules %}
                 <!-- 体重统计 -->
@@ -1197,13 +1146,13 @@
                 <li class="nav-item" role="presentation">
                     <button class="nav-link active py-2" id="trend-chart-tab" data-bs-toggle="pill" data-bs-target="#trend-chart-pane" type="button" role="tab">
                         <i class="bi bi-graph-up me-1" style="color: #1A73E8;"></i>
-                        <span class="d-none d-sm-inline">趋势</span>
+                        <span>趋势</span>
                     </button>
                 </li>
                 <li class="nav-item" role="presentation">
                     <button class="nav-link py-2" id="cgm-chart-tab" data-bs-toggle="pill" data-bs-target="#cgm-chart-pane" type="button" role="tab">
                         <i class="bi bi-activity me-1" style="color: #26C6DA;"></i>
-                        <span class="d-none d-sm-inline">CGM</span>
+                        <span>CGM</span>
                     </button>
                 </li>
             </ul>
@@ -1261,13 +1210,13 @@
                 <li class="nav-item" role="presentation">
                     <button class="nav-link active py-2" id="bp-chart-tab" data-bs-toggle="pill" data-bs-target="#bp-chart-pane" type="button" role="tab">
                         <i class="bi bi-activity me-1" style="color: #9C27B0;"></i>
-                        <span class="d-none d-sm-inline">血压</span>
+                        <span>血压</span>
                     </button>
                 </li>
                 <li class="nav-item" role="presentation">
                     <button class="nav-link py-2" id="pulse-chart-tab" data-bs-toggle="pill" data-bs-target="#pulse-chart-pane" type="button" role="tab">
                         <i class="bi bi-heart-pulse-fill me-1" style="color: #FF6F00;"></i>
-                        <span class="d-none d-sm-inline">心率</span>
+                        <span>心率</span>
                     </button>
                 </li>
             </ul>
@@ -1386,6 +1335,21 @@
             </div>
             <div class="collapse show" id="calendarSection">
                 <div id="calendar"></div>
+                <div id="mobileDayView" class="d-none">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <button class="btn btn-overview-nav" id="mobileDayPrev" title="前一天">
+                            <i class="bi bi-chevron-left"></i>
+                        </button>
+                        <h5 class="mb-0 fw-bold" id="mobileDayTitle" style="font-size: 1.1rem;"></h5>
+                        <button class="btn btn-overview-nav" id="mobileDayNext" title="后一天">
+                            <i class="bi bi-chevron-right"></i>
+                        </button>
+                    </div>
+                    <div id="mobileDayBody" style="font-size: 1.05rem;"></div>
+                    <div class="text-center mt-3">
+                        <button class="btn btn-sm btn-outline-secondary" id="mobileShowCalendarBtn">查看月视图</button>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -1396,8 +1360,16 @@
     <div class="modal-dialog modal-dialog-centered modal-lg">
         <div class="modal-content">
             <div class="modal-header">
-                <h3 class="modal-title" id="dayModalTitle">日期详情</h3>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" style="font-size: 1.25rem;"></button>
+                <button type="button" class="btn btn-overview-nav" onclick="mobileDayNav(-1)" title="前一天">
+                    <i class="bi bi-chevron-left"></i>
+                </button>
+                <h3 class="modal-title flex-grow-1 text-center" id="dayModalTitle">日期详情</h3>
+                <div class="d-flex align-items-center">
+                    <button type="button" class="btn btn-overview-nav" onclick="mobileDayNav(1)" title="后一天">
+                        <i class="bi bi-chevron-right"></i>
+                    </button>
+                    <button type="button" class="btn-close ms-2" data-bs-dismiss="modal" style="font-size: 1.25rem;"></button>
+                </div>
             </div>
             <div class="modal-body" id="dayModalBody" style="font-size: 1.05rem;">
                 <!-- Content will be injected by JS -->
@@ -1961,10 +1933,21 @@
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script>
     // Chart.js 全局字体配置
+    const IS_MOBILE = window.innerWidth <= 480;
     Chart.defaults.font.family = "'Noto Sans SC', -apple-system, BlinkMacSystemFont, sans-serif";
-    Chart.defaults.font.size = 13;
-    Chart.defaults.plugins.tooltip.titleFont = { size: 14, family: "'Noto Sans SC', sans-serif" };
-    Chart.defaults.plugins.tooltip.bodyFont = { size: 13, family: "'Noto Sans SC', sans-serif" };
+    Chart.defaults.font.size = IS_MOBILE ? 11 : 14;
+    Chart.defaults.plugins.tooltip.titleFont = { size: IS_MOBILE ? 12 : 16, family: "'Noto Sans SC', sans-serif" };
+    Chart.defaults.plugins.tooltip.bodyFont = { size: IS_MOBILE ? 11 : 15, family: "'Noto Sans SC', sans-serif" };
+    Chart.defaults.plugins.legend.labels.font = { size: IS_MOBILE ? 11 : 14, family: "'Noto Sans SC', sans-serif" };
+    Chart.defaults.plugins.legend.labels.boxWidth = IS_MOBILE ? 8 : 10;
+    Chart.defaults.plugins.legend.labels.boxHeight = IS_MOBILE ? 8 : 10;
+    Chart.defaults.plugins.legend.labels.usePointStyle = true;
+    Chart.defaults.scale.ticks.font = { size: IS_MOBILE ? 9 : 12, family: "'Noto Sans SC', sans-serif" };
+    Chart.defaults.scale.ticks.padding = IS_MOBILE ? 2 : 6;
+    Chart.defaults.scale.title.font = { size: IS_MOBILE ? 11 : 14, family: "'Noto Sans SC', sans-serif", weight: 'bold' };
+    Chart.defaults.scale.ticks.maxTicksLimit = IS_MOBILE ? 6 : null;
+    Chart.defaults.aspectRatio = IS_MOBILE ? 1.1 : 2;
+    Chart.defaults.layout.padding = { top: 4, right: IS_MOBILE ? 0 : 4, bottom: IS_MOBILE ? 8 : 12, left: IS_MOBILE ? 0 : 4 };
 
     // Injected from server (初始 90 天，按需加载更多)
     let timelineData = {{ timeline | tojson }};
@@ -2514,14 +2497,14 @@
                 valueHtml = `<span class="${cls}">${s.value.toFixed(1)}</span>${badge}`;
             }
             return `<div class="text-center glucose-slot slot-${s.status}" data-slot-key="${s.key}" style="cursor:pointer;">
-                <div class="mb-1" style="font-size:1.1rem;">${s.icon}</div>
-                <div class="fw-bold" style="font-size:0.9rem;">${valueHtml}</div>
-                <div class="text-muted" style="font-size:0.7rem;">${s.name}</div>
-                <div class="text-muted" style="font-size:0.65rem;">${s.time}</div>
+                <div class="mb-1 slot-icon">${s.icon}</div>
+                <div class="fw-bold slot-value">${valueHtml}</div>
+                <div class="text-muted slot-name">${s.name}</div>
+                <div class="text-muted slot-time">${s.time}</div>
             </div>`;
         }).join('');
 
-        const timelineEl = document.querySelector('.today-glucose-timeline .d-flex.justify-content-between.gap-3');
+        const timelineEl = document.querySelector('.today-glucose-timeline .glucose-slots-row');
         if (timelineEl) timelineEl.innerHTML = slotsHtml;
         // 重新绑定长按事件
         initSlotLongPress();
@@ -3278,7 +3261,7 @@
                         min: 4,
                         max: 10,
                         title: {
-                            display: true,
+                            display: !IS_MOBILE,
                             text: '血糖 (mmol/L)'
                         }
                     }
@@ -3368,12 +3351,18 @@
     }
 
     document.addEventListener('DOMContentLoaded', function() {
-        // 同步AI预测按钮宽度与最后一个槽位
+        // 同步AI预测按钮宽度与最后一个槽位（仅桌面端，手机端保持自然宽度）
         function syncAiPredictWidth() {
             const slots = document.querySelectorAll('.glucose-slot');
             const btn = document.getElementById('btnAiPredict');
             if (slots.length && btn) {
-                btn.style.width = slots[slots.length - 1].offsetWidth + 'px';
+                if (window.innerWidth >= 768) {
+                    btn.style.width = slots[slots.length - 1].offsetWidth + 'px';
+                    btn.style.minWidth = '';
+                } else {
+                    btn.style.width = '';
+                    btn.style.minWidth = '72px';
+                }
             }
         }
         syncAiPredictWidth();
@@ -3479,7 +3468,8 @@
             locale: 'zh-cn',
             headerToolbar: false,
             height: 'auto',
-            aspectRatio: 1.5,
+            aspectRatio: window.innerWidth <= 480 ? 0.6 : 1.5,
+            dayMaxEvents: window.innerWidth <= 480 ? 3 : true,
             slotMinTime: '06:00:00',
             slotMaxTime: '24:00:00',
             nowIndicator: true,
@@ -3561,6 +3551,16 @@
             calendar.today();
         };
         window.calendarSetView = function(viewType) {
+            if (viewType === 'timeGridDay' && window.innerWidth <= 480) {
+                // 手机端“日”视图直接打开当日详情弹窗，避免时间轴太窄
+                const today = new Date().toISOString().split('T')[0];
+                renderDayDetails(today);
+                ['calViewDay', 'calViewWeek', 'calViewMonth'].forEach(id => {
+                    const btn = document.getElementById(id);
+                    if (btn) btn.classList.toggle('cal-seg-active', id === 'calViewDay');
+                });
+                return;
+            }
             if (viewType === 'timeGridDay') {
                 calendar.changeView('timeGridDay', new Date());
             } else {
@@ -3769,8 +3769,8 @@
                         },
                         y: {
                             beginAtZero: false, min: 4, max: 12,
-                            title: { display: true, text: '血糖值 (mmol/L)', font: { size: 13, weight: 'bold' } },
-                            ticks: { stepSize: 1, callback: v => Number.isInteger(v) ? v : '', font: { size: 11, weight: 'bold' } },
+                            title: { display: !IS_MOBILE, text: '血糖值 (mmol/L)', font: { size: IS_MOBILE ? 11 : 14, weight: 'bold' } },
+                            ticks: { stepSize: 1, callback: v => Number.isInteger(v) ? v : '', font: { size: IS_MOBILE ? 9 : 12, weight: 'bold' } },
                             grid: { color: 'rgba(0,0,0,0.05)' }
                         }
                     }
@@ -3862,9 +3862,9 @@
                             usePointStyle: true,  // Google Fit 风格：使用圆形图例
                             pointStyle: 'circle',
                             padding: 20,
-                            font: { size: 13, family: "'Roboto', 'Helvetica Neue', sans-serif", weight: '500' },
-                            boxWidth: 8,  // 圆形图例大小
-                            boxHeight: 8
+                            font: { size: 14, family: "'Roboto', 'Helvetica Neue', sans-serif", weight: '500' },
+                            boxWidth: 10,  // 圆形图例大小
+                            boxHeight: 10
                         }
                     },
                     tooltip: {
@@ -3909,11 +3909,11 @@
                                 borderDash: [6, 4],
                                 label: {
                                     content: '目标上限 7.8',
-                                    enabled: true,
+                                    enabled: !IS_MOBILE,
                                     position: 'end',
                                     backgroundColor: 'rgba(251, 188, 4, 0.9)',
                                     color: '#202124',
-                                    font: { size: 10, family: "'Roboto', sans-serif" },
+                                    font: { size: 11, family: "'Roboto', sans-serif" },
                                     padding: { top: 2, bottom: 2, left: 6, right: 6 },
                                     borderRadius: 4
                                 }
@@ -3927,11 +3927,11 @@
                                 borderDash: [8, 4],
                                 label: {
                                     content: '危险 10.0',
-                                    enabled: true,
+                                    enabled: !IS_MOBILE,
                                     position: 'end',
                                     backgroundColor: 'rgba(234, 67, 53, 0.9)',
                                     color: '#fff',
-                                    font: { size: 10, family: "'Roboto', sans-serif" },
+                                    font: { size: 11, family: "'Roboto', sans-serif" },
                                     padding: { top: 2, bottom: 2, left: 6, right: 6 },
                                     borderRadius: 4
                                 }
@@ -3945,11 +3945,11 @@
                                 borderDash: [6, 4],
                                 label: {
                                     content: '低血糖 3.9',
-                                    enabled: true,
+                                    enabled: !IS_MOBILE,
                                     position: 'start',
                                     backgroundColor: 'rgba(234, 67, 53, 0.9)',
                                     color: '#fff',
-                                    font: { size: 10, family: "'Roboto', sans-serif" },
+                                    font: { size: 11, family: "'Roboto', sans-serif" },
                                     padding: { top: 2, bottom: 2, left: 6, right: 6 },
                                     borderRadius: 4
                                 }
@@ -4004,7 +4004,7 @@
                                 }
                                 return h + ':00';
                             },
-                            font: { size: 11, family: "'Roboto', 'Helvetica Neue', sans-serif" }
+                            font: { size: IS_MOBILE ? 9 : 12, family: "'Roboto', 'Helvetica Neue', sans-serif" }
                         },
                         title: { display: false },
                         afterFit: function(axis) {
@@ -4019,16 +4019,16 @@
                         min: yMin,
                         max: yMax,
                         title: {
-                            display: true,
+                            display: !IS_MOBILE,
                             text: '血糖值 (mmol/L)',
-                            font: { size: 13, weight: 'bold' }
+                            font: { size: IS_MOBILE ? 11 : 14, weight: 'bold' }
                         },
                         ticks: {
                             stepSize: 1,
                             callback: function(value) {
                                 return Number.isInteger(value) ? value : '';
                             },
-                            font: { size: 11, weight: 'bold' }
+                            font: { size: IS_MOBILE ? 9 : 12, weight: 'bold' }
                         },
                         grid: {
                             color: function(context) {
@@ -4217,17 +4217,17 @@
                             warningHigh: {
                                 type: 'line', yMin: 7.8, yMax: 7.8,
                                 borderColor: 'rgba(251, 188, 4, 0.6)', borderWidth: 1.5, borderDash: [6, 4],
-                                label: { content: '目标上限 7.8', enabled: true, position: 'end', backgroundColor: 'rgba(251, 188, 4, 0.9)', color: '#202124', font: { size: 10 }, padding: { top: 2, bottom: 2, left: 6, right: 6 }, borderRadius: 4 }
+                                label: { content: '目标上限 7.8', enabled: !IS_MOBILE, position: 'end', backgroundColor: 'rgba(251, 188, 4, 0.9)', color: '#202124', font: { size: 11 }, padding: { top: 2, bottom: 2, left: 6, right: 6 }, borderRadius: 4 }
                             },
                             dangerHigh: {
                                 type: 'line', yMin: 10.0, yMax: 10.0,
                                 borderColor: 'rgba(234, 67, 53, 0.5)', borderWidth: 1.5, borderDash: [8, 4],
-                                label: { content: '危险 10.0', enabled: true, position: 'end', backgroundColor: 'rgba(234, 67, 53, 0.9)', color: '#fff', font: { size: 10 }, padding: { top: 2, bottom: 2, left: 6, right: 6 }, borderRadius: 4 }
+                                label: { content: '危险 10.0', enabled: !IS_MOBILE, position: 'end', backgroundColor: 'rgba(234, 67, 53, 0.9)', color: '#fff', font: { size: 11 }, padding: { top: 2, bottom: 2, left: 6, right: 6 }, borderRadius: 4 }
                             },
                             dangerLow: {
                                 type: 'line', yMin: 3.9, yMax: 3.9,
                                 borderColor: 'rgba(234, 67, 53, 0.5)', borderWidth: 1.5, borderDash: [6, 4],
-                                label: { content: '低血糖 3.9', enabled: true, position: 'start', backgroundColor: 'rgba(234, 67, 53, 0.9)', color: '#fff', font: { size: 10 }, padding: { top: 2, bottom: 2, left: 6, right: 6 }, borderRadius: 4 }
+                                label: { content: '低血糖 3.9', enabled: !IS_MOBILE, position: 'start', backgroundColor: 'rgba(234, 67, 53, 0.9)', color: '#fff', font: { size: 11 }, padding: { top: 2, bottom: 2, left: 6, right: 6 }, borderRadius: 4 }
                             }
                         }
                     }
@@ -4270,7 +4270,7 @@
                                 }
                                 return h + ':00';
                             },
-                            font: { size: 11, family: "'Roboto', 'Helvetica Neue', sans-serif" }
+                            font: { size: IS_MOBILE ? 9 : 12, family: "'Roboto', 'Helvetica Neue', sans-serif" }
                         },
                         title: { display: false },
                         afterFit: function(axis) {
@@ -4281,8 +4281,8 @@
                     y: {
                         beginAtZero: false,
                         min: 4, max: 12,
-                        title: { display: true, text: '血糖值 (mmol/L)', font: { size: 13, weight: 'bold' } },
-                        ticks: { stepSize: 1, callback: v => Number.isInteger(v) ? v : '', font: { size: 11, weight: 'bold' } },
+                        title: { display: !IS_MOBILE, text: '血糖值 (mmol/L)', font: { size: IS_MOBILE ? 11 : 14, weight: 'bold' } },
+                        ticks: { stepSize: 1, callback: v => Number.isInteger(v) ? v : '', font: { size: IS_MOBILE ? 9 : 12, weight: 'bold' } },
                         grid: {
                             color: function(context) {
                                 if (context.tick.value === 7.8 || context.tick.value === 10.0 || context.tick.value === 3.9) return 'rgba(220, 53, 69, 0.2)';
@@ -4503,11 +4503,11 @@
                                 borderDash: [10, 5],
                                 label: {
                                     content: '危险 160mmHg',
-                                    display: true,
+                                    display: !IS_MOBILE,
                                     position: 'end',
                                     backgroundColor: 'rgba(220, 53, 69, 0.8)',
                                     color: '#fff',
-                                    font: { size: 10 }
+                                    font: { size: 11 }
                                 }
                             },
                             warningHighSys: {
@@ -4519,11 +4519,11 @@
                                 borderDash: [5, 5],
                                 label: {
                                     content: '收缩压警戒 140mmHg',
-                                    display: true,
+                                    display: !IS_MOBILE,
                                     position: 'end',
                                     backgroundColor: 'rgba(240, 168, 160, 0.85)',
                                     color: '#5A2A20',
-                                    font: { size: 10 }
+                                    font: { size: 11 }
                                 }
                             },
                             warningHighDia: {
@@ -4535,11 +4535,11 @@
                                 borderDash: [3, 3],
                                 label: {
                                     content: '舒张压警戒 90mmHg',
-                                    display: true,
+                                    display: !IS_MOBILE,
                                     position: 'start',
                                     backgroundColor: 'rgba(140, 188, 224, 0.85)',
                                     color: '#1E3A5F',
-                                    font: { size: 9 }
+                                    font: { size: 11 }
                                 }
                             },
                             normalZone: {
@@ -4583,13 +4583,13 @@
                         min: yMin,
                         max: yMax,
                         title: {
-                            display: true,
+                            display: !IS_MOBILE,
                             text: '血压 (mmHg)',
-                            font: { size: 13, weight: 'bold' }
+                            font: { size: IS_MOBILE ? 11 : 14, weight: 'bold' }
                         },
                         ticks: {
                             stepSize: 10,
-                            font: { size: 11, weight: 'bold' }
+                            font: { size: IS_MOBILE ? 9 : 12, weight: 'bold' }
                         },
                         grid: {
                             color: function(context) {
@@ -4674,8 +4674,8 @@
                             beginAtZero: false,
                             min: pulseMin,
                             max: pulseMax,
-                            title: { display: true, text: '脉搏 (bpm)', font: { size: 13, weight: 'bold' }, color: '#FF6F00' },
-                            ticks: { stepSize: 10, font: { size: 11, weight: 'bold' }, color: '#FF6F00' },
+                            title: { display: !IS_MOBILE, text: '脉搏 (bpm)', font: { size: IS_MOBILE ? 11 : 14, weight: 'bold' }, color: '#FF6F00' },
+                            ticks: { stepSize: 10, font: { size: IS_MOBILE ? 9 : 12, weight: 'bold' }, color: '#FF6F00' },
                             grid: { color: 'rgba(0,0,0,0.05)' }
                         }
                     }
@@ -4815,13 +4815,13 @@
                                 borderWidth: 1.5,
                                 borderDash: [6, 4],
                                 label: {
-                                    display: true,
+                                    display: !IS_MOBILE,
                                     content: `超重 ${bmi24Weight}kg (BMI=24)`,
                                     position: 'end',
                                     yAdjust: -12,
                                     backgroundColor: 'transparent',
                                     color: '#EF5350',
-                                    font: { size: 10 },
+                                    font: { size: 11 },
                                     padding: 2
                                 }
                             },
@@ -4834,13 +4834,13 @@
                                 borderWidth: 1.5,
                                 borderDash: [6, 4],
                                 label: {
-                                    display: true,
+                                    display: !IS_MOBILE,
                                     content: userTargetWeight ? `目标 ${targetWeight}kg` : `目标 ${targetWeight}kg (BMI=22)`,
                                     position: 'start',
                                     yAdjust: -12,
                                     backgroundColor: 'transparent',
                                     color: '#4CAF50',
-                                    font: { size: 10 },
+                                    font: { size: 11 },
                                     padding: 2
                                 }
                             }
@@ -4873,14 +4873,14 @@
                         min: weightMin,
                         max: weightMax,
                         title: {
-                            display: true,
+                            display: !IS_MOBILE,
                             text: '体重 (kg)',
-                            font: { size: 11, weight: 'bold' },
+                            font: { size: IS_MOBILE ? 9 : 12, weight: 'bold' },
                             color: '#00897B'
                         },
                         ticks: {
                             stepSize: 1,
-                            font: { size: 10 },
+                            font: { size: 11 },
                             color: '#00897B'
                         },
                         grid: { color: 'rgba(0,0,0,0.05)' }
@@ -5378,24 +5378,30 @@
         }
     }
 
-    function renderDayDetails(dateStr) {
-        // Ensure dayModal is initialized
-        if (!dayModal) {
-            dayModal = new bootstrap.Modal(document.getElementById('dayDetailsModal'));
+    let currentDayDateStr = null;
+
+    function renderDayDetails(dateStr, targetContainer = null) {
+        currentDayDateStr = dateStr;
+
+        const modalTitle = document.getElementById('dayModalTitle');
+        const modalBody = document.getElementById('dayModalBody');
+        const container = targetContainer ? document.getElementById(targetContainer) : modalBody;
+
+        if (!targetContainer) {
+            // Ensure dayModal is initialized
+            if (!dayModal) {
+                dayModal = new bootstrap.Modal(document.getElementById('dayDetailsModal'));
+            }
+            modalTitle.textContent = dateStr + ' 详情';
         }
+        container.innerHTML = '';
 
         // Find data for this date
         const dayData = timelineData.find(d => d.date === dateStr);
 
-        const modalTitle = document.getElementById('dayModalTitle');
-        const modalBody = document.getElementById('dayModalBody');
-
-        modalTitle.textContent = dateStr + ' 详情';
-        modalBody.innerHTML = '';
-
         if (!dayData) {
-            modalBody.innerHTML = '<div class="text-center text-muted py-4">当天无记录</div>';
-            dayModal.show();
+            container.innerHTML = '<div class="text-center text-muted py-4">当天无记录</div>';
+            if (!targetContainer) dayModal.show();
             return;
         }
 
@@ -5416,7 +5422,7 @@
                 </span>
             </div>
         `;
-        modalBody.innerHTML += statsHtml;
+        container.innerHTML += statsHtml;
 
         // 2. Render Timeline Items - 显示真实记录 + 未验证的预测，排除已验证的预测
         entries.filter(r => !r.is_predicted || !r.is_verified).forEach(r => {
@@ -5549,14 +5555,19 @@
                 </div>
             </div>`;
             
-            modalBody.innerHTML += itemHtml;
+            container.innerHTML += itemHtml;
         });
 
         // 显示当天应服用的药物方案
         if (dayData.data.medication_plans && dayData.data.medication_plans.length > 0) {
             let medHtml = `
                 <div class="mt-4 pt-3 border-top">
-                    <h6 class="text-muted mb-3">💊 今日用药方案</h6>
+                    <details class="day-med-details" ${window.innerWidth > 480 ? 'open' : ''}>
+                        <summary class="day-med-summary">
+                            <span class="text-muted">💊 今日用药方案</span>
+                            <i class="bi bi-chevron-down collapse-toggle-icon ms-1"></i>
+                        </summary>
+                        <div class="day-med-content mt-3">
             `;
 
             dayData.data.medication_plans.forEach(plan => {
@@ -5583,11 +5594,60 @@
                 `;
             });
 
-            medHtml += '</div>';
-            modalBody.innerHTML += medHtml;
+            medHtml += `
+                        </div>
+                    </details>
+                </div>`;
+            container.innerHTML += medHtml;
         }
 
-        dayModal.show();
+        if (!targetContainer) dayModal.show();
+    }
+
+    function showMobileDayView(dateStr) {
+        const calendarEl = document.getElementById('calendar');
+        const dayViewEl = document.getElementById('mobileDayView');
+        const titleEl = document.getElementById('mobileDayTitle');
+        if (calendarEl) calendarEl.classList.add('d-none');
+        if (dayViewEl) dayViewEl.classList.remove('d-none');
+        if (titleEl) {
+            const d = new Date(dateStr + 'T00:00:00');
+            titleEl.textContent = d.toLocaleDateString('zh-CN', { month: 'long', day: 'numeric', weekday: 'short' });
+        }
+        renderDayDetails(dateStr, 'mobileDayBody');
+    }
+
+    function showMobileCalendarView() {
+        const calendarEl = document.getElementById('calendar');
+        const dayViewEl = document.getElementById('mobileDayView');
+        if (calendarEl) calendarEl.classList.remove('d-none');
+        if (dayViewEl) dayViewEl.classList.add('d-none');
+    }
+
+    // 手机端默认进入单日视图，并绑定前后翻页
+    if (window.innerWidth <= 480) {
+        const today = new Date().toISOString().split('T')[0];
+        showMobileDayView(today);
+        const prevBtn = document.getElementById('mobileDayPrev');
+        const nextBtn = document.getElementById('mobileDayNext');
+        if (prevBtn) prevBtn.addEventListener('click', () => mobileDayNav(-1, true));
+        if (nextBtn) nextBtn.addEventListener('click', () => mobileDayNav(1, true));
+    } else {
+        // 桌面端绑定“查看月视图”按钮（仅在调试时可能用到）
+        const showCalendarBtn = document.getElementById('mobileShowCalendarBtn');
+        if (showCalendarBtn) showCalendarBtn.addEventListener('click', showMobileCalendarView);
+    }
+
+    function mobileDayNav(dir, isMobileCard) {
+        if (!currentDayDateStr) return;
+        const d = new Date(currentDayDateStr + 'T00:00:00');
+        d.setDate(d.getDate() + dir);
+        const next = d.toISOString().split('T')[0];
+        if (isMobileCard) {
+            showMobileDayView(next);
+        } else {
+            renderDayDetails(next);
+        }
     }
 
 

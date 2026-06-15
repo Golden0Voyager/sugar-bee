@@ -4,29 +4,38 @@ import json
 CONFIG_FILE = "user_config.json"
 
 # ========== AI 模型配置 ==========
-# 降级链：ModelScope → 火山引擎 → Gemini（保底）
+# 降级链：ModelScope → SenseNova (text/report) → 火山引擎 → Gemini（保底）
+# 图片识别 (vision) 不走 SenseNova
 # 应用内置 API Key，用户无需自行配置
 
 # ModelScope 模型配置（国内可用，免费2000次/天，单模型500次/天，OpenAI 兼容接口）
 # 三类任务使用不同模型，有效容量翻3倍（每模型独立500次/天）
 MODELSCOPE_MODELS = {
-    'text': ['Qwen/Qwen3-32B'],               # JSON解析/预测（32B结构化输出稳定，复杂口语理解强）
-    'vision': ['Qwen/Qwen3-VL-235B-A22B-Instruct', 'Qwen/Qwen3-VL-8B-Thinking'],   # 截图识别：235B 更快更准，8B-Thinking 兜底
-    'report': ['deepseek-ai/DeepSeek-R1-0528'], # 报告分析（最强推理，医学逻辑天花板）
-    'extra_body': {'enable_thinking': False},    # 仅对 text 任务生效（Qwen3 标准模型需关闭思考模式）
+    'text': ['Qwen/Qwen3.5-35B-A3B'],               # JSON解析/预测（结构化输出稳定）
+    'vision': ['Qwen/Qwen3-VL-235B-A22B-Instruct', 'Qwen/Qwen3-VL-8B-Thinking', 'Qwen/Qwen3.5-397B-A17B'],   # 截图识别，兜底用 397B
+    'report': ['Qwen/Qwen3.5-397B-A17B'],      # 报告分析
+    'extra_body': {'enable_thinking': False},        # 仅对 text 任务生效（Qwen3 标准模型需关闭思考模式）
 }
-MODELSCOPE_BASE_URL = 'https://api-inference.modelscope.cn/v1/'
+MODELSCOPE_BASE_URL = 'https://api-inference.modelscope.cn/v1'
+
+# SenseNova（商汤）模型配置
+SENSENOVA_MODELS = {
+    'text': ['deepseek-v4-flash'],
+    'vision': [],   # 图片识别不走 SenseNova
+    'report': ['deepseek-v4-flash'],
+}
+SENSENOVA_BASE_URL = 'https://token.sensenova.cn/v1'
 
 # 火山引擎/豆包 模型配置（国内可用，免费50万tokens/模型，OpenAI 兼容接口）
 VOLC_MODELS = {
     'text': ['doubao-seed-1-8-251228'],
-    'vision': ['doubao-seed-1-6-vision-250815', 'doubao-seed-1-8-251228'],
+    'vision': [],   # 图片识别不走火山引擎
     'report': ['doubao-seed-1-8-251228'],
 }
 VOLC_BASE_URL = 'https://ark.cn-beijing.volces.com/api/v3'
 
 # Gemini 直连（保底，海外可用）
-GEMINI_MODELS = ['gemini-3-flash-preview', 'gemini-2.5-flash']
+GEMINI_MODELS = ['gemini-3.5-flash', 'gemini-2.5-flash']
 
 # ========== 血糖值验证范围常量 ==========
 # 用于数据验证和预测值范围检查，单位：mmol/L

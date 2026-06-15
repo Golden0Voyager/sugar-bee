@@ -268,7 +268,8 @@ def add_record():
                       distance, duration, heart_rate, systolic_pressure, diastolic_pressure, pulse_rate,
                       carbs_grams, gi_value, weight, bmi, spo2, vo2max, max_heart_rate, steps,
                       pace, max_pace, cadence)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     RETURNING id""",
                   (current_user_id, value, unit, r_type, notes, timestamp, calories, diet_analysis, is_predicted,
                    distance, duration, heart_rate, systolic_pressure, diastolic_pressure, pulse_rate,
                    carbs_grams, gi_value, weight, bmi, spo2, vo2max, max_heart_rate, steps,
@@ -464,13 +465,14 @@ def batch_add():
                                             distance, duration, heart_rate, max_heart_rate, systolic_pressure, diastolic_pressure,
                                             pulse_rate, weight, bmi, medication_name, steps, pace, max_pace, cadence, vo2max,
                                             spo2, carbs_grams, gi_value)
-                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                      (record_uid, r['value'], r.get('unit', 'mmol/L'), r_type, r.get('notes', ''), timestamp,
-                       r.get('calories', 0), r.get('diet_analysis', ''), is_pred, r.get('distance'), r.get('duration'),
-                       r.get('heart_rate'), r.get('max_heart_rate'), systolic, diastolic,
-                       r.get('pulse_rate'), weight, bmi, r.get('medication_name'), r.get('steps'),
-                       r.get('pace'), r.get('max_pace'), r.get('cadence'), r.get('vo2max'),
-                       r.get('spo2'), r.get('carbs_grams'), r.get('gi_value')))
+                          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                          RETURNING id""",
+                       (record_uid, r['value'], r.get('unit', 'mmol/L'), r_type, r.get('notes', ''), timestamp,
+                        r.get('calories', 0), r.get('diet_analysis', ''), is_pred, r.get('distance'), r.get('duration'),
+                        r.get('heart_rate'), r.get('max_heart_rate'), systolic, diastolic,
+                        r.get('pulse_rate'), weight, bmi, r.get('medication_name'), r.get('steps'),
+                        r.get('pace'), r.get('max_pace'), r.get('cadence'), r.get('vo2max'),
+                        r.get('spo2'), r.get('carbs_grams'), r.get('gi_value')))
             inserted_records.append({'id': c.lastrowid, 'is_pred': is_pred, 'value': r['value'], 'datetime': timestamp, 'type': r_type})
 
         db.commit()

@@ -149,8 +149,8 @@ def generate_health_analysis(db, user_id=1, is_auto=False, days=7):
         ai_response = call_ai(prompt, task_type='report')
 
         # 去除 AI 返回的 ```markdown ... ``` 包裹
-        ai_response = re.sub(r'^```(?:markdown|md)?\s*\n?', '', ai_response, flags=re.IGNORECASE)
-        ai_response = re.sub(r'\n?```\s*$', '', ai_response)
+        ai_response = re.sub(r'^```(%s:markdown|md)%s\s*\n%s', '', ai_response, flags=re.IGNORECASE)
+        ai_response = re.sub(r'\n%s```\s*$', '', ai_response)
 
         # 解析得分
         score_match = re.search(r'综合健康得分:\s*(\d+)', ai_response)
@@ -158,8 +158,8 @@ def generate_health_analysis(db, user_id=1, is_auto=False, days=7):
 
         # 保存记录
         c.execute("""
-            INSERT INTO health_analyses 
-            (analysis_date, health_score, glucose_summary, blood_pressure_summary, exercise_summary, 
+            INSERT INTO health_analyses
+            (analysis_date, health_score, glucose_summary, blood_pressure_summary, exercise_summary,
              medication_summary, recommendations, full_analysis, is_auto_generated, user_id, days)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (today_str, score, glucose_summary, bp_summary, exercise_summary, med_summary, "", ai_response, 1 if is_auto else 0, user_id, days))
