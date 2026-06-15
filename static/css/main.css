@@ -1653,6 +1653,10 @@
                 width: 40px;
                 height: 40px;
             }
+            #mobileDayView .d-flex.justify-content-between.align-items-center {
+                flex-direction: row !important;
+                align-items: center !important;
+            }
             /* 月视图手机端适配 */
             .fc-daygrid-day {
                 min-height: 110px !important;
