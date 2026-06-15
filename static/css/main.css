@@ -1718,13 +1718,22 @@
                 padding: 6px 12px;
                 font-size: 0.85rem;
             }
-            /* Nav pills 在极窄屏幕上可滚动 */
+            /* Nav pills 在极窄屏幕上可滚动，统一格式 */
+            .nav.nav-fill {
+                display: flex !important;
+                justify-content: flex-start !important;
+            }
+            .nav.nav-fill .nav-item {
+                flex: 0 0 auto !important;
+                text-align: center;
+            }
             .nav-pills {
                 flex-wrap: nowrap;
                 overflow-x: auto;
                 -webkit-overflow-scrolling: touch;
                 scrollbar-width: none;
                 padding-bottom: 4px;
+                gap: 8px;
             }
             .nav-pills::-webkit-scrollbar {
                 display: none;
@@ -1732,6 +1741,22 @@
             .nav-pills .nav-link {
                 white-space: nowrap;
                 flex-shrink: 0;
+                min-width: 84px;
+                padding: 10px 16px;
+                font-size: 0.95rem;
+                font-weight: 500;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                gap: 6px;
+                border-radius: 10px;
+            }
+            .nav-pills .nav-link i {
+                font-size: 1.05rem;
+                line-height: 1;
+            }
+            .nav-pills .nav-link.active {
+                font-weight: 600;
             }
             /* 概览卡片数值缩放 */
             .stats-card .value {
