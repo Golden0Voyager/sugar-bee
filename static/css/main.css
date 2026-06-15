@@ -1657,6 +1657,58 @@
                 flex-direction: row !important;
                 align-items: center !important;
             }
+            /* 单日视图内容手机端适配 */
+            #mobileDayBody .d-flex.gap-2.mb-3.small {
+                flex-wrap: wrap !important;
+                gap: 6px !important;
+            }
+            #mobileDayBody .d-flex.gap-2.mb-3.small > span {
+                flex: 0 0 calc(50% - 3px) !important;
+                text-align: center;
+                font-size: 0.85rem;
+            }
+            #mobileDayBody .timeline-item {
+                padding: 12px 0;
+            }
+            #mobileDayBody .timeline-item > .d-flex.w-100 {
+                flex-wrap: wrap !important;
+                gap: 8px;
+            }
+            #mobileDayBody .timeline-item > .d-flex > .me-3 {
+                min-width: auto !important;
+                font-size: 0.85rem;
+                color: #6c757d;
+            }
+            #mobileDayBody .timeline-item .text-nowrap.overflow-auto {
+                white-space: normal !important;
+                overflow: visible !important;
+                display: flex;
+                flex-wrap: wrap;
+                gap: 6px;
+            }
+            #mobileDayBody .timeline-item .text-nowrap.overflow-auto > span {
+                font-size: 0.85rem;
+            }
+            #mobileDayBody .timeline-item .ms-2.d-flex.gap-1 {
+                margin-left: auto !important;
+            }
+            #mobileDayBody .timeline-item .btn-sm {
+                min-height: 40px;
+                min-width: 40px;
+                padding: 8px 10px;
+                font-size: 0.9rem;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+            }
+            #mobileDayBody .timeline-item h5 {
+                font-size: 1.1rem;
+            }
+            #mobileDayBody .timeline-dot {
+                width: 14px;
+                height: 14px;
+                top: 18px;
+            }
             /* 月视图手机端适配 */
             .fc-daygrid-day {
                 min-height: 110px !important;
