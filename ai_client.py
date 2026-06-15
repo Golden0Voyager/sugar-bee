@@ -205,9 +205,10 @@ def call_ai(prompt, images_data=None, mime_type=None, task_type=None):
 
 SENSENOVA_CHAT_BASE_URL = settings.SENSENOVA_BASE_URL
 SENSENOVA_CHAT_MODEL = "deepseek-v4-flash"
-CHAT_AVAILABLE = bool(SENSENOVA_API_KEY)
+MODELSCOPE_CHAT_MODEL = settings.MODELSCOPE_MODELS['chat'][0]
+CHAT_AVAILABLE = bool(SENSENOVA_API_KEY or MODELSCOPE_API_KEY)
 
-if SENSENOVA_API_KEY:
+if CHAT_AVAILABLE:
     print(f"[AI] 健康助手就绪（SenseNova {SENSENOVA_CHAT_MODEL}）")
 
 
@@ -223,18 +224,33 @@ def _stream_chat(client, model, messages, extra_body=None):
 
 
 def call_chat_stream(messages):
-    """流式聊天调用 — SenseNova DeepSeek V4 Flash"""
+    """流式聊天调用 — SenseNova 优先，ModelScope fallback。"""
     from openai import OpenAI
 
-    if SENSENOVA_API_KEY:
-        is_cn = "sensenova.cn" in SENSENOVA_CHAT_BASE_URL
+    def _client_for(base_url, api_key):
+        is_cn = ".cn" in base_url or "volces.com" in base_url
         http_client = httpx.Client(trust_env=False) if is_cn else None
-        client = OpenAI(
-            api_key=SENSENOVA_API_KEY,
-            base_url=SENSENOVA_CHAT_BASE_URL,
-            http_client=http_client,
-        )
-        yield from _stream_chat(client, SENSENOVA_CHAT_MODEL, messages)
-        return
+        return OpenAI(api_key=api_key, base_url=base_url, http_client=http_client)
 
-    raise Exception("未配置聊天 AI 服务，请设置 SENSENOVA_API_KEY")
+    # 1. 优先 SenseNova
+    if SENSENOVA_API_KEY:
+        try:
+            client = _client_for(SENSENOVA_CHAT_BASE_URL, SENSENOVA_API_KEY)
+            yield from _stream_chat(client, SENSENOVA_CHAT_MODEL, messages)
+            return
+        except Exception as e:
+            print(f"⚠ SenseNova 健康助手调用失败: {str(e)[:100]}")
+            if not MODELSCOPE_API_KEY:
+                raise
+
+    # 2. Fallback 到 ModelScope
+    if MODELSCOPE_API_KEY:
+        try:
+            client = _client_for(settings.MODELSCOPE_BASE_URL, MODELSCOPE_API_KEY)
+            yield from _stream_chat(client, MODELSCOPE_CHAT_MODEL, messages)
+            return
+        except Exception as e:
+            print(f"⚠ ModelScope 健康助手调用失败: {str(e)[:100]}")
+            raise
+
+    raise Exception("未配置聊天 AI 服务，请设置 SENSENOVA_API_KEY 或 MODELSCOPE_API_KEY")
