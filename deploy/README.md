@@ -127,7 +127,6 @@ crontab -e
 | `MODELSCOPE_API_KEY` | AI 提供商 Key（可选） | `sk-...` |
 | `VOLC_API_KEY` | 火山引擎 Key（可选） | `...` |
 | `GEMINI_API_KEY` | Gemini Key（可选） | `...` |
-| `DASHSCOPE_API_KEY` | 聊天功能 Key（可选） | `sk-...` |
 
 ## 故障排查
 
