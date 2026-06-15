@@ -194,7 +194,7 @@ SENSENOVA_CHAT_MODEL = "deepseek-v4-flash"
 
 DASHSCOPE_API_KEY = os.getenv("DASHSCOPE_API_KEY")
 DASHSCOPE_BASE_URL = os.getenv("DASHSCOPE_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1")
-DASHSCOPE_CHAT_MODEL = "qwen3-vl-plus-2025-12-19"
+DASHSCOPE_CHAT_MODEL = "moonshotai/Kimi-K2.6"
 CHAT_AVAILABLE = bool(SENSENOVA_API_KEY or DASHSCOPE_API_KEY)
 
 if SENSENOVA_API_KEY:
@@ -245,7 +245,7 @@ def call_chat_stream(messages):
             base_url=DASHSCOPE_BASE_URL,
             http_client=http_client,
         )
-        yield from _stream_chat(client, DASHSCOPE_CHAT_MODEL, messages, extra_body={"enable_thinking": False})
+        yield from _stream_chat(client, DASHSCOPE_CHAT_MODEL, messages)
         return
 
     raise Exception("未配置聊天 AI 服务，请设置 SENSENOVA_API_KEY 或 DASHSCOPE_API_KEY")
