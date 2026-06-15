@@ -1640,26 +1640,26 @@
             }
             /* 月视图手机端适配 */
             .fc-daygrid-day {
-                min-height: 90px !important;
+                min-height: 110px !important;
             }
             .fc-daygrid-day-number {
-                font-size: 0.85rem !important;
-                padding: 4px !important;
+                font-size: 0.8rem !important;
+                padding: 3px !important;
             }
             .fc-daygrid-day-events {
-                padding: 0 2px 2px !important;
+                padding: 0 1px 1px !important;
             }
             .fc-event {
-                font-size: 0.7rem !important;
-                padding: 2px 4px !important;
-                margin-bottom: 2px !important;
-                border-radius: 4px !important;
-                line-height: 1.2 !important;
+                font-size: 0.65rem !important;
+                padding: 1px 3px !important;
+                margin-bottom: 1px !important;
+                border-radius: 3px !important;
+                line-height: 1.15 !important;
             }
             .summary-event {
-                font-size: 0.65rem !important;
-                padding: 2px 3px !important;
-                border-radius: 4px !important;
+                font-size: 0.6rem !important;
+                padding: 1px 2px !important;
+                border-radius: 3px !important;
             }
             .fc-event-title {
                 white-space: nowrap !important;
@@ -1667,8 +1667,8 @@
                 text-overflow: ellipsis !important;
             }
             .fc-daygrid-more-link {
-                font-size: 0.7rem !important;
-                padding: 1px 4px !important;
+                font-size: 0.65rem !important;
+                padding: 0 3px !important;
                 color: var(--md-primary) !important;
                 font-weight: 600 !important;
             }
