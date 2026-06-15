@@ -152,6 +152,13 @@
             box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.3);
         }
 
+        /* 血糖槽位横向滚动容器 */
+        .glucose-slots-row {
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+        }
+
         /* Progress Bar Animation */
         .today-progress {
             position: relative;
@@ -1581,19 +1588,6 @@
                 padding: 4px 10px;
                 font-size: 0.8rem;
             }
-            .btn-ai-predict {
-                padding: 6px 0;
-                font-size: 0.7rem;
-            }
-            /* 血糖时间轴横向滚动 */
-            .glucose-slots-container {
-                overflow-x: auto;
-                -webkit-overflow-scrolling: touch;
-                scrollbar-width: none;
-            }
-            .glucose-slots-container::-webkit-scrollbar {
-                display: none;
-            }
             /* 弹窗近全宽 + safe area */
             .modal-dialog {
                 margin: 8px;
@@ -1734,16 +1728,35 @@
                 display: inline-flex;
                 align-items: center;
             }
-            /* 血糖槽位手机端不挤压 */
+            /* 血糖槽位手机端横向滚动，避免挤压换行 */
+            .glucose-slots-row {
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+                scrollbar-width: none;
+                flex-wrap: nowrap !important;
+                justify-content: flex-start !important;
+                gap: 8px;
+                padding-bottom: 4px;
+            }
+            .glucose-slots-row::-webkit-scrollbar {
+                display: none;
+            }
             .glucose-slot {
-                padding: 12px 6px;
-                min-width: 60px;
-                gap: 4px;
+                padding: 12px 8px;
+                min-width: 64px;
+                gap: 6px;
+                flex: 0 0 auto;
             }
             .slot-icon { font-size: 1.2rem !important; }
             .slot-value { font-size: 1.05rem !important; }
-            .slot-name { font-size: 0.9rem !important; }
-            .slot-time { font-size: 0.85rem !important; }
+            .slot-name { font-size: 0.85rem !important; white-space: nowrap; }
+            .slot-time { font-size: 0.8rem !important; white-space: nowrap; }
+            /* AI 预测按钮手机端保持可读宽度 */
+            .btn-ai-predict {
+                font-size: 0.85rem;
+                padding: 6px 10px;
+                min-height: 40px;
+            }
             /* 概览状态胶囊允许换行 */
             .overview-status {
                 flex-wrap: wrap;
