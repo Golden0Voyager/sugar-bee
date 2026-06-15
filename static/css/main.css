@@ -1744,8 +1744,11 @@
             .glucose-slot {
                 padding: 12px 8px;
                 min-width: 64px;
+                min-height: 96px;
                 gap: 6px;
                 flex: 0 0 auto;
+                aspect-ratio: auto;
+                overflow: visible;
             }
             .slot-icon { font-size: 1.2rem !important; }
             .slot-value { font-size: 1.05rem !important; }
