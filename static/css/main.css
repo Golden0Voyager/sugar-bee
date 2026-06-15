@@ -1659,18 +1659,46 @@
             }
             /* 单日视图内容手机端适配 */
             #mobileDayBody .d-flex.gap-2.mb-3.small {
-                flex-direction: column !important;
-                align-items: center !important;
-                gap: 8px !important;
-                padding: 14px 8px !important;
+                display: grid !important;
+                grid-template-columns: 1fr 1fr !important;
+                gap: 10px !important;
+                padding: 14px 4px !important;
             }
             #mobileDayBody .d-flex.gap-2.mb-3.small > span:not(.border-start) {
-                flex: 0 0 auto !important;
-                width: auto !important;
                 font-size: 1.05rem;
+                text-align: center;
             }
             #mobileDayBody .d-flex.gap-2.mb-3.small .border-start {
                 display: none !important;
+            }
+            /* 用药方案默认可折叠 */
+            .day-med-details {
+                border-radius: 12px;
+                background: #f8f9fa;
+                padding: 12px;
+            }
+            .day-med-summary {
+                list-style: none;
+                cursor: pointer;
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                font-size: 1rem;
+                font-weight: 600;
+                padding: 4px;
+            }
+            .day-med-summary::-webkit-details-marker {
+                display: none;
+            }
+            .day-med-summary .collapse-toggle-icon {
+                transition: transform 0.2s ease;
+                font-size: 0.9rem;
+            }
+            .day-med-details[open] .collapse-toggle-icon {
+                transform: rotate(180deg);
+            }
+            .day-med-content .card-body {
+                padding: 12px;
             }
             #mobileDayBody .timeline-item {
                 padding: 12px 0;
