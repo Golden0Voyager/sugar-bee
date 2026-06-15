@@ -2766,9 +2766,6 @@
         modal.addEventListener('hidden.bs.modal', () => modal.remove(), { once: true });
     }
 
-    // 兼容旧调用
-    function focusSlot(slotKey) { openGlucoseInput(slotKey); }
-
     // 保存血糖槽位数据
     async function saveSlotGlucose(slotKey) {
         const typeMap = {
@@ -3071,33 +3068,35 @@
     }
 
     /**
-     * 显示预测配额耗尽模态框
+     * 通用配额耗尽模态框
      */
-    function showPredictionQuotaModal(retryAfter) {
-        let modal = document.getElementById('predictionQuotaModal');
+    function showQuotaModal({modalId, title, message, retryAfter, onRetry, autoRetry = false}) {
+        const countdownId = modalId + 'Countdown';
+        const retryBtnId = modalId + 'Retry';
+        let modal = document.getElementById(modalId);
         if (!modal) {
             modal = document.createElement('div');
             modal.className = 'modal fade';
-            modal.id = 'predictionQuotaModal';
+            modal.id = modalId;
             modal.innerHTML = `
                 <div class="modal-dialog modal-dialog-centered">
                     <div class="modal-content">
                         <div class="modal-header bg-warning text-dark">
                             <h5 class="modal-title">
-                                <i class="bi bi-hourglass-split me-2"></i>AI 服务繁忙
+                                <i class="bi bi-hourglass-split me-2"></i>${title}
                             </h5>
                             <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                         </div>
                         <div class="modal-body text-center py-4">
                             <i class="bi bi-clock-history text-warning" style="font-size: 3rem;"></i>
-                            <p class="mt-3 mb-2">AI 预测服务配额暂时用尽</p>
+                            <p class="mt-3 mb-2">${message}</p>
                             <p class="text-muted mb-3">系统将在倒计时结束后自动重试</p>
-                            <div class="display-4 fw-bold text-primary" id="predQuotaCountdown">${retryAfter}</div>
+                            <div class="display-4 fw-bold text-primary" id="${countdownId}">${retryAfter}</div>
                             <small class="text-muted">秒后自动重试</small>
                         </div>
                         <div class="modal-footer justify-content-center">
                             <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
-                            <button type="button" class="btn btn-primary" id="retryPredBtn" disabled onclick="retryPredictionNow()">
+                            <button type="button" class="btn btn-primary" id="${retryBtnId}" disabled>
                                 <i class="bi bi-arrow-clockwise me-1"></i>立即重试
                             </button>
                         </div>
@@ -3105,17 +3104,18 @@
                 </div>
             `;
             document.body.appendChild(modal);
+            document.getElementById(retryBtnId).addEventListener('click', () => {
+                bootstrap.Modal.getInstance(modal).hide();
+                onRetry();
+            });
         }
 
         const bsModal = new bootstrap.Modal(modal);
         bsModal.show();
 
-        // 开始倒计时
         let countdown = retryAfter;
-        const countdownEl = document.getElementById('predQuotaCountdown');
-        const retryBtn = document.getElementById('retryPredBtn');
-
-        // 重置状态
+        const countdownEl = document.getElementById(countdownId);
+        const retryBtn = document.getElementById(retryBtnId);
         countdownEl.textContent = retryAfter;
         retryBtn.disabled = true;
 
@@ -3127,26 +3127,28 @@
                 clearInterval(timer);
                 retryBtn.disabled = false;
                 countdownEl.textContent = '0';
-
-                // 自动重试
-                bsModal.hide();
-                triggerManualPrediction();
+                if (autoRetry) {
+                    bsModal.hide();
+                    onRetry();
+                }
             }
         }, 1000);
 
-        // 模态框关闭时清除定时器
-        modal.addEventListener('hidden.bs.modal', function() {
-            clearInterval(timer);
-        }, { once: true });
+        modal.addEventListener('hidden.bs.modal', () => clearInterval(timer), { once: true });
     }
 
     /**
-     * 立即重试预测
+     * 显示预测配额耗尽模态框
      */
-    function retryPredictionNow() {
-        const modal = document.getElementById('predictionQuotaModal');
-        bootstrap.Modal.getInstance(modal).hide();
-        triggerManualPrediction();
+    function showPredictionQuotaModal(retryAfter) {
+        showQuotaModal({
+            modalId: 'predictionQuotaModal',
+            title: 'AI 服务繁忙',
+            message: 'AI 预测服务配额暂时用尽',
+            retryAfter,
+            onRetry: () => triggerManualPrediction(),
+            autoRetry: true
+        });
     }
 
     /**
@@ -4904,25 +4906,6 @@
         if (result.level === 'optimal') return green; // 理想
         if (result.level === 'acceptable') return yellow; // 达标但偏高
         return red;  // 超标
-    }
-
-    // Get point color based on glucose value and type (保留用于其他功能)
-    function getPointColor(key, value) {
-        const green = '#198754';
-        const yellow = '#ffc107';
-        const red = '#dc3545';
-
-        if (value < 3.9) return red;
-
-        if (key === '空腹' || key === '餐前' || key === '睡前' || key === '运动后') {
-            if (value < 6.1) return green;
-            if (value <= 7.0) return yellow;
-            return red;
-        } else {
-            if (value < 7.8) return green;
-            if (value <= 10.0) return yellow;
-            return red;
-        }
     }
 
     function generateCalendarEvents() {
@@ -8107,80 +8090,14 @@
      * 显示配额耗尽模态框，带倒计时重试功能
      */
     function showQuotaExhaustedModal(retryAfter, days) {
-        // 创建模态框
-        let modal = document.getElementById('quotaExhaustedModal');
-        if (!modal) {
-            modal = document.createElement('div');
-            modal.className = 'modal fade';
-            modal.id = 'quotaExhaustedModal';
-            modal.innerHTML = `
-                <div class="modal-dialog modal-dialog-centered">
-                    <div class="modal-content">
-                        <div class="modal-header bg-warning text-dark">
-                            <h5 class="modal-title">
-                                <i class="bi bi-hourglass-split me-2"></i>AI 服务繁忙
-                            </h5>
-                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                        </div>
-                        <div class="modal-body text-center py-4">
-                            <i class="bi bi-clock-history text-warning" style="font-size: 3rem;"></i>
-                            <p class="mt-3 mb-2">AI 服务配额暂时用尽</p>
-                            <p class="text-muted mb-3">系统将在倒计时结束后自动重试</p>
-                            <div class="display-4 fw-bold text-primary" id="quotaCountdown">${retryAfter}</div>
-                            <small class="text-muted">秒后自动重试</small>
-                        </div>
-                        <div class="modal-footer justify-content-center">
-                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
-                            <button type="button" class="btn btn-primary" id="retryNowBtn" disabled onclick="retryAnalysisNow()">
-                                <i class="bi bi-arrow-clockwise me-1"></i>立即重试
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            `;
-            document.body.appendChild(modal);
-        }
-
-        // 存储当前的 days 参数
-        modal.dataset.days = days;
-
-        const bsModal = new bootstrap.Modal(modal);
-        bsModal.show();
-
-        // 开始倒计时
-        let countdown = retryAfter;
-        const countdownEl = document.getElementById('quotaCountdown');
-        const retryBtn = document.getElementById('retryNowBtn');
-
-        const timer = setInterval(() => {
-            countdown--;
-            countdownEl.textContent = countdown;
-
-            if (countdown <= 0) {
-                clearInterval(timer);
-                retryBtn.disabled = false;
-                countdownEl.textContent = '0';
-
-                // 自动重试
-                bsModal.hide();
-                triggerManualAnalysis(parseInt(modal.dataset.days) || 7);
-            }
-        }, 1000);
-
-        // 模态框关闭时清除定时器
-        modal.addEventListener('hidden.bs.modal', function() {
-            clearInterval(timer);
-        }, { once: true });
-    }
-
-    /**
-     * 立即重试分析
-     */
-    function retryAnalysisNow() {
-        const modal = document.getElementById('quotaExhaustedModal');
-        const days = parseInt(modal.dataset.days) || 7;
-        bootstrap.Modal.getInstance(modal).hide();
-        triggerManualAnalysis(days);
+        showQuotaModal({
+            modalId: 'quotaExhaustedModal',
+            title: 'AI 服务繁忙',
+            message: 'AI 服务配额暂时用尽',
+            retryAfter,
+            onRetry: () => triggerManualAnalysis(days),
+            autoRetry: true
+        });
     }
 
     /**
@@ -8327,51 +8244,6 @@
     }
 
     // ========== Duplicate Data Management Functions ==========
-
-    /**
-     * 查找重复数据
-     */
-    async function findDuplicates() {
-        try {
-            const res = await fetch('/find_duplicates');
-            const result = await res.json();
-
-            if (result.status === 'success') {
-                const dupData = result.data || result;
-                const duplicates = dupData.duplicates || [];
-                if (duplicates.length === 0) {
-                    alert('太棒了！没有发现重复数据。');
-                } else {
-                    let message = `发现 ${dupData.total_groups || duplicates.length} 组重复数据：\n\n`;
-                    duplicates.slice(0, 10).forEach((dup, index) => {
-                        message += `${index + 1}. ${dup.time} - ${dup.type} - ${dup.value} (${dup.count}条记录)\n`;
-                    });
-                    if (duplicates.length > 10) {
-                        message += `\n...以及其他 ${duplicates.length - 10} 组重复数据\n`;
-                    }
-                    message += '\n是否要清理这些重复数据？';
-
-                    if (confirm(message)) {
-                        deleteDuplicates();
-                    }
-                }
-            } else {
-                alert('查找失败: ' + result.message);
-            }
-        } catch (e) {
-            console.error('Find duplicates error:', e);
-            alert('查找失败: ' + e.message);
-        }
-    }
-
-    /**
-     * 确认删除重复数据
-     */
-    function confirmDeleteDuplicates() {
-        if (confirm('此操作将删除所有重复的记录，每组重复数据只保留第一条记录。\n\n确定要继续吗？')) {
-            deleteDuplicates();
-        }
-    }
 
     /**
      * 删除重复数据
