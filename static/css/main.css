@@ -36,6 +36,28 @@
             /* Card padding */
             --card-padding: 24px;
 
+            /* Radius scale */
+            --radius-sm: 8px;
+            --radius-md: 12px;
+            --radius-lg: 16px;
+            --radius-pill: 20px;
+            --radius-xl: 24px;
+            --radius-full: 9999px;
+
+            /* Spacing scale */
+            --space-xs: 4px;
+            --space-sm: 8px;
+            --space-md: 12px;
+            --space-lg: 16px;
+            --space-xl: 24px;
+
+            /* Font scale */
+            --font-xs: 0.75rem;
+            --font-sm: 0.85rem;
+            --font-md: 1rem;
+            --font-lg: 1.1rem;
+            --font-xl: 1.25rem;
+
             /* Elevation shadows - 靛蓝色调阴影 */
             --md-shadow-1: 0 1px 3px rgba(99,102,241,0.10), 0 1px 2px rgba(99,102,241,0.14);
             --md-shadow-2: 0 3px 6px rgba(99,102,241,0.12), 0 2px 4px rgba(99,102,241,0.10);
@@ -84,7 +106,7 @@
         .card {
             background: var(--md-surface);
             border: none;
-            border-radius: 12px;
+            border-radius: var(--radius-md);
             box-shadow: var(--md-shadow-2);
             transition: box-shadow 0.3s cubic-bezier(0.4, 0, 0.2, 1);
             overflow: hidden;
@@ -136,9 +158,6 @@
             flex: 1 1 0;
             min-width: 0;
             overflow: hidden;
-        }
-        .glucose-slot.slot-active {
-            box-shadow: none;
         }
         .glucose-slot:hover {
             filter: brightness(0.95);
@@ -375,57 +394,6 @@
         .btn-overview-nav i {
             font-size: 1rem;
             -webkit-text-stroke: 1px currentColor;
-        }
-
-        /* Logo Design - Material Style */
-        .app-logo {
-            display: flex;
-            align-items: center;
-            gap: 16px;
-        }
-        .logo-icon {
-            width: 64px;
-            height: 64px;
-            background: linear-gradient(135deg, var(--md-secondary), var(--md-secondary-dark));
-            border-radius: 16px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 2rem;
-            box-shadow: var(--md-shadow-2);
-            position: relative;
-            overflow: hidden;
-        }
-        .logo-icon::before {
-            content: '';
-            position: absolute;
-            width: 100%;
-            height: 100%;
-            background: linear-gradient(135deg, transparent 30%, rgba(255,255,255,0.3) 50%, transparent 70%);
-            animation: shimmer 3s infinite;
-        }
-        @keyframes shimmer {
-            0% { transform: translateX(-100%); }
-            100% { transform: translateX(100%); }
-        }
-        .logo-text h4 {
-            font-size: 1.75rem;
-            font-weight: 500;
-            color: var(--md-primary);
-            margin-bottom: 4px;
-        }
-        .logo-text .slogan-zh {
-            font-size: 1rem;
-            color: var(--md-text-secondary);
-            font-weight: 400;
-            margin: 0;
-        }
-        .logo-text .slogan-en {
-            font-size: 0.875rem;
-            color: var(--md-text-disabled);
-            font-weight: 400;
-            margin: 0;
-            font-style: italic;
         }
 
         /* Stats Dashboard - Material Cards */
@@ -1231,25 +1199,49 @@
             border-top-width: 2px;
         }
 
+        /* 药丸式下拉菜单（时间范围选择器共用） */
+        .dropdown-menu-pills {
+            border-radius: var(--radius-xl);
+            border: 1.5px solid var(--border-color);
+            background: var(--md-background);
+            box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+            animation: none;
+            transition: none;
+            margin-top: 6px;
+            padding: 6px;
+        }
+        .dropdown-menu-pills .dropdown-item {
+            border-radius: var(--radius-pill);
+            font-size: var(--font-sm);
+            padding: 6px 16px;
+        }
+
+        /* Pill button base */
+        .time-range-pills .pill-btn,
+        .med-sort-pill,
+        .med-tab-pill,
+        .stats-range-pill {
+            border: none;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+
         /* 时间范围选择器 - 药丸按钮组 */
         .time-range-pills {
             display: inline-flex;
             background: #eeecf5;
-            border-radius: 12px;
-            padding: 4px;
+            border-radius: var(--radius-md);
+            padding: var(--space-xs);
             gap: 2px;
         }
         .time-range-pills .pill-btn {
-            padding: 8px 16px;
-            border: none;
+            padding: var(--space-sm) var(--space-lg);
             background: transparent;
-            border-radius: 10px;
+            border-radius: var(--radius-sm);
             font-size: 0.9rem;
             font-weight: 600;
             color: var(--md-text-secondary);
-            cursor: pointer;
             transition: background 0.2s ease, color 0.2s ease;
-            white-space: nowrap;
         }
         .time-range-pills .pill-btn:hover {
             color: var(--md-primary-dark);
@@ -1269,14 +1261,11 @@
         }
         .med-sort-pill {
             padding: 5px 12px;
-            border: none;
             background: #eef1f5;
-            border-radius: 20px;
+            border-radius: var(--radius-pill);
             font-size: 0.82rem;
             color: #666;
-            cursor: pointer;
             transition: all 0.2s;
-            white-space: nowrap;
         }
         .med-sort-pill:hover {
             background: #dde3ea;
@@ -1304,14 +1293,11 @@
         .overview-card-nav .nav-idx { color: #888; font-size: 0.7rem; min-width: 24px; text-align: center; }
         .med-tab-pill {
             padding: 7px 18px;
-            border: none;
             background: #eef1f5;
-            border-radius: 20px;
+            border-radius: var(--radius-pill);
             font-size: 0.95rem;
             color: #666;
-            cursor: pointer;
             transition: all 0.2s;
-            white-space: nowrap;
         }
         .med-tab-pill:hover {
             background: #dde3ea;
@@ -1452,13 +1438,11 @@
         /* 健康数据统计时间范围 */
         .stats-range-pill {
             padding: 4px 12px;
-            border: none;
             background: transparent;
-            border-radius: 10px;
+            border-radius: var(--radius-sm);
             font-size: 0.8rem;
             font-weight: 500;
             color: var(--md-text-secondary);
-            cursor: pointer;
             transition: background 0.2s ease, color 0.2s ease;
         }
         .stats-range-pill:hover {
@@ -1474,9 +1458,9 @@
         /* 表单下拉框美化 */
         .form-select {
             border: 2px solid var(--border-color);
-            border-radius: 12px;
+            border-radius: var(--radius-md);
             padding: 12px 36px 12px 14px;
-            font-size: 1rem;
+            font-size: var(--font-lg);
             font-weight: 500;
             color: #333;
             background-color: #fafbfc;
@@ -1512,9 +1496,9 @@
         /* 表单输入框美化 */
         .form-control {
             border: 2px solid var(--border-color);
-            border-radius: 12px;
-            padding: 12px 14px;
-            font-size: 1rem;
+            border-radius: var(--radius-md);
+            padding: 12px;
+            font-size: var(--font-lg);
             background-color: #fafbfc;
             transition: border-color 0.2s ease, background-color 0.2s ease, box-shadow 0.2s ease;
         }
@@ -1846,7 +1830,6 @@
             .dropdown-item {
                 padding: 14px 16px;
                 min-height: 48px;
-                font-size: 1rem;
             }
             /* 用户下拉菜单不超出屏幕 */
             .dropdown-menu.dropdown-menu-end[style*="min-width: 300px"] {
