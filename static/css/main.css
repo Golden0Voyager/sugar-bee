@@ -1701,16 +1701,25 @@
                 padding: 12px;
             }
             #mobileDayBody .timeline-item {
-                padding: 12px 0;
+                padding: 16px 0 16px 36px;
+                margin-left: 8px;
             }
             #mobileDayBody .timeline-item > .d-flex.w-100 {
                 flex-wrap: wrap !important;
-                gap: 8px;
+                gap: 6px;
             }
             #mobileDayBody .timeline-item > .d-flex > .me-3 {
                 min-width: auto !important;
-                font-size: 0.85rem;
+                font-size: 0.9rem;
                 color: #6c757d;
+                flex: 0 0 100%;
+                margin-bottom: 4px;
+            }
+            #mobileDayBody .timeline-dot {
+                width: 14px;
+                height: 14px;
+                left: -8px;
+                top: 18px;
             }
             #mobileDayBody .timeline-item .text-nowrap.overflow-auto {
                 white-space: normal !important;
@@ -1723,24 +1732,24 @@
                 font-size: 0.85rem;
             }
             #mobileDayBody .timeline-item .ms-2.d-flex.gap-1 {
-                margin-left: auto !important;
+                margin-left: 0 !important;
+                width: 100%;
+                justify-content: flex-end;
+                margin-top: 8px;
+                gap: 12px !important;
             }
             #mobileDayBody .timeline-item .btn-sm {
-                min-height: 40px;
-                min-width: 40px;
-                padding: 8px 10px;
-                font-size: 0.9rem;
+                min-height: 44px;
+                min-width: 44px;
+                padding: 10px 12px;
+                font-size: 1rem;
+                border-radius: 10px;
                 display: inline-flex;
                 align-items: center;
                 justify-content: center;
             }
             #mobileDayBody .timeline-item h5 {
-                font-size: 1.1rem;
-            }
-            #mobileDayBody .timeline-dot {
-                width: 14px;
-                height: 14px;
-                top: 18px;
+                font-size: 1.05rem;
             }
             /* 月视图手机端适配 */
             .fc-daygrid-day {
