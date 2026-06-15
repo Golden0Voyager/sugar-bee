@@ -343,9 +343,9 @@
 
             <!-- 今日快捷信息 -->
             <div class="row g-2">
-                {% if 'exercise' in active_modules %}
+                {% if 'exercise' in active_modules and stats.today_exercise %}
                 <!-- 运动 -->
-                <div class="col-md-3 col-6">
+                <div class="col-12 col-md-3 overview-quick-card">
                     <div class="p-2 rounded h-100" style="background: var(--bs-light); min-height: 120px;">
                         <div class="d-flex align-items-center gap-1 mb-2">
                             <span style="font-size: 1rem;">🏃</span>
@@ -408,9 +408,9 @@
                     </div>
                 </div>
                 {% endif %}{# end exercise #}
-                {% if 'blood_pressure' in active_modules %}
+                {% if 'blood_pressure' in active_modules and stats.today_bp %}
                 <!-- 血压 -->
-                <div class="col-md-3 col-6">
+                <div class="col-12 col-md-3 overview-quick-card">
                     <div class="p-2 rounded h-100" style="background: var(--bs-light); min-height: 120px;">
                         <div class="d-flex align-items-center gap-1 mb-2">
                             <span style="font-size: 1rem;">❤️</span>
@@ -450,9 +450,9 @@
                     </div>
                 </div>
                 {% endif %}{# end blood_pressure #}
-                {% if 'weight' in active_modules %}
+                {% if 'weight' in active_modules and stats.today_weight %}
                 <!-- 体重 -->
-                <div class="col-md-3 col-6">
+                <div class="col-12 col-md-3 overview-quick-card">
                     <div class="p-2 rounded h-100" style="background: var(--bs-light); min-height: 120px;">
                         <div class="d-flex align-items-center gap-1 mb-2">
                             <span style="font-size: 1rem;">⚖️</span>
@@ -483,9 +483,9 @@
                     </div>
                 </div>
                 {% endif %}{# end weight #}
-                {% if 'medication' in active_modules %}
+                {% if 'medication' in active_modules and stats.today_med_status and (stats.today_med_status.plans or stats.today_med_status.temp_medications) %}
                 <!-- 用药 -->
-                <div class="col-md-3 col-6">
+                <div class="col-12 col-md-3 overview-quick-card">
                     <div class="p-2 rounded h-100" style="background: var(--bs-light); min-height: 120px;">
                         <div class="d-flex align-items-center gap-1 mb-2">
                             <span style="font-size: 1rem;">🧩</span>
