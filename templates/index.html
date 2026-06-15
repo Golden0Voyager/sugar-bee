@@ -1910,17 +1910,20 @@
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script>
     // Chart.js 全局字体配置
+    const IS_MOBILE = window.innerWidth <= 480;
     Chart.defaults.font.family = "'Noto Sans SC', -apple-system, BlinkMacSystemFont, sans-serif";
-    Chart.defaults.font.size = 14;
-    Chart.defaults.plugins.tooltip.titleFont = { size: 16, family: "'Noto Sans SC', sans-serif" };
-    Chart.defaults.plugins.tooltip.bodyFont = { size: 15, family: "'Noto Sans SC', sans-serif" };
-    Chart.defaults.plugins.legend.labels.font = { size: 14, family: "'Noto Sans SC', sans-serif" };
-    Chart.defaults.plugins.legend.labels.boxWidth = 10;
-    Chart.defaults.plugins.legend.labels.boxHeight = 10;
+    Chart.defaults.font.size = IS_MOBILE ? 11 : 14;
+    Chart.defaults.plugins.tooltip.titleFont = { size: IS_MOBILE ? 12 : 16, family: "'Noto Sans SC', sans-serif" };
+    Chart.defaults.plugins.tooltip.bodyFont = { size: IS_MOBILE ? 11 : 15, family: "'Noto Sans SC', sans-serif" };
+    Chart.defaults.plugins.legend.labels.font = { size: IS_MOBILE ? 11 : 14, family: "'Noto Sans SC', sans-serif" };
+    Chart.defaults.plugins.legend.labels.boxWidth = IS_MOBILE ? 8 : 10;
+    Chart.defaults.plugins.legend.labels.boxHeight = IS_MOBILE ? 8 : 10;
     Chart.defaults.plugins.legend.labels.usePointStyle = true;
-    Chart.defaults.scale.ticks.font = { size: 12, family: "'Noto Sans SC', sans-serif" };
-    Chart.defaults.scale.title.font = { size: 14, family: "'Noto Sans SC', sans-serif", weight: 'bold' };
-    Chart.defaults.layout.padding = { top: 4, right: 4, bottom: 12, left: 4 };
+    Chart.defaults.scale.ticks.font = { size: IS_MOBILE ? 10 : 12, family: "'Noto Sans SC', sans-serif" };
+    Chart.defaults.scale.title.font = { size: IS_MOBILE ? 11 : 14, family: "'Noto Sans SC', sans-serif", weight: 'bold' };
+    Chart.defaults.scale.ticks.maxTicksLimit = IS_MOBILE ? 6 : null;
+    Chart.defaults.aspectRatio = IS_MOBILE ? 1.1 : 2;
+    Chart.defaults.layout.padding = { top: 4, right: 4, bottom: IS_MOBILE ? 8 : 12, left: 4 };
 
     // Injected from server (初始 90 天，按需加载更多)
     let timelineData = {{ timeline | tojson }};
@@ -3731,8 +3734,8 @@
                         },
                         y: {
                             beginAtZero: false, min: 4, max: 12,
-                            title: { display: true, text: '血糖值 (mmol/L)', font: { size: 14, weight: 'bold' } },
-                            ticks: { stepSize: 1, callback: v => Number.isInteger(v) ? v : '', font: { size: 12, weight: 'bold' } },
+                            title: { display: true, text: '血糖值 (mmol/L)', font: { size: IS_MOBILE ? 11 : 14, weight: 'bold' } },
+                            ticks: { stepSize: 1, callback: v => Number.isInteger(v) ? v : '', font: { size: IS_MOBILE ? 10 : 12, weight: 'bold' } },
                             grid: { color: 'rgba(0,0,0,0.05)' }
                         }
                     }
@@ -3871,7 +3874,7 @@
                                 borderDash: [6, 4],
                                 label: {
                                     content: '目标上限 7.8',
-                                    enabled: true,
+                                    enabled: !IS_MOBILE,
                                     position: 'end',
                                     backgroundColor: 'rgba(251, 188, 4, 0.9)',
                                     color: '#202124',
@@ -3889,7 +3892,7 @@
                                 borderDash: [8, 4],
                                 label: {
                                     content: '危险 10.0',
-                                    enabled: true,
+                                    enabled: !IS_MOBILE,
                                     position: 'end',
                                     backgroundColor: 'rgba(234, 67, 53, 0.9)',
                                     color: '#fff',
@@ -3907,7 +3910,7 @@
                                 borderDash: [6, 4],
                                 label: {
                                     content: '低血糖 3.9',
-                                    enabled: true,
+                                    enabled: !IS_MOBILE,
                                     position: 'start',
                                     backgroundColor: 'rgba(234, 67, 53, 0.9)',
                                     color: '#fff',
@@ -3966,7 +3969,7 @@
                                 }
                                 return h + ':00';
                             },
-                            font: { size: 12, family: "'Roboto', 'Helvetica Neue', sans-serif" }
+                            font: { size: IS_MOBILE ? 10 : 12, family: "'Roboto', 'Helvetica Neue', sans-serif" }
                         },
                         title: { display: false },
                         afterFit: function(axis) {
@@ -3983,14 +3986,14 @@
                         title: {
                             display: true,
                             text: '血糖值 (mmol/L)',
-                            font: { size: 14, weight: 'bold' }
+                            font: { size: IS_MOBILE ? 11 : 14, weight: 'bold' }
                         },
                         ticks: {
                             stepSize: 1,
                             callback: function(value) {
                                 return Number.isInteger(value) ? value : '';
                             },
-                            font: { size: 12, weight: 'bold' }
+                            font: { size: IS_MOBILE ? 10 : 12, weight: 'bold' }
                         },
                         grid: {
                             color: function(context) {
@@ -4179,17 +4182,17 @@
                             warningHigh: {
                                 type: 'line', yMin: 7.8, yMax: 7.8,
                                 borderColor: 'rgba(251, 188, 4, 0.6)', borderWidth: 1.5, borderDash: [6, 4],
-                                label: { content: '目标上限 7.8', enabled: true, position: 'end', backgroundColor: 'rgba(251, 188, 4, 0.9)', color: '#202124', font: { size: 11 }, padding: { top: 2, bottom: 2, left: 6, right: 6 }, borderRadius: 4 }
+                                label: { content: '目标上限 7.8', enabled: !IS_MOBILE, position: 'end', backgroundColor: 'rgba(251, 188, 4, 0.9)', color: '#202124', font: { size: 11 }, padding: { top: 2, bottom: 2, left: 6, right: 6 }, borderRadius: 4 }
                             },
                             dangerHigh: {
                                 type: 'line', yMin: 10.0, yMax: 10.0,
                                 borderColor: 'rgba(234, 67, 53, 0.5)', borderWidth: 1.5, borderDash: [8, 4],
-                                label: { content: '危险 10.0', enabled: true, position: 'end', backgroundColor: 'rgba(234, 67, 53, 0.9)', color: '#fff', font: { size: 11 }, padding: { top: 2, bottom: 2, left: 6, right: 6 }, borderRadius: 4 }
+                                label: { content: '危险 10.0', enabled: !IS_MOBILE, position: 'end', backgroundColor: 'rgba(234, 67, 53, 0.9)', color: '#fff', font: { size: 11 }, padding: { top: 2, bottom: 2, left: 6, right: 6 }, borderRadius: 4 }
                             },
                             dangerLow: {
                                 type: 'line', yMin: 3.9, yMax: 3.9,
                                 borderColor: 'rgba(234, 67, 53, 0.5)', borderWidth: 1.5, borderDash: [6, 4],
-                                label: { content: '低血糖 3.9', enabled: true, position: 'start', backgroundColor: 'rgba(234, 67, 53, 0.9)', color: '#fff', font: { size: 11 }, padding: { top: 2, bottom: 2, left: 6, right: 6 }, borderRadius: 4 }
+                                label: { content: '低血糖 3.9', enabled: !IS_MOBILE, position: 'start', backgroundColor: 'rgba(234, 67, 53, 0.9)', color: '#fff', font: { size: 11 }, padding: { top: 2, bottom: 2, left: 6, right: 6 }, borderRadius: 4 }
                             }
                         }
                     }
@@ -4232,7 +4235,7 @@
                                 }
                                 return h + ':00';
                             },
-                            font: { size: 12, family: "'Roboto', 'Helvetica Neue', sans-serif" }
+                            font: { size: IS_MOBILE ? 10 : 12, family: "'Roboto', 'Helvetica Neue', sans-serif" }
                         },
                         title: { display: false },
                         afterFit: function(axis) {
@@ -4243,8 +4246,8 @@
                     y: {
                         beginAtZero: false,
                         min: 4, max: 12,
-                        title: { display: true, text: '血糖值 (mmol/L)', font: { size: 14, weight: 'bold' } },
-                        ticks: { stepSize: 1, callback: v => Number.isInteger(v) ? v : '', font: { size: 12, weight: 'bold' } },
+                        title: { display: true, text: '血糖值 (mmol/L)', font: { size: IS_MOBILE ? 11 : 14, weight: 'bold' } },
+                        ticks: { stepSize: 1, callback: v => Number.isInteger(v) ? v : '', font: { size: IS_MOBILE ? 10 : 12, weight: 'bold' } },
                         grid: {
                             color: function(context) {
                                 if (context.tick.value === 7.8 || context.tick.value === 10.0 || context.tick.value === 3.9) return 'rgba(220, 53, 69, 0.2)';
@@ -4465,7 +4468,7 @@
                                 borderDash: [10, 5],
                                 label: {
                                     content: '危险 160mmHg',
-                                    display: true,
+                                    display: !IS_MOBILE,
                                     position: 'end',
                                     backgroundColor: 'rgba(220, 53, 69, 0.8)',
                                     color: '#fff',
@@ -4481,7 +4484,7 @@
                                 borderDash: [5, 5],
                                 label: {
                                     content: '收缩压警戒 140mmHg',
-                                    display: true,
+                                    display: !IS_MOBILE,
                                     position: 'end',
                                     backgroundColor: 'rgba(240, 168, 160, 0.85)',
                                     color: '#5A2A20',
@@ -4497,7 +4500,7 @@
                                 borderDash: [3, 3],
                                 label: {
                                     content: '舒张压警戒 90mmHg',
-                                    display: true,
+                                    display: !IS_MOBILE,
                                     position: 'start',
                                     backgroundColor: 'rgba(140, 188, 224, 0.85)',
                                     color: '#1E3A5F',
@@ -4547,11 +4550,11 @@
                         title: {
                             display: true,
                             text: '血压 (mmHg)',
-                            font: { size: 14, weight: 'bold' }
+                            font: { size: IS_MOBILE ? 11 : 14, weight: 'bold' }
                         },
                         ticks: {
                             stepSize: 10,
-                            font: { size: 12, weight: 'bold' }
+                            font: { size: IS_MOBILE ? 10 : 12, weight: 'bold' }
                         },
                         grid: {
                             color: function(context) {
@@ -4636,8 +4639,8 @@
                             beginAtZero: false,
                             min: pulseMin,
                             max: pulseMax,
-                            title: { display: true, text: '脉搏 (bpm)', font: { size: 14, weight: 'bold' }, color: '#FF6F00' },
-                            ticks: { stepSize: 10, font: { size: 12, weight: 'bold' }, color: '#FF6F00' },
+                            title: { display: true, text: '脉搏 (bpm)', font: { size: IS_MOBILE ? 11 : 14, weight: 'bold' }, color: '#FF6F00' },
+                            ticks: { stepSize: 10, font: { size: IS_MOBILE ? 10 : 12, weight: 'bold' }, color: '#FF6F00' },
                             grid: { color: 'rgba(0,0,0,0.05)' }
                         }
                     }
@@ -4777,7 +4780,7 @@
                                 borderWidth: 1.5,
                                 borderDash: [6, 4],
                                 label: {
-                                    display: true,
+                                    display: !IS_MOBILE,
                                     content: `超重 ${bmi24Weight}kg (BMI=24)`,
                                     position: 'end',
                                     yAdjust: -12,
@@ -4796,7 +4799,7 @@
                                 borderWidth: 1.5,
                                 borderDash: [6, 4],
                                 label: {
-                                    display: true,
+                                    display: !IS_MOBILE,
                                     content: userTargetWeight ? `目标 ${targetWeight}kg` : `目标 ${targetWeight}kg (BMI=22)`,
                                     position: 'start',
                                     yAdjust: -12,
@@ -4837,7 +4840,7 @@
                         title: {
                             display: true,
                             text: '体重 (kg)',
-                            font: { size: 12, weight: 'bold' },
+                            font: { size: IS_MOBILE ? 10 : 12, weight: 'bold' },
                             color: '#00897B'
                         },
                         ticks: {
