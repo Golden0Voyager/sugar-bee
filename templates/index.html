@@ -5562,7 +5562,12 @@
         if (dayData.data.medication_plans && dayData.data.medication_plans.length > 0) {
             let medHtml = `
                 <div class="mt-4 pt-3 border-top">
-                    <h6 class="text-muted mb-3">💊 今日用药方案</h6>
+                    <details class="day-med-details" ${window.innerWidth > 480 ? 'open' : ''}>
+                        <summary class="day-med-summary">
+                            <span class="text-muted">💊 今日用药方案</span>
+                            <i class="bi bi-chevron-down collapse-toggle-icon ms-1"></i>
+                        </summary>
+                        <div class="day-med-content mt-3">
             `;
 
             dayData.data.medication_plans.forEach(plan => {
@@ -5589,7 +5594,10 @@
                 `;
             });
 
-            medHtml += '</div>';
+            medHtml += `
+                        </div>
+                    </details>
+                </div>`;
             container.innerHTML += medHtml;
         }
 
