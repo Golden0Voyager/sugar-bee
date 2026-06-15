@@ -234,7 +234,7 @@
                 {% if 'glucose' in active_modules %}
                 <div class="d-flex flex-column align-items-end gap-2">
                     <button type="button" class="btn btn-ai-predict" id="btnAiPredict" onclick="triggerRemainingPredictions()" title="基于已测数据预测剩余时间点" aria-label="预测今日血糖">
-                        ✨ 预测今日血糖
+                        ✨ <span class="d-none d-md-inline">预测今日血糖</span><span class="d-md-none">AI预测</span>
                     </button>
                 </div>
                 {% endif %}
@@ -249,7 +249,7 @@
 
             {% if 'glucose' in active_modules %}
             <div class="today-glucose-timeline mb-3">
-                <div class="d-flex justify-content-between gap-3">
+                <div class="d-flex justify-content-between gap-3 glucose-slots-row">
                     {% for slot in stats.today_overview %}
                     <div class="text-center glucose-slot slot-{{ slot.status }}"
                          data-slot-key="{{ slot.key }}"
@@ -2528,7 +2528,7 @@
             </div>`;
         }).join('');
 
-        const timelineEl = document.querySelector('.today-glucose-timeline .d-flex.justify-content-between.gap-3');
+        const timelineEl = document.querySelector('.today-glucose-timeline .glucose-slots-row');
         if (timelineEl) timelineEl.innerHTML = slotsHtml;
         // 重新绑定长按事件
         initSlotLongPress();
@@ -3375,12 +3375,18 @@
     }
 
     document.addEventListener('DOMContentLoaded', function() {
-        // 同步AI预测按钮宽度与最后一个槽位
+        // 同步AI预测按钮宽度与最后一个槽位（仅桌面端，手机端保持自然宽度）
         function syncAiPredictWidth() {
             const slots = document.querySelectorAll('.glucose-slot');
             const btn = document.getElementById('btnAiPredict');
             if (slots.length && btn) {
-                btn.style.width = slots[slots.length - 1].offsetWidth + 'px';
+                if (window.innerWidth >= 768) {
+                    btn.style.width = slots[slots.length - 1].offsetWidth + 'px';
+                    btn.style.minWidth = '';
+                } else {
+                    btn.style.width = '';
+                    btn.style.minWidth = '72px';
+                }
             }
         }
         syncAiPredictWidth();
