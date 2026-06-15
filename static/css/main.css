@@ -1758,6 +1758,31 @@
             .nav-pills .nav-link.active {
                 font-weight: 600;
             }
+            /* 首页 5 个模块标签：手机端上 3 下 2 排列 */
+            #statsTab {
+                flex-wrap: wrap !important;
+                overflow-x: visible !important;
+                -webkit-overflow-scrolling: auto;
+                scrollbar-width: auto;
+                padding-bottom: 0;
+                gap: 8px;
+                justify-content: flex-start !important;
+            }
+            #statsTab .nav-item {
+                flex: 0 0 calc(33.333% - 6px) !important;
+                width: calc(33.333% - 6px) !important;
+                text-align: center;
+            }
+            #statsTab .nav-link {
+                white-space: normal;
+                min-width: auto !important;
+                width: 100%;
+                padding: 10px 4px;
+                font-size: 0.95rem;
+            }
+            #statsTab .nav-link i {
+                font-size: 1.1rem;
+            }
             /* 统计卡片手机端单列、字大 */
             .tab-pane .row.g-2 > .col-6 {
                 width: 100% !important;
