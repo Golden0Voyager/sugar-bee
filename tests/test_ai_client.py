@@ -8,18 +8,18 @@ class TestAiClientConfig:
 
     def test_ai_available_detection(self):
         # ai_client already imported at module level; test the concept
-        from ai_client import AI_AVAILABLE, MODELSCOPE_API_KEY, VOLC_API_KEY, GEMINI_API_KEY
-        expected = bool(MODELSCOPE_API_KEY or VOLC_API_KEY or GEMINI_API_KEY)
+        from ai_client import AI_AVAILABLE, MODELSCOPE_API_KEY, SENSENOVA_API_KEY, VOLC_API_KEY, GEMINI_API_KEY
+        expected = bool(MODELSCOPE_API_KEY or SENSENOVA_API_KEY or VOLC_API_KEY or GEMINI_API_KEY)
         assert AI_AVAILABLE == expected
 
     def test_chat_available(self):
-        from ai_client import CHAT_AVAILABLE, DASHSCOPE_API_KEY
-        assert CHAT_AVAILABLE == bool(DASHSCOPE_API_KEY)
+        from ai_client import CHAT_AVAILABLE, SENSENOVA_API_KEY
+        assert CHAT_AVAILABLE == bool(SENSENOVA_API_KEY)
 
     def test_chat_model_configured(self):
-        from ai_client import CHAT_MODEL, DASHSCOPE_BASE_URL
-        assert CHAT_MODEL == "qwen3-vl-plus-2025-12-19"
-        assert "dashscope" in DASHSCOPE_BASE_URL or "aliyuncs" in DASHSCOPE_BASE_URL
+        from ai_client import SENSENOVA_CHAT_MODEL, SENSENOVA_CHAT_BASE_URL
+        assert SENSENOVA_CHAT_MODEL == "deepseek-v4-flash"
+        assert "sensenova.cn" in SENSENOVA_CHAT_BASE_URL
 
 
 class TestTryProvider:
@@ -493,7 +493,7 @@ class TestCallAiGeminiFallback:
             assert result == "gemini result"
             assert mock_gemini.call_count == 1
             # Was called with a Gemini model
-            assert mock_gemini.call_args[0][0] in ['gemini-3-flash-preview', 'gemini-2.5-flash']
+            assert mock_gemini.call_args[0][0] in ['gemini-3.5-flash', 'gemini-2.5-flash']
 
     @patch('ai_client.AI_AVAILABLE', True)
     @patch('ai_client.MODELSCOPE_API_KEY', 'ms-key')
@@ -520,6 +520,7 @@ class TestCallAiNoApiKey:
 
     @patch('ai_client.AI_AVAILABLE', True)
     @patch('ai_client.MODELSCOPE_API_KEY', None)
+    @patch('ai_client.SENSENOVA_API_KEY', None)
     @patch('ai_client.VOLC_API_KEY', None)
     @patch('ai_client.GEMINI_API_KEY', None)
     def test_no_providers_at_all(self):
