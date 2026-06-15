@@ -851,7 +851,7 @@
                         <span class="badge" style="background: rgba(156,39,176,0.1); color: #9C27B0;">{{ stats.bp_count_7d }}次测量</span>
                     </div>
                     <div class="row g-2">
-                        <div class="col-4">
+                        <div class="col-6 col-md-4">
                             <div class="text-center p-3 bg-light rounded">
                                 <small class="text-muted d-block fw-semibold">平均血压</small>
                                 <div class="fs-4 fw-bold" style="color: #9C27B0;">
@@ -865,7 +865,7 @@
                                 <small class="text-muted d-block bp-detail" style="font-size: 0.7rem; line-height: 1.3; margin-top: 2px;">近7天均值<br><span class="stats-date-range"></span></small>
                             </div>
                         </div>
-                        <div class="col-4">
+                        <div class="col-6 col-md-4">
                             <div class="text-center p-3 bg-light rounded">
                                 <small class="text-muted d-block fw-semibold">最高血压</small>
                                 <div class="fs-4 fw-bold" style="color: #E91E63;">
@@ -875,7 +875,7 @@
                                 <small class="text-muted d-block bp-detail" style="font-size: 0.7rem; line-height: 1.3; margin-top: 2px;">{% if stats.bp_max_timestamp %}发生于<br>{{ stats.bp_max_timestamp[5:16] }}{% else %}&nbsp;<br>&nbsp;{% endif %}</small>
                             </div>
                         </div>
-                        <div class="col-4">
+                        <div class="col-6 col-md-4">
                             <div class="text-center p-3 bg-light rounded">
                                 <small class="text-muted d-block fw-semibold">最低血压</small>
                                 <div class="fs-4 fw-bold" style="color: #7CB342;">
