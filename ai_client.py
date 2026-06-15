@@ -20,16 +20,15 @@ import settings
 from google import genai
 from google.genai import types
 
-load_dotenv(override=True)
+load_dotenv()
 
 # API Keys
 MODELSCOPE_API_KEY = os.getenv("MODELSCOPE_API_KEY")
 SENSENOVA_API_KEY = os.getenv("SENSENOVA_API_KEY")
 VOLC_API_KEY = os.getenv("VOLC_API_KEY")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-DASHSCOPE_API_KEY = os.getenv("DASHSCOPE_API_KEY")
 
-AI_AVAILABLE = bool(MODELSCOPE_API_KEY or SENSENOVA_API_KEY or VOLC_API_KEY or GEMINI_API_KEY or DASHSCOPE_API_KEY)
+AI_AVAILABLE = bool(MODELSCOPE_API_KEY or SENSENOVA_API_KEY or VOLC_API_KEY or GEMINI_API_KEY)
 
 # 启动日志
 _providers = []
@@ -41,8 +40,6 @@ if VOLC_API_KEY:
     _providers.append('火山引擎')
 if GEMINI_API_KEY:
     _providers.append('Gemini')
-if DASHSCOPE_API_KEY:
-    _providers.append('Dashscope')
 
 if len(_providers) > 1:
     print(f"[AI] {' + '.join(_providers)} 多提供商就绪（跨提供商降级）")
@@ -138,7 +135,8 @@ def call_ai(prompt, images_data=None, mime_type=None, task_type=None):
     统一 AI 调用接口，支持跨提供商降级。
 
     降级链:
-      ModelScope (Qwen3) → 火山引擎 (doubao) → Gemini 直连（保底）
+      ModelScope (Qwen3) → SenseNova (deepseek-v4-flash, 仅 text/report) → 火山引擎 (doubao) → Gemini 直连（保底）
+      图片识别 (vision) 跳过 SenseNova/火山引擎: ModelScope (VL → 397B) → Gemini
 
     Args:
         task_type: 任务类型，影响模型选择
@@ -148,7 +146,7 @@ def call_ai(prompt, images_data=None, mime_type=None, task_type=None):
             - None: 根据 images_data 自动选择 text/vision
     """
     if not AI_AVAILABLE:
-        raise Exception("AI 服务未配置，请设置 MODELSCOPE_API_KEY、SENSENOVA_API_KEY、VOLC_API_KEY、GEMINI_API_KEY 或 DASHSCOPE_API_KEY")
+        raise Exception("AI 服务未配置，请设置 MODELSCOPE_API_KEY、SENSENOVA_API_KEY、VOLC_API_KEY 或 GEMINI_API_KEY")
 
     has_images = images_data and len(images_data) > 0
     # 有图片时强制 vision（即使 task_type 未指定）
@@ -167,8 +165,8 @@ def call_ai(prompt, images_data=None, mime_type=None, task_type=None):
             last_error = err
             print("⚠ ModelScope 全部不可用，降级到 SenseNova...")
 
-    # === 阶段2: 尝试 SenseNova 模型链 ===
-    if SENSENOVA_API_KEY:
+    # === 阶段2: 尝试 SenseNova 模型链（图片识别不走 SenseNova）===
+    if SENSENOVA_API_KEY and task_type != 'vision':
         result, err = _try_provider(
             SENSENOVA_API_KEY, settings.SENSENOVA_BASE_URL, settings.SENSENOVA_MODELS,
             has_images, prompt, images_data, mime_type, 'SenseNova', task_type=task_type)
@@ -178,8 +176,8 @@ def call_ai(prompt, images_data=None, mime_type=None, task_type=None):
             last_error = err
             print("⚠ SenseNova 全部不可用，降级到火山引擎...")
 
-    # === 阶段3: 尝试火山引擎模型链 ===
-    if VOLC_API_KEY:
+    # === 阶段3: 尝试火山引擎模型链（图片识别不走火山引擎）===
+    if VOLC_API_KEY and task_type != 'vision':
         result, err = _try_provider(
             VOLC_API_KEY, settings.VOLC_BASE_URL, settings.VOLC_MODELS,
             has_images, prompt, images_data, mime_type, '火山引擎', task_type=task_type)
@@ -205,17 +203,12 @@ def call_ai(prompt, images_data=None, mime_type=None, task_type=None):
 
 # ========== 健康助手流式聊天 ==========
 
-SENSENOVA_CHAT_BASE_URL = os.getenv("SENSENOVA_BASE_URL", "https://token.sensenova.cn/v1")
+SENSENOVA_CHAT_BASE_URL = settings.SENSENOVA_BASE_URL
 SENSENOVA_CHAT_MODEL = "deepseek-v4-flash"
-
-DASHSCOPE_CHAT_BASE_URL = os.getenv("DASHSCOPE_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1")
-DASHSCOPE_CHAT_MODEL = "moonshotai/Kimi-K2.6"
-CHAT_AVAILABLE = bool(SENSENOVA_API_KEY or DASHSCOPE_API_KEY)
+CHAT_AVAILABLE = bool(SENSENOVA_API_KEY)
 
 if SENSENOVA_API_KEY:
     print(f"[AI] 健康助手就绪（SenseNova {SENSENOVA_CHAT_MODEL}）")
-elif DASHSCOPE_API_KEY:
-    print(f"[AI] 健康助手就绪（Dashscope {DASHSCOPE_CHAT_MODEL}）")
 
 
 def _stream_chat(client, model, messages, extra_body=None):
@@ -230,10 +223,9 @@ def _stream_chat(client, model, messages, extra_body=None):
 
 
 def call_chat_stream(messages):
-    """流式聊天调用 — 优先 SenseNova DeepSeek V4 Flash，降级 Dashscope Kimi-K2.6"""
+    """流式聊天调用 — SenseNova DeepSeek V4 Flash"""
     from openai import OpenAI
 
-    # 优先 SenseNova
     if SENSENOVA_API_KEY:
         is_cn = "sensenova.cn" in SENSENOVA_CHAT_BASE_URL
         http_client = httpx.Client(trust_env=False) if is_cn else None
@@ -242,25 +234,7 @@ def call_chat_stream(messages):
             base_url=SENSENOVA_CHAT_BASE_URL,
             http_client=http_client,
         )
-        try:
-            yield from _stream_chat(client, SENSENOVA_CHAT_MODEL, messages)
-            return
-        except Exception as e:
-            print(f"⚠ SenseNova {SENSENOVA_CHAT_MODEL} 调用失败: {str(e)[:100]}")
-            if not DASHSCOPE_API_KEY:
-                raise
-            print("⚠ 降级到 Dashscope...")
-
-    # 降级 Dashscope
-    if DASHSCOPE_API_KEY:
-        is_cn = ".cn" in DASHSCOPE_CHAT_BASE_URL or "aliyuncs.com" in DASHSCOPE_CHAT_BASE_URL
-        http_client = httpx.Client(trust_env=False) if is_cn else None
-        client = OpenAI(
-            api_key=DASHSCOPE_API_KEY,
-            base_url=DASHSCOPE_CHAT_BASE_URL,
-            http_client=http_client,
-        )
-        yield from _stream_chat(client, DASHSCOPE_CHAT_MODEL, messages)
+        yield from _stream_chat(client, SENSENOVA_CHAT_MODEL, messages)
         return
 
-    raise Exception("未配置聊天 AI 服务，请设置 SENSENOVA_API_KEY 或 DASHSCOPE_API_KEY")
+    raise Exception("未配置聊天 AI 服务，请设置 SENSENOVA_API_KEY")
