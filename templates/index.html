@@ -3237,7 +3237,7 @@
                         min: 4,
                         max: 10,
                         title: {
-                            display: true,
+                            display: !IS_MOBILE,
                             text: '血糖 (mmol/L)'
                         }
                     }
@@ -3734,7 +3734,7 @@
                         },
                         y: {
                             beginAtZero: false, min: 4, max: 12,
-                            title: { display: true, text: '血糖值 (mmol/L)', font: { size: IS_MOBILE ? 11 : 14, weight: 'bold' } },
+                            title: { display: !IS_MOBILE, text: '血糖值 (mmol/L)', font: { size: IS_MOBILE ? 11 : 14, weight: 'bold' } },
                             ticks: { stepSize: 1, callback: v => Number.isInteger(v) ? v : '', font: { size: IS_MOBILE ? 10 : 12, weight: 'bold' } },
                             grid: { color: 'rgba(0,0,0,0.05)' }
                         }
@@ -4246,7 +4246,7 @@
                     y: {
                         beginAtZero: false,
                         min: 4, max: 12,
-                        title: { display: true, text: '血糖值 (mmol/L)', font: { size: IS_MOBILE ? 11 : 14, weight: 'bold' } },
+                        title: { display: !IS_MOBILE, text: '血糖值 (mmol/L)', font: { size: IS_MOBILE ? 11 : 14, weight: 'bold' } },
                         ticks: { stepSize: 1, callback: v => Number.isInteger(v) ? v : '', font: { size: IS_MOBILE ? 10 : 12, weight: 'bold' } },
                         grid: {
                             color: function(context) {
@@ -4548,7 +4548,7 @@
                         min: yMin,
                         max: yMax,
                         title: {
-                            display: true,
+                            display: !IS_MOBILE,
                             text: '血压 (mmHg)',
                             font: { size: IS_MOBILE ? 11 : 14, weight: 'bold' }
                         },
@@ -4639,7 +4639,7 @@
                             beginAtZero: false,
                             min: pulseMin,
                             max: pulseMax,
-                            title: { display: true, text: '脉搏 (bpm)', font: { size: IS_MOBILE ? 11 : 14, weight: 'bold' }, color: '#FF6F00' },
+                            title: { display: !IS_MOBILE, text: '脉搏 (bpm)', font: { size: IS_MOBILE ? 11 : 14, weight: 'bold' }, color: '#FF6F00' },
                             ticks: { stepSize: 10, font: { size: IS_MOBILE ? 10 : 12, weight: 'bold' }, color: '#FF6F00' },
                             grid: { color: 'rgba(0,0,0,0.05)' }
                         }
@@ -4838,7 +4838,7 @@
                         min: weightMin,
                         max: weightMax,
                         title: {
-                            display: true,
+                            display: !IS_MOBILE,
                             text: '体重 (kg)',
                             font: { size: IS_MOBILE ? 10 : 12, weight: 'bold' },
                             color: '#00897B'
