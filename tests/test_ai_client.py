@@ -196,7 +196,7 @@ class TestCallAi:
 
 
 class TestCallChatStream:
-    """call_chat_stream() 流式聊天测试"""
+    """call_chat_stream() 流式聊天测试 — SenseNova 优先，ModelScope fallback"""
 
     @patch('ai_client.SENSENOVA_API_KEY', 'fake-key')
     @patch('openai.OpenAI')
@@ -221,6 +221,61 @@ class TestCallChatStream:
 
         result = list(call_chat_stream([{"role": "user", "content": "hi"}]))
         assert result == ["Hello", " World"]
+        # 应使用 SenseNova 主模型
+        assert mock_client.chat.completions.create.call_args[1]['model'] == 'deepseek-v4-flash'
+
+    @patch('ai_client.SENSENOVA_API_KEY', None)
+    @patch('ai_client.MODELSCOPE_API_KEY', 'fake-key')
+    @patch('openai.OpenAI')
+    def test_modelscope_fallback_when_sensenova_missing(self, mock_openai_cls):
+        """未配置 SenseNova 时，直接使用 ModelScope fallback"""
+        from ai_client import call_chat_stream
+        mock_client = MagicMock()
+        mock_openai_cls.return_value = mock_client
+
+        chunk = MagicMock()
+        chunk.choices = [MagicMock()]
+        chunk.choices[0].delta.content = "fallback"
+        mock_client.chat.completions.create.return_value = [chunk]
+
+        result = list(call_chat_stream([{"role": "user", "content": "hi"}]))
+        assert result == ["fallback"]
+        assert mock_client.chat.completions.create.call_args[1]['model'] == 'deepseek-ai/DeepSeek-V4-Pro'
+
+    @patch('ai_client.SENSENOVA_API_KEY', 'fake-key')
+    @patch('ai_client.MODELSCOPE_API_KEY', 'fake-key')
+    @patch('openai.OpenAI')
+    def test_modelscope_fallback_when_sensenova_fails(self, mock_openai_cls):
+        """SenseNova 调用失败时降级到 ModelScope"""
+        from ai_client import call_chat_stream
+
+        fallback_client = MagicMock()
+        chunk = MagicMock()
+        chunk.choices = [MagicMock()]
+        chunk.choices[0].delta.content = "modelscope"
+        fallback_client.chat.completions.create.return_value = [chunk]
+
+        def side_effect(*args, **kwargs):
+            if mock_openai_cls.call_count == 1:
+                raise Exception("SenseNova down")
+            return fallback_client
+
+        mock_openai_cls.side_effect = side_effect
+
+        result = list(call_chat_stream([{"role": "user", "content": "hi"}]))
+        assert result == ["modelscope"]
+        assert fallback_client.chat.completions.create.call_args[1]['model'] == 'deepseek-ai/DeepSeek-V4-Pro'
+
+    @patch('ai_client.SENSENOVA_API_KEY', 'fake-key')
+    @patch('ai_client.MODELSCOPE_API_KEY', 'fake-key')
+    @patch('openai.OpenAI')
+    def test_all_chat_providers_fail(self, mock_openai_cls):
+        """SenseNova 和 ModelScope 都失败时抛出异常"""
+        from ai_client import call_chat_stream
+        mock_openai_cls.side_effect = Exception("all down")
+
+        with pytest.raises(Exception):
+            list(call_chat_stream([{"role": "user", "content": "hi"}]))
 
 
 class TestCallOpenaiCompatible:
