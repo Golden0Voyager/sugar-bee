@@ -1659,13 +1659,18 @@
             }
             /* 单日视图内容手机端适配 */
             #mobileDayBody .d-flex.gap-2.mb-3.small {
-                flex-wrap: wrap !important;
-                gap: 6px !important;
+                flex-direction: column !important;
+                align-items: center !important;
+                gap: 8px !important;
+                padding: 14px 8px !important;
             }
-            #mobileDayBody .d-flex.gap-2.mb-3.small > span {
-                flex: 0 0 calc(50% - 3px) !important;
-                text-align: center;
-                font-size: 0.85rem;
+            #mobileDayBody .d-flex.gap-2.mb-3.small > span:not(.border-start) {
+                flex: 0 0 auto !important;
+                width: auto !important;
+                font-size: 1.05rem;
+            }
+            #mobileDayBody .d-flex.gap-2.mb-3.small .border-start {
+                display: none !important;
             }
             #mobileDayBody .timeline-item {
                 padding: 12px 0;
