@@ -156,17 +156,6 @@ def call_ai(prompt, images_data=None, mime_type=None, task_type=None):
         task_type = 'vision'
     last_error = None
 
-    # === 报告分析任务：优先 SenseNova，再 ModelScope ===
-    if task_type == 'report' and SENSENOVA_API_KEY:
-        result, err = _try_provider(
-            SENSENOVA_API_KEY, settings.SENSENOVA_BASE_URL, settings.SENSENOVA_MODELS,
-            has_images, prompt, images_data, mime_type, 'SenseNova', task_type=task_type)
-        if result is not None:
-            return result
-        if err:
-            last_error = err
-            print("⚠ SenseNova 全部不可用，降级到 ModelScope...")
-
     # === 阶段1: 尝试 ModelScope 模型链 ===
     if MODELSCOPE_API_KEY:
         result, err = _try_provider(
@@ -178,8 +167,8 @@ def call_ai(prompt, images_data=None, mime_type=None, task_type=None):
             last_error = err
             print("⚠ ModelScope 全部不可用，降级到 SenseNova...")
 
-    # === 阶段2: 尝试 SenseNova 模型链（非报告任务） ===
-    if task_type != 'report' and SENSENOVA_API_KEY:
+    # === 阶段2: 尝试 SenseNova 模型链 ===
+    if SENSENOVA_API_KEY:
         result, err = _try_provider(
             SENSENOVA_API_KEY, settings.SENSENOVA_BASE_URL, settings.SENSENOVA_MODELS,
             has_images, prompt, images_data, mime_type, 'SenseNova', task_type=task_type)
