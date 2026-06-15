@@ -1638,6 +1638,21 @@
                 padding: 6px 10px !important;
                 font-size: 0.85rem !important;
             }
+            /* 手机端每日复盘只显示单日视图 */
+            #calendar,
+            #calendarViewBtns,
+            #calendarPrevBtn,
+            #calendarNextBtn,
+            #mobileShowCalendarBtn {
+                display: none !important;
+            }
+            #mobileDayView {
+                display: block !important;
+            }
+            #mobileDayView .btn-overview-nav {
+                width: 40px;
+                height: 40px;
+            }
             /* 月视图手机端适配 */
             .fc-daygrid-day {
                 min-height: 110px !important;
