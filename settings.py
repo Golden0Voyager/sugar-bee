@@ -10,12 +10,20 @@ CONFIG_FILE = "user_config.json"
 # ModelScope 模型配置（国内可用，免费2000次/天，单模型500次/天，OpenAI 兼容接口）
 # 三类任务使用不同模型，有效容量翻3倍（每模型独立500次/天）
 MODELSCOPE_MODELS = {
-    'text': ['Qwen/Qwen3-32B'],               # JSON解析/预测（32B结构化输出稳定，复杂口语理解强）
-    'vision': ['Qwen/Qwen3-VL-235B-A22B-Instruct', 'Qwen/Qwen3-VL-8B-Thinking'],   # 截图识别：235B 更快更准，8B-Thinking 兜底
-    'report': ['deepseek-ai/DeepSeek-R1-0528'], # 报告分析（最强推理，医学逻辑天花板）
-    'extra_body': {'enable_thinking': False},    # 仅对 text 任务生效（Qwen3 标准模型需关闭思考模式）
+    'text': ['Qwen/Qwen3.5-35B-A3B'],               # JSON解析/预测（结构化输出稳定）
+    'vision': ['Qwen/Qwen3-VL-235B-A22B-Instruct', 'Qwen/Qwen3-VL-8B-Thinking'],   # 截图识别
+    'report': ['deepseek-ai/DeepSeek-R1-0528'],      # 报告分析
+    'extra_body': {'enable_thinking': False},        # 仅对 text 任务生效（Qwen3 标准模型需关闭思考模式）
 }
 MODELSCOPE_BASE_URL = 'https://api-inference.modelscope.cn/v1/'
+
+# SenseNova（商汤）模型配置
+SENSENOVA_MODELS = {
+    'text': ['deepseek-v4-flash'],
+    'vision': ['deepseek-v4-flash'],
+    'report': ['deepseek-v4-flash'],
+}
+SENSENOVA_BASE_URL = 'https://token.sensenova.cn/v1'
 
 # 火山引擎/豆包 模型配置（国内可用，免费50万tokens/模型，OpenAI 兼容接口）
 VOLC_MODELS = {
