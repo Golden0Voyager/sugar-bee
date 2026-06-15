@@ -342,8 +342,18 @@
             {% endif %}{# end glucose #}
 
             <!-- 今日快捷信息 -->
-            <div class="row g-2">
-                {% if 'exercise' in active_modules and stats.today_exercise %}
+            {% set has_exercise = 'exercise' in active_modules and stats.today_exercise %}
+            {% set has_bp = 'blood_pressure' in active_modules and stats.today_bp %}
+            {% set has_weight = 'weight' in active_modules and stats.today_weight %}
+            {% set has_med = 'medication' in active_modules and stats.today_med_status and (stats.today_med_status.plans or stats.today_med_status.temp_medications) %}
+            {% set has_quick_info = has_exercise or has_bp or has_weight or has_med %}
+            <div class="mt-3 mb-2 d-flex justify-content-between align-items-center overview-quick-header" data-bs-toggle="collapse" data-bs-target="#quickInfoCollapse" aria-expanded="{{ 'true' if has_quick_info else 'false' }}" role="button" style="cursor: pointer;">
+                <h5 class="mb-0" style="font-size: 1.05rem;">今日记录</h5>
+                <i class="bi bi-chevron-down collapse-toggle-icon"></i>
+            </div>
+            <div class="collapse {{ 'show' if has_quick_info else '' }}" id="quickInfoCollapse">
+                <div class="row g-2">
+                {% if has_exercise %}
                 <!-- 运动 -->
                 <div class="col-12 col-md-3 overview-quick-card">
                     <div class="p-2 rounded h-100" style="background: var(--bs-light); min-height: 120px;">
@@ -408,7 +418,7 @@
                     </div>
                 </div>
                 {% endif %}{# end exercise #}
-                {% if 'blood_pressure' in active_modules and stats.today_bp %}
+                {% if has_bp %}
                 <!-- 血压 -->
                 <div class="col-12 col-md-3 overview-quick-card">
                     <div class="p-2 rounded h-100" style="background: var(--bs-light); min-height: 120px;">
@@ -450,7 +460,7 @@
                     </div>
                 </div>
                 {% endif %}{# end blood_pressure #}
-                {% if 'weight' in active_modules and stats.today_weight %}
+                {% if has_weight %}
                 <!-- 体重 -->
                 <div class="col-12 col-md-3 overview-quick-card">
                     <div class="p-2 rounded h-100" style="background: var(--bs-light); min-height: 120px;">
@@ -483,7 +493,7 @@
                     </div>
                 </div>
                 {% endif %}{# end weight #}
-                {% if 'medication' in active_modules and stats.today_med_status and (stats.today_med_status.plans or stats.today_med_status.temp_medications) %}
+                {% if has_med %}
                 <!-- 用药 -->
                 <div class="col-12 col-md-3 overview-quick-card">
                     <div class="p-2 rounded h-100" style="background: var(--bs-light); min-height: 120px;">
@@ -628,6 +638,12 @@
                     </div>
                 </div>
                 {% endif %}{# end medication #}
+                {% if not has_quick_info %}
+                <div class="col-12 text-center text-muted py-3 empty-quick-info">
+                    今日暂无运动、血压、体重或用药记录
+                </div>
+                {% endif %}
+            </div>
             </div>
         </div>
     </div>
