@@ -1809,25 +1809,26 @@
                 display: inline-flex;
                 align-items: center;
             }
-            /* 血糖槽位手机端横向滚动，避免挤压换行 */
+            /* 血糖槽位手机端改为 4+3 居中网格 */
             .glucose-slots-row {
-                overflow-x: auto;
-                -webkit-overflow-scrolling: touch;
-                scrollbar-width: none;
-                flex-wrap: nowrap !important;
-                justify-content: flex-start !important;
+                overflow-x: visible;
+                -webkit-overflow-scrolling: auto;
+                scrollbar-width: auto;
+                flex-wrap: wrap !important;
+                justify-content: center !important;
                 gap: 8px;
-                padding-bottom: 4px;
+                padding-bottom: 0;
             }
             .glucose-slots-row::-webkit-scrollbar {
                 display: none;
             }
             .glucose-slot {
-                padding: 12px 8px;
-                min-width: 64px;
+                flex: 0 0 calc(25% - 6px) !important;
+                width: calc(25% - 6px);
+                padding: 12px 4px;
+                min-width: auto;
                 min-height: 96px;
                 gap: 6px;
-                flex: 0 0 auto;
                 aspect-ratio: auto;
                 overflow: visible;
             }
