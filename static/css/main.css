@@ -1758,6 +1758,22 @@
             .nav-pills .nav-link.active {
                 font-weight: 600;
             }
+            /* 统计卡片手机端单列、字大 */
+            .tab-pane .row.g-2 > .col-6 {
+                width: 100% !important;
+            }
+            .tab-pane .row.g-2 > .col-6 > div {
+                padding: 18px 16px;
+            }
+            .tab-pane .row.g-2 > .col-6 small {
+                font-size: 1rem !important;
+            }
+            .tab-pane .row.g-2 > .col-6 .fs-4 {
+                font-size: 2.2rem !important;
+            }
+            .tab-pane .row.g-2 > .col-6 .glucose-detail {
+                font-size: 0.9rem !important;
+            }
             /* 概览卡片数值缩放 */
             .stats-card .value {
                 font-size: 2.2rem;
