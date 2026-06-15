@@ -1335,6 +1335,21 @@
             </div>
             <div class="collapse show" id="calendarSection">
                 <div id="calendar"></div>
+                <div id="mobileDayView" class="d-none">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <button class="btn btn-overview-nav" id="mobileDayPrev" title="前一天">
+                            <i class="bi bi-chevron-left"></i>
+                        </button>
+                        <h5 class="mb-0 fw-bold" id="mobileDayTitle" style="font-size: 1.1rem;"></h5>
+                        <button class="btn btn-overview-nav" id="mobileDayNext" title="后一天">
+                            <i class="bi bi-chevron-right"></i>
+                        </button>
+                    </div>
+                    <div id="mobileDayBody" style="font-size: 1.05rem;"></div>
+                    <div class="text-center mt-3">
+                        <button class="btn btn-sm btn-outline-secondary" id="mobileShowCalendarBtn">查看月视图</button>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -5365,25 +5380,28 @@
 
     let currentDayDateStr = null;
 
-    function renderDayDetails(dateStr) {
+    function renderDayDetails(dateStr, targetContainer = null) {
         currentDayDateStr = dateStr;
-        // Ensure dayModal is initialized
-        if (!dayModal) {
-            dayModal = new bootstrap.Modal(document.getElementById('dayDetailsModal'));
+
+        const modalTitle = document.getElementById('dayModalTitle');
+        const modalBody = document.getElementById('dayModalBody');
+        const container = targetContainer ? document.getElementById(targetContainer) : modalBody;
+
+        if (!targetContainer) {
+            // Ensure dayModal is initialized
+            if (!dayModal) {
+                dayModal = new bootstrap.Modal(document.getElementById('dayDetailsModal'));
+            }
+            modalTitle.textContent = dateStr + ' 详情';
         }
+        container.innerHTML = '';
 
         // Find data for this date
         const dayData = timelineData.find(d => d.date === dateStr);
 
-        const modalTitle = document.getElementById('dayModalTitle');
-        const modalBody = document.getElementById('dayModalBody');
-
-        modalTitle.textContent = dateStr + ' 详情';
-        modalBody.innerHTML = '';
-
         if (!dayData) {
-            modalBody.innerHTML = '<div class="text-center text-muted py-4">当天无记录</div>';
-            dayModal.show();
+            container.innerHTML = '<div class="text-center text-muted py-4">当天无记录</div>';
+            if (!targetContainer) dayModal.show();
             return;
         }
 
@@ -5404,7 +5422,7 @@
                 </span>
             </div>
         `;
-        modalBody.innerHTML += statsHtml;
+        container.innerHTML += statsHtml;
 
         // 2. Render Timeline Items - 显示真实记录 + 未验证的预测，排除已验证的预测
         entries.filter(r => !r.is_predicted || !r.is_verified).forEach(r => {
@@ -5537,7 +5555,7 @@
                 </div>
             </div>`;
             
-            modalBody.innerHTML += itemHtml;
+            container.innerHTML += itemHtml;
         });
 
         // 显示当天应服用的药物方案
@@ -5572,18 +5590,56 @@
             });
 
             medHtml += '</div>';
-            modalBody.innerHTML += medHtml;
+            container.innerHTML += medHtml;
         }
 
-        dayModal.show();
+        if (!targetContainer) dayModal.show();
     }
 
-    window.mobileDayNav = function(dir) {
+    function showMobileDayView(dateStr) {
+        const calendarEl = document.getElementById('calendar');
+        const dayViewEl = document.getElementById('mobileDayView');
+        const titleEl = document.getElementById('mobileDayTitle');
+        if (calendarEl) calendarEl.classList.add('d-none');
+        if (dayViewEl) dayViewEl.classList.remove('d-none');
+        if (titleEl) {
+            const d = new Date(dateStr + 'T00:00:00');
+            titleEl.textContent = d.toLocaleDateString('zh-CN', { month: 'long', day: 'numeric', weekday: 'short' });
+        }
+        renderDayDetails(dateStr, 'mobileDayBody');
+    }
+
+    function showMobileCalendarView() {
+        const calendarEl = document.getElementById('calendar');
+        const dayViewEl = document.getElementById('mobileDayView');
+        if (calendarEl) calendarEl.classList.remove('d-none');
+        if (dayViewEl) dayViewEl.classList.add('d-none');
+    }
+
+    // 手机端默认进入单日视图，并绑定前后翻页
+    if (window.innerWidth <= 480) {
+        const today = new Date().toISOString().split('T')[0];
+        showMobileDayView(today);
+        const prevBtn = document.getElementById('mobileDayPrev');
+        const nextBtn = document.getElementById('mobileDayNext');
+        if (prevBtn) prevBtn.addEventListener('click', () => mobileDayNav(-1, true));
+        if (nextBtn) nextBtn.addEventListener('click', () => mobileDayNav(1, true));
+    } else {
+        // 桌面端绑定“查看月视图”按钮（仅在调试时可能用到）
+        const showCalendarBtn = document.getElementById('mobileShowCalendarBtn');
+        if (showCalendarBtn) showCalendarBtn.addEventListener('click', showMobileCalendarView);
+    }
+
+    function mobileDayNav(dir, isMobileCard) {
         if (!currentDayDateStr) return;
         const d = new Date(currentDayDateStr + 'T00:00:00');
         d.setDate(d.getDate() + dir);
         const next = d.toISOString().split('T')[0];
-        renderDayDetails(next);
+        if (isMobileCard) {
+            showMobileDayView(next);
+        } else {
+            renderDayDetails(next);
+        }
     }
 
 
