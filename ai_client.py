@@ -188,40 +188,64 @@ def call_ai(prompt, images_data=None, mime_type=None, task_type=None):
 
 # ========== 健康助手流式聊天 ==========
 
+SENSENOVA_API_KEY = os.getenv("SENSENOVA_API_KEY")
+SENSENOVA_BASE_URL = os.getenv("SENSENOVA_BASE_URL", "https://token.sensenova.cn/v1")
+SENSENOVA_CHAT_MODEL = "deepseek-v4-flash"
+
 DASHSCOPE_API_KEY = os.getenv("DASHSCOPE_API_KEY")
 DASHSCOPE_BASE_URL = os.getenv("DASHSCOPE_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1")
-CHAT_MODEL = "qwen3-vl-plus-2025-12-19"
-CHAT_AVAILABLE = bool(DASHSCOPE_API_KEY)
+DASHSCOPE_CHAT_MODEL = "qwen3-vl-plus-2025-12-19"
+CHAT_AVAILABLE = bool(SENSENOVA_API_KEY or DASHSCOPE_API_KEY)
 
-if DASHSCOPE_API_KEY:
-    print(f"[AI] 健康助手就绪（Dashscope {CHAT_MODEL}）")
+if SENSENOVA_API_KEY:
+    print(f"[AI] 健康助手就绪（SenseNova {SENSENOVA_CHAT_MODEL}）")
+elif DASHSCOPE_API_KEY:
+    print(f"[AI] 健康助手就绪（Dashscope {DASHSCOPE_CHAT_MODEL}）")
 
 
-def call_chat_stream(messages):
-    """流式聊天调用 — Dashscope Qwen
-
-    Args:
-        messages: OpenAI 格式的消息列表 [{"role": "system/user/assistant", "content": "..."}]
-
-    Yields:
-        str: 逐 chunk 的文本内容
-    """
-    from openai import OpenAI
-
-    is_cn = '.cn' in DASHSCOPE_BASE_URL or 'aliyuncs.com' in DASHSCOPE_BASE_URL
-    http_client = httpx.Client(trust_env=False) if is_cn else None
-
-    client = OpenAI(
-        api_key=DASHSCOPE_API_KEY,
-        base_url=DASHSCOPE_BASE_URL,
-        http_client=http_client,
-    )
-    response = client.chat.completions.create(
-        model=CHAT_MODEL,
-        messages=messages,
-        stream=True,
-        extra_body={"enable_thinking": False},
-    )
+def _stream_chat(client, model, messages, extra_body=None):
+    """通用 OpenAI 兼容流式聊天调用"""
+    kwargs = dict(model=model, messages=messages, stream=True)
+    if extra_body:
+        kwargs["extra_body"] = extra_body
+    response = client.chat.completions.create(**kwargs)
     for chunk in response:
         if chunk.choices and chunk.choices[0].delta.content:
             yield chunk.choices[0].delta.content
+
+
+def call_chat_stream(messages):
+    """流式聊天调用 — 优先 SenseNova DeepSeek V4 Flash，降级 Dashscope Qwen"""
+    from openai import OpenAI
+
+    # 优先 SenseNova
+    if SENSENOVA_API_KEY:
+        is_cn = "sensenova.cn" in SENSENOVA_BASE_URL
+        http_client = httpx.Client(trust_env=False) if is_cn else None
+        client = OpenAI(
+            api_key=SENSENOVA_API_KEY,
+            base_url=SENSENOVA_BASE_URL,
+            http_client=http_client,
+        )
+        try:
+            yield from _stream_chat(client, SENSENOVA_CHAT_MODEL, messages)
+            return
+        except Exception as e:
+            print(f"⚠ SenseNova {SENSENOVA_CHAT_MODEL} 调用失败: {str(e)[:100]}")
+            if not DASHSCOPE_API_KEY:
+                raise
+            print("⚠ 降级到 Dashscope...")
+
+    # 降级 Dashscope
+    if DASHSCOPE_API_KEY:
+        is_cn = ".cn" in DASHSCOPE_BASE_URL or "aliyuncs.com" in DASHSCOPE_BASE_URL
+        http_client = httpx.Client(trust_env=False) if is_cn else None
+        client = OpenAI(
+            api_key=DASHSCOPE_API_KEY,
+            base_url=DASHSCOPE_BASE_URL,
+            http_client=http_client,
+        )
+        yield from _stream_chat(client, DASHSCOPE_CHAT_MODEL, messages, extra_body={"enable_thinking": False})
+        return
+
+    raise Exception("未配置聊天 AI 服务，请设置 SENSENOVA_API_KEY 或 DASHSCOPE_API_KEY")
