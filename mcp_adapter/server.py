@@ -41,6 +41,7 @@ from typing import Optional
 import httpx
 from mcp.server.fastmcp import FastMCP
 from utils.db import get_raw_conn
+from utils.sql_dialect import date_format_sql
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DB_PATH = os.environ.get("DB_PATH", os.path.join(PROJECT_ROOT, "glucose.db"))
@@ -436,9 +437,9 @@ def _inline_batch_insert(
                 # 删除同分钟旧记录（非预测记录）
                 c = conn.cursor()
                 c.execute(
-                    """DELETE FROM records
-                       WHERE user_id = ? AND strftime('%Y-%m-%d %H:%M', timestamp) = strftime('%Y-%m-%d %H:%M', ?)
-                       AND is_predicted = 0""",
+                    "DELETE FROM records WHERE user_id = ? AND {} = {} AND is_predicted = 0".format(
+                        date_format_sql('timestamp', '%Y-%m-%d %H:%M'), date_format_sql('?', '%Y-%m-%d %H:%M')
+                    ),
                     (user_id, timestamp),
                 )
 
