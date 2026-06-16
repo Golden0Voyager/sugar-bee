@@ -44,6 +44,21 @@ class TestInternalBackup:
         assert resp.json['status'] == 'success'
         assert called
 
+    def test_postgres_returns_not_backed_up(self, client, internal_token, monkeypatch):
+        from routes import api_internal
+        called = []
+        monkeypatch.setattr(api_internal, 'backup_db_to_gcs', lambda: called.append(True))
+        monkeypatch.setattr(api_internal, 'DB_TYPE', 'postgres')
+        resp = client.post(
+            '/internal/backup',
+            headers={'Authorization': f'Bearer {internal_token}'},
+        )
+        assert resp.status_code == 200
+        assert resp.json['status'] == 'success'
+        assert resp.json['data']['backed_up'] is False
+        assert 'Cloud SQL' in resp.json['message']
+        assert not called
+
 
 class TestInternalGarminSync:
     def test_unauthorized(self, client, internal_token):
