@@ -1,5 +1,7 @@
 # AGENTS.md — Sugar Bee (蜜蜂控糖)
 
+> 本文档是面向通用 Agent 的快速参考。项目级约束、提交规范与 Claude Code 专用指南见 [`CLAUDE.md`](CLAUDE.md)。
+
 ## Quick Reference
 
 ```bash
@@ -43,7 +45,7 @@ Monolithic Flask app (`app.py`) with Blueprint modules for routing. Single-page 
 | `utils/db.py` | `get_db()`, `close_db()`, `init_db()` — SQLite via Flask `g` |
 | `utils/responses.py` | `api_success()` / `api_error()` — standard JSON envelope |
 | `utils/auth.py` | `@login_required`, `@login_or_token_required` decorators |
-| `mcp_server.py` | MCP server for Claude Desktop integration (stdio/sse), inline SQLite writes, regex fast path |
+| `mcp_adapter/server.py` | MCP server for Claude Desktop integration (stdio/sse), inline SQLite writes, regex fast path |
 | `generate_report.py` | PDF health report generation (reportlab) |
 | `models.py` | SQLAlchemy models for Alembic migrations |
 
