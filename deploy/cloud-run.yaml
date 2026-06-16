@@ -1,0 +1,53 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: sugar-bee
+  annotations:
+    run.googleapis.com/ingress: all
+spec:
+  template:
+    metadata:
+      annotations:
+        run.googleapis.com/cpu-throttling: 'true'
+        run.googleapis.com/execution-environment: gen2
+    spec:
+      containerConcurrency: 1
+      timeoutSeconds: 300
+      containers:
+        - image: gcr.io/YOUR_PROJECT_ID/sugar-bee
+          ports:
+            - containerPort: 8080
+          env:
+            - name: FLASK_ENV
+              value: production
+            - name: SECRET_KEY
+              value: 'YOUR_SECRET_KEY'
+            - name: GCS_BUCKET_NAME
+              value: sugar-bee-data
+            - name: GCS_DB_PATH
+              value: db/glucose.db
+            - name: GUNICORN_WORKERS
+              value: '1'
+            - name: INTERNAL_API_TOKEN
+              value: 'YOUR_INTERNAL_API_TOKEN'
+          resources:
+            limits:
+              cpu: '1'
+              memory: 512Mi
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            periodSeconds: 30
+            failureThreshold: 3
+      serviceAccountName: sugar-bee@YOUR_PROJECT_ID.iam.gserviceaccount.com
+  traffic:
+    - latestRevision: true
+      percent: 100
