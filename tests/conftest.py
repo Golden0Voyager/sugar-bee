@@ -1,8 +1,11 @@
 """
 Pytest 配置和共享 fixtures
 """
+import contextlib
 import os
+import sqlite3
 import tempfile
+
 import pytest
 
 # 强制测试环境配置
@@ -30,7 +33,7 @@ def app(db_info):
     app.config['TESTING'] = True
     app.config['WTF_CSRF_ENABLED'] = False
 
-    # 初始化数据库
+    # 初始化数据库（幂等操作，每个 worker 启动时执行）
     with app.app_context():
         init_db()
 
@@ -45,10 +48,8 @@ def client(app):
     if hasattr(limiter, '_storage') and limiter._storage:
         limiter._storage.reset()
     elif hasattr(limiter, 'storage') and limiter.storage:
-        try:
+        with contextlib.suppress(Exception):
             limiter.storage.reset()
-        except Exception:
-            pass
 
     with app.test_client() as client:
         yield client
@@ -57,18 +58,29 @@ def client(app):
 @pytest.fixture
 def client_authenticated(client, app):
     """创建已登录的测试客户端"""
-    from user_manager import UserManager
     from core.config import DB_NAME
+    from user_manager import UserManager
 
     um = UserManager(DB_NAME)
-    # 获取或创建测试用户
-    existing = um.get_user_by_username('_test')
-    if not existing:
-        user_id = um.create_user('_test', '测试',
-                                 {'name': '测试', 'birth_year': 1980, 'height': 175, 'weight': 70, 'gender': 'male'},
-                                 password='_test_pass')
-    else:
-        user_id = existing['id']
+
+    # 若数据库里已残留 _test 用户（含 is_active=0 或之前的测试数据），先清理再创建，
+    # 避免 UNIQUE constraint failed。
+    conn = sqlite3.connect(DB_NAME)
+    try:
+        c = conn.cursor()
+        c.execute("SELECT id FROM app_users WHERE username = ?", ('_test',))
+        row = c.fetchone()
+        if row:
+            user_id = row[0]
+            c.execute("DELETE FROM user_profiles WHERE user_id = ?", (user_id,))
+            c.execute("DELETE FROM app_users WHERE id = ?", (user_id,))
+            conn.commit()
+    finally:
+        conn.close()
+
+    user_id = um.create_user('_test', '测试',
+                             {'name': '测试', 'birth_year': 1980, 'height': 175, 'weight': 70, 'gender': 'male'},
+                             password='_test_pass')
 
     with client.session_transaction() as sess:
         sess['current_user_id'] = user_id
