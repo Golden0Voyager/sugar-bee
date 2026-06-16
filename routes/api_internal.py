@@ -8,7 +8,7 @@ import os
 
 from flask import Blueprint, request
 
-from core.config import INTERNAL_API_TOKEN
+from core.config import DB_TYPE, INTERNAL_API_TOKEN
 from services.gcs_sync import backup_db_to_gcs
 from utils.responses import api_error, api_success
 
@@ -35,6 +35,12 @@ def internal_backup():
     ok, error_response = _check_internal_auth()
     if not ok:
         return error_response
+
+    if DB_TYPE != 'sqlite':
+        return api_success(
+            {'backed_up': False},
+            message='PostgreSQL 模式使用 Cloud SQL 自动备份，无需 GCS 数据库备份',
+        )
 
     try:
         backup_db_to_gcs()
