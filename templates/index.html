@@ -973,106 +973,108 @@
     </div>
 
     <!-- Health Analysis Card -->
-    {% if stats.latest_analysis %}
-    <div class="row mb-4">
-        <div class="col-12">
-            <div class="card" style="background: linear-gradient(135deg, #6366F1 0%, #4F46E5 100%); color: white;">
-                <div class="card-body">
-                    <!-- 标题栏（始终可见） -->
-                    <div class="d-flex justify-content-between align-items-center">
-                        <div class="d-flex align-items-center gap-2">
-                            <div class="text-center" style="min-width: 56px;">
-                                <div class="fs-1 fw-bold lh-1">{{ stats.latest_analysis.health_score }}</div>
-                                <small style="opacity: 0.8; font-size: 0.7rem;">{{ stats.latest_analysis.score_label }}</small>
-                            </div>
-                            <div class="ms-1">
-                                <div class="d-flex align-items-center gap-2">
-                                    <h6 class="mb-0">综合健康分析</h6>
-                                    <span class="badge rounded-pill" style="background: rgba(255,255,255,0.2); font-size: 0.75rem;">{{ stats.latest_analysis.days_label }}</span>
+    <div id="healthAnalysisSection">
+        {% if stats.latest_analysis %}
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card" style="background: linear-gradient(135deg, #6366F1 0%, #4F46E5 100%); color: white;">
+                    <div class="card-body">
+                        <!-- 标题栏（始终可见） -->
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div class="d-flex align-items-center gap-2">
+                                <div class="text-center" style="min-width: 56px;">
+                                    <div class="fs-1 fw-bold lh-1">{{ stats.latest_analysis.health_score }}</div>
+                                    <small style="opacity: 0.8; font-size: 0.7rem;">{{ stats.latest_analysis.score_label }}</small>
                                 </div>
-                                <small style="opacity: 0.75; font-size: 0.75rem;">{{ stats.latest_analysis.analysis_date }} 生成</small>
-                                <div class="small mt-1" style="opacity: 0.95; line-height: 1.4;">{{ stats.latest_analysis.glucose_summary }}</div>
-                            </div>
-                        </div>
-                        <button class="btn btn-link text-white p-0 ms-2 flex-shrink-0"
-                                type="button"
-                                data-bs-toggle="collapse"
-                                data-bs-target="#healthAnalysisDetails"
-                                aria-expanded="false"
-                                title="展开/收起详情">
-                            <i class="bi bi-chevron-down collapse-toggle-icon" id="healthAnalysisIcon"></i>
-                        </button>
-                    </div>
-
-                    <!-- 详情内容（可折叠，默认收起） -->
-                    <div class="collapse" id="healthAnalysisDetails">
-                        <div class="row g-3 mb-3 mt-2 align-items-stretch">
-                            <div class="col-md-4 col-6 d-flex">
-                                <div class="p-3 rounded flex-fill" style="background: rgba(255,255,255,0.15);">
-                                    <small class="d-block mb-1" style="opacity: 0.9;"><i class="bi bi-heart me-1"></i>血压状况</small>
-                                    <div class="small">{{ stats.latest_analysis.blood_pressure_summary }}</div>
+                                <div class="ms-1">
+                                    <div class="d-flex align-items-center gap-2">
+                                        <h6 class="mb-0">综合健康分析</h6>
+                                        <span class="badge rounded-pill" style="background: rgba(255,255,255,0.2); font-size: 0.75rem;">{{ stats.latest_analysis.days_label }}</span>
+                                    </div>
+                                    <small style="opacity: 0.75; font-size: 0.75rem;">{{ stats.latest_analysis.analysis_date }} 生成</small>
+                                    <div class="small mt-1" style="opacity: 0.95; line-height: 1.4;">{{ stats.latest_analysis.glucose_summary }}</div>
                                 </div>
                             </div>
-                            <div class="col-md-4 col-6 d-flex">
-                                <div class="p-3 rounded flex-fill" style="background: rgba(255,255,255,0.15);">
-                                    <small class="d-block mb-1" style="opacity: 0.9;"><i class="bi bi-bicycle me-1"></i>运动情况</small>
-                                    <div class="small">{{ stats.latest_analysis.exercise_summary }}</div>
-                                </div>
-                            </div>
-                            <div class="col-md-4 col-6 d-flex">
-                                <div class="p-3 rounded flex-fill" style="background: rgba(255,255,255,0.15);">
-                                    <small class="d-block mb-1" style="opacity: 0.9;"><i class="bi bi-capsule me-1"></i>用药评估</small>
-                                    <div class="small">{{ stats.latest_analysis.medication_summary }}</div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="mb-3">
-                            <strong class="d-block mb-2"><i class="bi bi-lightbulb me-1"></i>健康建议</strong>
-                            <ul class="mb-0" style="padding-left: 1.2rem;">
-                                {% for rec in stats.latest_analysis.recommendations %}
-                                <li class="mb-1">{{ rec }}</li>
-                                {% endfor %}
-                            </ul>
-                        </div>
-
-                        <div class="d-flex gap-2 flex-wrap">
-                            <button class="btn btn-light btn-sm" onclick="showFullAnalysis()">
-                                <i class="bi bi-file-text me-1"></i>查看完整报告
+                            <button class="btn btn-link text-white p-0 ms-2 flex-shrink-0"
+                                    type="button"
+                                    data-bs-toggle="collapse"
+                                    data-bs-target="#healthAnalysisDetails"
+                                    aria-expanded="false"
+                                    title="展开/收起详情">
+                                <i class="bi bi-chevron-down collapse-toggle-icon" id="healthAnalysisIcon"></i>
                             </button>
-                            <button class="btn btn-outline-light btn-sm" data-bs-toggle="modal" data-bs-target="#analysisOptionsModal">
-                                <i class="bi bi-arrow-clockwise me-1"></i>重新生成
+                        </div>
+
+                        <!-- 详情内容（可折叠，默认收起） -->
+                        <div class="collapse" id="healthAnalysisDetails">
+                            <div class="row g-3 mb-3 mt-2 align-items-stretch">
+                                <div class="col-md-4 col-6 d-flex">
+                                    <div class="p-3 rounded flex-fill" style="background: rgba(255,255,255,0.15);">
+                                        <small class="d-block mb-1" style="opacity: 0.9;"><i class="bi bi-heart me-1"></i>血压状况</small>
+                                        <div class="small">{{ stats.latest_analysis.blood_pressure_summary }}</div>
+                                    </div>
+                                </div>
+                                <div class="col-md-4 col-6 d-flex">
+                                    <div class="p-3 rounded flex-fill" style="background: rgba(255,255,255,0.15);">
+                                        <small class="d-block mb-1" style="opacity: 0.9;"><i class="bi bi-bicycle me-1"></i>运动情况</small>
+                                        <div class="small">{{ stats.latest_analysis.exercise_summary }}</div>
+                                    </div>
+                                </div>
+                                <div class="col-md-4 col-6 d-flex">
+                                    <div class="p-3 rounded flex-fill" style="background: rgba(255,255,255,0.15);">
+                                        <small class="d-block mb-1" style="opacity: 0.9;"><i class="bi bi-capsule me-1"></i>用药评估</small>
+                                        <div class="small">{{ stats.latest_analysis.medication_summary }}</div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="mb-3">
+                                <strong class="d-block mb-2"><i class="bi bi-lightbulb me-1"></i>健康建议</strong>
+                                <ul class="mb-0" style="padding-left: 1.2rem;">
+                                    {% for rec in stats.latest_analysis.recommendations %}
+                                    <li class="mb-1">{{ rec }}</li>
+                                    {% endfor %}
+                                </ul>
+                            </div>
+
+                            <div class="d-flex gap-2 flex-wrap">
+                                <button class="btn btn-light btn-sm" onclick="showFullAnalysis()">
+                                    <i class="bi bi-file-text me-1"></i>查看完整报告
+                                </button>
+                                <button class="btn btn-outline-light btn-sm analysis-generate-btn" data-bs-toggle="modal" data-bs-target="#analysisOptionsModal">
+                                    <i class="bi bi-arrow-clockwise me-1"></i>重新生成
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% else %}
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card bg-light">
+                    <div class="card-body text-center py-4">
+                        <i class="bi bi-heart-pulse fs-1 text-muted mb-3"></i>
+                        <h5 class="text-muted mb-2">暂无健康分析</h5>
+                        <p class="text-secondary mb-3">选择一个时间范围，系统将基于您的数据生成综合健康分析</p>
+                        <div class="btn-group" role="group">
+                            <button type="button" class="btn btn-primary btn-sm analysis-generate-btn" onclick="triggerManualAnalysis(7)">
+                                <i class="bi bi-calendar-week me-1"></i>近7天分析
+                            </button>
+                            <button type="button" class="btn btn-primary btn-sm analysis-generate-btn" onclick="triggerManualAnalysis(14)">
+                                <i class="bi bi-calendar2-week me-1"></i>近14天分析
+                            </button>
+                            <button type="button" class="btn btn-primary btn-sm analysis-generate-btn" onclick="triggerManualAnalysis(30)">
+                                <i class="bi bi-calendar-month me-1"></i>近30天分析
                             </button>
                         </div>
                     </div>
                 </div>
             </div>
         </div>
+        {% endif %}
     </div>
-    {% else %}
-    <div class="row mb-4">
-        <div class="col-12">
-            <div class="card bg-light">
-                <div class="card-body text-center py-4">
-                    <i class="bi bi-heart-pulse fs-1 text-muted mb-3"></i>
-                    <h5 class="text-muted mb-2">暂无健康分析</h5>
-                    <p class="text-secondary mb-3">选择一个时间范围，系统将基于您的数据生成综合健康分析</p>
-                    <div class="btn-group" role="group">
-                        <button type="button" class="btn btn-primary btn-sm" onclick="triggerManualAnalysis(7)">
-                            <i class="bi bi-calendar-week me-1"></i>近7天分析
-                        </button>
-                        <button type="button" class="btn btn-primary btn-sm" onclick="triggerManualAnalysis(14)">
-                            <i class="bi bi-calendar2-week me-1"></i>近14天分析
-                        </button>
-                        <button type="button" class="btn btn-primary btn-sm" onclick="triggerManualAnalysis(30)">
-                            <i class="bi bi-calendar-month me-1"></i>近30天分析
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-    {% endif %}
 
     <!-- 血糖监测综合卡片（趋势图 + 预测状态） -->
     <div class="card mb-4" id="glucoseMonitorCard">
@@ -8100,20 +8102,204 @@
 
     // ========== Health Analysis Functions ==========
 
+    let _analysisLoading = false;
+
+    function getScoreLabel(score) {
+        if (score >= 90) return '优秀';
+        if (score >= 80) return '良好';
+        if (score >= 60) return '一般';
+        if (score >= 40) return '需改善';
+        return '需关注';
+    }
+
+    function setAnalysisButtonsDisabled(disabled) {
+        _analysisLoading = disabled;
+        document.querySelectorAll('.analysis-generate-btn').forEach(btn => {
+            btn.disabled = disabled;
+        });
+    }
+
+    function showAnalysisLoadingModal(days) {
+        const existing = document.getElementById('analysisLoadingModal');
+        if (existing) existing.remove();
+
+        const modal = document.createElement('div');
+        modal.className = 'modal fade';
+        modal.id = 'analysisLoadingModal';
+        modal.setAttribute('data-bs-backdrop', 'static');
+        modal.setAttribute('data-bs-keyboard', 'false');
+        modal.innerHTML = `
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content border-0 shadow" style="border-radius: 20px;">
+                    <div class="modal-body text-center p-5">
+                        <div class="spinner-border text-primary mb-3" role="status" style="width: 3rem; height: 3rem;">
+                            <span class="visually-hidden">加载中...</span>
+                        </div>
+                        <h5 class="mb-2">正在生成综合健康报告</h5>
+                        <p class="text-muted mb-0">基于近 ${days} 天数据，正在查询、分析和保存结果<br>预计需要 10–30 秒，请稍候</p>
+                    </div>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+        const bsModal = new bootstrap.Modal(modal);
+        bsModal.show();
+    }
+
+    function hideAnalysisLoadingModal() {
+        const modal = document.getElementById('analysisLoadingModal');
+        if (!modal) return;
+        const bsModal = bootstrap.Modal.getInstance(modal);
+        if (bsModal) {
+            bsModal.hide();
+            modal.addEventListener('hidden.bs.modal', () => modal.remove(), { once: true });
+        } else {
+            modal.remove();
+        }
+    }
+
+    function renderHealthAnalysisCard(analysis) {
+        const score = analysis.health_score || 0;
+        const scoreLabel = getScoreLabel(score);
+        const days = analysis.days || 7;
+        const daysLabel = `近${days}天`;
+        const date = analysis.analysis_date || '';
+        const glucoseSummary = analysis.glucose_summary || '';
+        const bpSummary = analysis.blood_pressure_summary || '';
+        const exSummary = analysis.exercise_summary || '';
+        const medSummary = analysis.medication_summary || '';
+        let recs = analysis.recommendations || [];
+        if (typeof recs === 'string') {
+            try { recs = JSON.parse(recs); } catch (e) { recs = []; }
+        }
+        const recHtml = Array.isArray(recs) && recs.length
+            ? recs.map(r => `<li class="mb-1">${escapeHtml(String(r))}</li>`).join('')
+            : '<li class="mb-1 text-white-50">暂无具体建议</li>';
+
+        return `
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card" style="background: linear-gradient(135deg, #6366F1 0%, #4F46E5 100%); color: white;">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div class="d-flex align-items-center gap-2">
+                                <div class="text-center" style="min-width: 56px;">
+                                    <div class="fs-1 fw-bold lh-1">${score}</div>
+                                    <small style="opacity: 0.8; font-size: 0.7rem;">${scoreLabel}</small>
+                                </div>
+                                <div class="ms-1">
+                                    <div class="d-flex align-items-center gap-2">
+                                        <h6 class="mb-0">综合健康分析</h6>
+                                        <span class="badge rounded-pill" style="background: rgba(255,255,255,0.2); font-size: 0.75rem;">${daysLabel}</span>
+                                    </div>
+                                    <small style="opacity: 0.75; font-size: 0.75rem;">${date} 生成</small>
+                                    <div class="small mt-1" style="opacity: 0.95; line-height: 1.4;">${escapeHtml(glucoseSummary)}</div>
+                                </div>
+                            </div>
+                            <button class="btn btn-link text-white p-0 ms-2 flex-shrink-0"
+                                    type="button"
+                                    data-bs-toggle="collapse"
+                                    data-bs-target="#healthAnalysisDetails"
+                                    aria-expanded="false"
+                                    title="展开/收起详情">
+                                <i class="bi bi-chevron-down collapse-toggle-icon" id="healthAnalysisIcon"></i>
+                            </button>
+                        </div>
+
+                        <div class="collapse" id="healthAnalysisDetails">
+                            <div class="row g-3 mb-3 mt-2 align-items-stretch">
+                                <div class="col-md-4 col-6 d-flex">
+                                    <div class="p-3 rounded flex-fill" style="background: rgba(255,255,255,0.15);">
+                                        <small class="d-block mb-1" style="opacity: 0.9;"><i class="bi bi-heart me-1"></i>血压状况</small>
+                                        <div class="small">${escapeHtml(bpSummary)}</div>
+                                    </div>
+                                </div>
+                                <div class="col-md-4 col-6 d-flex">
+                                    <div class="p-3 rounded flex-fill" style="background: rgba(255,255,255,0.15);">
+                                        <small class="d-block mb-1" style="opacity: 0.9;"><i class="bi bi-bicycle me-1"></i>运动情况</small>
+                                        <div class="small">${escapeHtml(exSummary)}</div>
+                                    </div>
+                                </div>
+                                <div class="col-md-4 col-6 d-flex">
+                                    <div class="p-3 rounded flex-fill" style="background: rgba(255,255,255,0.15);">
+                                        <small class="d-block mb-1" style="opacity: 0.9;"><i class="bi bi-capsule me-1"></i>用药评估</small>
+                                        <div class="small">${escapeHtml(medSummary)}</div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="mb-3">
+                                <strong class="d-block mb-2"><i class="bi bi-lightbulb me-1"></i>健康建议</strong>
+                                <ul class="mb-0" style="padding-left: 1.2rem;">
+                                    ${recHtml}
+                                </ul>
+                            </div>
+
+                            <div class="d-flex gap-2 flex-wrap">
+                                <button class="btn btn-light btn-sm" onclick="showFullAnalysis()">
+                                    <i class="bi bi-file-text me-1"></i>查看完整报告
+                                </button>
+                                <button class="btn btn-outline-light btn-sm analysis-generate-btn" data-bs-toggle="modal" data-bs-target="#analysisOptionsModal">
+                                    <i class="bi bi-arrow-clockwise me-1"></i>重新生成
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>`;
+    }
+
+    async function refreshHealthAnalysisSection() {
+        try {
+            const data = await apiCall('/get_latest_analysis', { method: 'GET' }, { showLoading: false });
+            if (!data || data.status === 'error' || data.message) {
+                location.reload();
+                return;
+            }
+            const container = document.getElementById('healthAnalysisSection');
+            if (container) {
+                container.innerHTML = renderHealthAnalysisCard(data);
+            }
+        } catch (e) {
+            console.error('刷新报告卡片失败', e);
+            location.reload();
+        }
+    }
+
+    /**
+     * 选择分析选项并触发分析
+     */
+    async function selectAnalysisOption(days) {
+        const modalEl = document.getElementById('analysisOptionsModal');
+        const modal = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
+        modal.hide();
+        await triggerManualAnalysis(days);
+    }
+
     /**
      * 手动触发健康分析
      */
     async function triggerManualAnalysis(days = 7) {
+        if (_analysisLoading) return;
+        setAnalysisButtonsDisabled(true);
+        showAnalysisLoadingModal(days);
+
         const result = await apiCall('/analyze_health', {
             method: 'POST',
             body: JSON.stringify({ days: days })
         }, {
             showLoading: false,
             onError: (error) => {
-                // 检查是否是配额错误
+                hideAnalysisLoadingModal();
+                setAnalysisButtonsDisabled(false);
                 if (error.errorType === 'quota_exceeded') {
                     const retryAfter = error.details?.retry_after || error.retryAfter || 60;
                     showQuotaExhaustedModal(retryAfter, days);
+                } else if (error.errorType === 'ai_unavailable') {
+                    showToast('⚠️ AI 服务未配置，请联系管理员', 'warning');
+                } else if (error.errorType === 'analysis_failed') {
+                    showToast('❌ 生成报告失败: ' + error.message, 'error');
                 } else {
                     showToast('❌ 生成失败: ' + error.message, 'error');
                 }
@@ -8122,10 +8308,9 @@
 
         if (result) {
             showToast(`✅ 基于近${days}天的健康分析生成成功！`, 'success');
-            // 延迟刷新，让用户看到成功提示
-            setTimeout(() => {
-                location.reload();
-            }, 1500);
+            await refreshHealthAnalysisSection();
+            hideAnalysisLoadingModal();
+            setAnalysisButtonsDisabled(false);
         }
     }
 
@@ -8890,9 +9075,6 @@
     </div>
 </div>
 
-
-
-<script src="/static/js/analysis.js"></script>
 
 
 <!-- ========== AI 健康助手 ========== -->
