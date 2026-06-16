@@ -8,7 +8,6 @@ Garmin Connect 同步服务
 """
 import contextlib
 import os
-import sqlite3
 import traceback
 from datetime import date, timedelta
 
@@ -19,7 +18,7 @@ from garminconnect import (
     GarminConnectTooManyRequestsError,
 )
 
-from core.config import DB_NAME
+from utils.db import get_raw_conn, put_raw_conn
 
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TOKEN_DIR = os.environ.get('GARMIN_TOKEN_DIR', os.path.join(_PROJECT_ROOT, '.garmin_tokens'))
@@ -147,7 +146,7 @@ def sync_activities(user_id, days=30):
         except GarminConnectConnectionError as e:
             raise RuntimeError(f"Garmin 连接错误：{e}")
 
-        conn = sqlite3.connect(DB_NAME)
+        conn = get_raw_conn()
         c = conn.cursor()
         inserted = skipped = 0
         try:
@@ -183,6 +182,6 @@ def sync_activities(user_id, days=30):
                 inserted += 1
             conn.commit()
         finally:
-            conn.close()
+            put_raw_conn(conn)
 
         return {'inserted': inserted, 'skipped': skipped, 'total': len(activities)}
