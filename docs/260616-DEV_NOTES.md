@@ -18,6 +18,30 @@
 
 ## 更新日志
 
+### v2.3 (2026-06-16)
+
+- **综合健康报告生成 UX 优化**
+  - 增加专用 loading 模态框，生成期间禁用重复点击
+  - 成功后局部刷新报告卡片，失败后按网络/AI 不可用/配额耗尽/分析失败分类提示
+  - 后端返回结构化错误类型（`error_type` + `details`）
+- **移动端适老化增强**
+  - 设置面板增加"大字/高对比模式"开关，状态持久化到 `localStorage`
+  - 移动端槽位文字、按钮、下拉项触控目标进一步放大
+  - 新增 `.elderly-mode` 高对比/大字体工具类
+- **关键安全修复**
+  - 用药方案接口（`api_meds.py`）所有 `plan_id` 操作增加 `AND user_id = ?` 隔离
+  - 新增记录接口（`api_records.py`）不再信任前端传入的 `user_id`，强制使用 session 当前用户
+  - `user_manager.get_current_user_id()` 默认返回 `None` 而非硬编码 `1`
+- **前端统一与可维护性**
+  - CSS 去重、提取变量与基础组件类
+  - 清理 380+ 处内联样式
+  - 合并重复 JS 逻辑（配额模态框、健康分析选项等）
+  - 血糖槽位事件委托到容器，减少重绘监听器
+- **AI 调用链与兼容性**
+  - 接入 ModelScope / SenseNova / DeepSeek 等模型作为解析与对话兜底
+  - 移除 Dashscope 相关配置，简化对话流
+  - 修复 SQLite `%s` 占位符兼容性问题，统一使用 `?`
+
 ### v2.2 (2026-02-08)
 - 新增体重/BMI 追踪功能（数据库、路由、表单、图表、时间线、AI解析）
 - BMI 使用中国标准分类（偏瘦<18.5, 正常18.5-24, 超重24-28, 肥胖>=28）
@@ -166,14 +190,14 @@ CREATE INDEX IF NOT EXISTS idx_health_analyses_user_id ON health_analyses(user_i
 ## 技术栈
 
 ### 后端
-- Python 3.x + Flask
-- SQLite 数据库
-- Google Gemini API（AI 健康分析 + 自然语言解析）
+- Python 3.x + Flask（Blueprint 模块化路由）
+- SQLite 数据库（生产环境建议启用 WAL）
+- AI 提供商链：Google Gemini / ZhipuAI / DeepSeek / SenseNova / ModelScope，按任务类型自动降级
 
 ### 前端
 - Bootstrap 5 + Bootstrap Icons
 - Chart.js（趋势图表）+ chartjs-plugin-annotation（参考线）
-- FullCalendar（日历组件）
+- FullCalendar（月历组件）
 - Marked.js（Markdown 解析）
 - html2canvas + jsPDF（PDF 导出）
 
@@ -186,23 +210,17 @@ CREATE INDEX IF NOT EXISTS idx_health_analyses_user_id ON health_analyses(user_i
 
 ## 未来计划
 
-### 短期 (v2.3)
-- [ ] 添加新用户功能（前端界面）
-- [ ] 账户注销功能
-- [ ] 用户搜索功能
+具体优先级与待办事项见 [`plans/260616-next-steps.md`](plans/260616-next-steps.md)。
 
-### 中期 (v3.0)
-- [ ] 数据可视化增强
-- [ ] 更多图表类型
-- [ ] 移动端 PWA 支持
+当前重点方向：
 
-### 长期 (v4.0)
-- [ ] 多语言支持
-- [ ] 云端数据同步
-- [ ] 家庭数据共享
+- **安全与稳定性**：SQLite 并发访问保护、AI 调用超时、解析错误显式处理、Agent Token 鉴权明确化
+- **交互与性能**：时间线渲染统一、图表工厂化、空元素保护、长按槽位状态竞态消除
+- **工程化**：统一错误处理、移除默认 `user_id`、生产环境隐藏堆栈、头像上传校验
+- **适老化后续**：底部固定保存按钮、操作震动反馈、更高对比度选项
 
 ---
 
 **项目名称**：蜜蜂控糖 (Manage Diligently, Live Sweetly)
-**当前版本**：v2.2
-**最后更新**：2026-02-08
+**当前版本**：v2.3
+**最后更新**：2026-06-16
