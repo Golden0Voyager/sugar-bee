@@ -1,6 +1,14 @@
-# Sugar Bee Agent 接入指南
+# Sugar Bee MCP 接入指南
 
-本文档说明如何在今天改动后，通过 API 或 MCP Server 让 agent 绕过前端直接记录健康数据。
+本文档说明如何通过 API 或 MCP Server 让 Agent 绕过前端直接记录健康数据。
+
+MCP 相关代码已集中到 `mcp_adapter/` 目录：
+
+- `mcp_adapter/server.py` — MCP Server 主逻辑
+- `mcp_adapter/tests/test_mcp_server.py` — 单元测试
+- `mcp_server.py`（仓库根目录）— 兼容入口，调用 `mcp_adapter.server.main()`
+
+> 为什么不直接用 `mcp/` 作为目录名？因为项目依赖了官方的 `mcp` Python 包，若本地目录也叫 `mcp` 会产生命名冲突，导致 `from mcp.server.fastmcp import FastMCP` 解析失败。因此使用 `mcp_adapter/` 避免冲突。
 
 ---
 
@@ -10,7 +18,7 @@
    - `POST /add` — 单条写入
    - `POST /parse_ai` — 自然语言解析
    - `POST /batch_add` — 批量写入
-2. **MCP Server**：新增 `mcp_server.py`，支持 **stdio**（Claude Desktop）与 **sse**（任意 MCP 客户端）双模式。
+2. **MCP Server**：`mcp_adapter/server.py` 支持 **stdio**（Claude Desktop）与 **sse**（任意 MCP 客户端）双模式。
 
 ---
 
@@ -113,7 +121,7 @@ curl -sS -X POST http://127.0.0.1:5001/batch_add \
 
 ## 方式二：MCP Server（协议级集成）
 
-`mcp_server.py` 将功能封装为 MCP 工具，支持两种传输模式。
+`mcp_adapter/server.py` 将功能封装为 MCP 工具，支持两种传输模式。
 
 ### 模式 A：stdio（Claude Desktop 专用）
 
@@ -166,7 +174,7 @@ uv run python mcp_server.py --transport sse
 
 ```python
 import asyncio
-from mcp_server import record_blood_pressure, list_today_records
+from mcp_adapter.server import record_blood_pressure, list_today_records
 
 async def main():
     # 写
@@ -210,3 +218,6 @@ uv run python app.py           # 重新启动
 ```bash
 uv pip install mcp httpx
 ```
+
+**Q: 为什么本地包不叫 `mcp`？**
+- 因为依赖的官方库就是 `mcp`，本地目录若同名会覆盖它，导致 `from mcp.server.fastmcp import FastMCP` 失败。统一使用 `mcp_adapter` 作为本地包名。

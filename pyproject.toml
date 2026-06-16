@@ -60,3 +60,6 @@ exclude_lines = [
     "def __repr__",
     "raise NotImplementedError",
 ]
+
+[tool.pytest.ini_options]
+testpaths = ["tests", "mcp_adapter/tests"]
