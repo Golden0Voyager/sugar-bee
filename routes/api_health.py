@@ -23,13 +23,25 @@ def analyze_health():
 
         result = generate_health_analysis(db, current_user_id, is_auto=False, days=days)
 
+        if result.get('skipped'):
+            return api_success(message=result.get('message', '今日已生成分析'))
         if result.get('success'):
             return api_success(data={"analysis_id": result['analysis_id'], "result": result['result']})
-        else:
-            return api_error(result.get('error', '分析失败'), status_code=500)
+
+        error_type = result.get('error_type', 'analysis_failed')
+        status_code = 429 if error_type == 'quota_exceeded' else 500
+        return api_error(
+            result.get('error', '分析失败'),
+            status_code=status_code,
+            error_type=error_type,
+            details=result.get('details', {})
+        )
     except Exception as e:
         traceback.print_exc()
-        return api_error(str(e), status_code=500)
+        err_text = str(e).lower()
+        if '429' in err_text or 'quota' in err_text or 'rate limit' in err_text:
+            return api_error('AI 服务配额已用尽，请稍后重试', status_code=429, error_type='quota_exceeded', details={'retry_after': 60})
+        return api_error(str(e), status_code=500, error_type='analysis_failed')
 
 @bp_health.route('/get_latest_analysis', methods=['GET'])
 @login_required
