@@ -5,15 +5,16 @@ Gunicorn 生产环境配置文件
 """
 
 import os
-import multiprocessing
 
 # ========== 服务器套接字 ==========
-bind = os.environ.get("GUNICORN_BIND", "0.0.0.0:5000")
+# Cloud Run 通过 PORT 环境变量注入端口；本地仍可用 GUNICORN_BIND / 5000 兜底
+_port = os.environ.get("PORT", os.environ.get("GUNICORN_PORT", "5000"))
+bind = os.environ.get("GUNICORN_BIND", f"0.0.0.0:{_port}")
 
 # ========== Worker 进程 ==========
-# 默认公式：2 * CPU 核心数 + 1
-# 对于 I/O 密集型应用（如本应用涉及大量 AI API 调用），可以适当增加
-workers = int(os.environ.get("GUNICORN_WORKERS", multiprocessing.cpu_count() * 2 + 1))
+# Cloud Run 实例默认 1 vCPU，且 SQLite 不支持并发写入，默认 1 个 worker
+# 本地或明确配置 GUNICORN_WORKERS 时可覆盖
+workers = int(os.environ.get("GUNICORN_WORKERS", 1))
 
 # Worker 类型
 # sync: 同步 worker，适合大多数场景
@@ -71,4 +72,9 @@ def worker_int(worker):
 
 def on_exit(server):
     """Master 进程退出时调用"""
+    try:
+        from services.gcs_sync import backup_db_to_gcs
+        backup_db_to_gcs()
+    except Exception as e:  # pragma: no cover
+        print(f"[Gunicorn] GCS 停机备份失败: {e}")
     print("[Gunicorn] 服务器已关闭")
