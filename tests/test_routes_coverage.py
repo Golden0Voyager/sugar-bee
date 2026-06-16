@@ -896,8 +896,8 @@ class TestDeleteUserRealDb:
 
     def test_delete_user_self(self, isolate_db, client_authenticated):
         """L195-196: 自删 -> 400 (使用真实 DB 验证路径)"""
-        from user_manager import UserManager
-        current_id = UserManager('').get_current_user_id()
+        with client_authenticated.session_transaction() as sess:
+            current_id = sess['current_user_id']
         resp = client_authenticated.post(f'/delete_user/{current_id}')
         assert resp.status_code == 400
         assert resp.json['error_type'] == 'validation_error'

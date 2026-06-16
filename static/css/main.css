@@ -1815,12 +1815,12 @@
             }
             /* 保持按钮最小触控目标 */
             .btn {
-                min-height: 48px;
-                font-size: 1rem;
+                min-height: 52px;
+                font-size: 1.05rem;
             }
             .btn-sm {
-                min-height: 44px;
-                font-size: 0.95rem;
+                min-height: 48px;
+                font-size: 1rem;
             }
             .btn-circle-icon {
                 width: 44px;
@@ -1828,8 +1828,9 @@
             }
             /* 下拉菜单项触摸目标 */
             .dropdown-item {
-                padding: 14px 16px;
-                min-height: 48px;
+                padding: 16px 18px;
+                min-height: 52px;
+                font-size: 1rem;
             }
             /* 用户下拉菜单不超出屏幕 */
             .dropdown-menu.dropdown-menu-end[style*="min-width: 300px"] {
@@ -1844,9 +1845,9 @@
             }
             /* 药物标签触摸目标 + 字体 */
             .med-tab-pill {
-                min-height: 36px;
-                padding: 6px 12px;
-                font-size: 0.85rem;
+                min-height: 40px;
+                padding: 8px 14px;
+                font-size: 0.95rem;
             }
             /* Nav pills 在极窄屏幕上可滚动，统一格式 */
             .nav.nav-fill {
@@ -1967,8 +1968,8 @@
             }
             .slot-icon { font-size: 1.2rem !important; }
             .slot-value { font-size: 1.05rem !important; }
-            .slot-name { font-size: 0.85rem !important; white-space: nowrap; }
-            .slot-time { font-size: 0.8rem !important; white-space: nowrap; }
+            .slot-name { font-size: 0.95rem !important; font-weight: 500 !important; white-space: nowrap; }
+            .slot-time { font-size: 0.9rem !important; white-space: nowrap; }
             /* AI 预测按钮手机端保持可读宽度 */
             .btn-ai-predict {
                 font-size: 0.85rem;
@@ -2486,10 +2487,52 @@
     }
 }
 
-/* ---- Standalone 模式顶部安全区 ---- */
-@media all and (display-mode: standalone) {
-    .chat-panel {
-        padding-top: env(safe-area-inset-top, 0px);
-    }
+/* ---- 适老化（大字/高对比）模式 ---- */
+.elderly-mode {
+    --md-text-primary: #0F172A;
+    --md-text-secondary: #334155;
+    --border-color: #94A3B8;
+}
+
+.elderly-mode .slot-name { font-size: 1.05rem !important; font-weight: 600 !important; }
+.elderly-mode .slot-time { font-size: 1rem !important; }
+.elderly-mode .slot-value { font-size: 1.15rem !important; font-weight: 600 !important; }
+
+.elderly-mode .btn {
+    min-height: 56px !important;
+    font-size: 1.1rem !important;
+}
+.elderly-mode .btn-sm {
+    min-height: 52px !important;
+    font-size: 1.05rem !important;
+}
+
+.elderly-mode .dropdown-item {
+    padding: 18px 20px !important;
+    min-height: 56px !important;
+    font-size: 1.1rem !important;
+}
+
+.elderly-mode .med-tab-pill {
+    min-height: 48px !important;
+    padding: 10px 16px !important;
+    font-size: 1.1rem !important;
+}
+
+.elderly-mode .small,
+.elderly-mode .text-muted {
+    font-size: 1.05rem !important;
+}
+
+.elderly-mode .form-control,
+.elderly-mode .form-select {
+    font-size: 1.15rem !important;
+    min-height: 56px !important;
+}
+
+.elderly-mode .nav-pills .nav-link {
+    min-width: 96px !important;
+    padding: 12px 18px !important;
+    font-size: 1.05rem !important;
 }
 

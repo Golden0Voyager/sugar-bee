@@ -477,7 +477,7 @@ class TestHealthAnalysis:
     def test_returns_error_when_no_ai(self):
         from services.health_service import generate_health_analysis
         result = generate_health_analysis(MagicMock(), user_id=1)
-        assert result == {"error": "未配置 AI API Key"}
+        assert result == {"success": False, "error": "未配置 AI API Key", "error_type": "ai_unavailable"}
 
     @patch('services.health_service.AI_AVAILABLE', True)
     @patch('services.health_service.call_ai')

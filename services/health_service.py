@@ -10,7 +10,7 @@ def generate_health_analysis(db, user_id=1, is_auto=False, days=7):
     利用大模型生成个性化健康分析和建议
     """
     if not AI_AVAILABLE:
-        return {"error": "未配置 AI API Key"}
+        return {"success": False, "error": "未配置 AI API Key", "error_type": "ai_unavailable"}
 
     try:
         now = datetime.datetime.now()
@@ -29,7 +29,7 @@ def generate_health_analysis(db, user_id=1, is_auto=False, days=7):
                 return {"skipped": True, "message": "今日已生成分析"}
 
         c = db.cursor()
-        
+
         # 1. 血糖数据
         c.execute("""
             SELECT r.value, r.type, r.timestamp, p.value AS predicted_value, p.prediction_error
@@ -114,7 +114,7 @@ def generate_health_analysis(db, user_id=1, is_auto=False, days=7):
             glucose_values = [r[0] for r in glucose_records if 1.0 <= r[0] <= 30.0]
             if glucose_values:
                 glucose_summary = f"平均血糖: {sum(glucose_values)/len(glucose_values):.1f} mmol/L, 最高: {max(glucose_values):.1f}, 最低: {min(glucose_values):.1f}"
-        
+
         bp_summary = ""
         if bp_records:
             sys = [r[0] for r in bp_records]
@@ -149,8 +149,8 @@ def generate_health_analysis(db, user_id=1, is_auto=False, days=7):
         ai_response = call_ai(prompt, task_type='report')
 
         # 去除 AI 返回的 ```markdown ... ``` 包裹
-        ai_response = re.sub(r'^```(%s:markdown|md)%s\s*\n%s', '', ai_response, flags=re.IGNORECASE)
-        ai_response = re.sub(r'\n%s```\s*$', '', ai_response)
+        ai_response = re.sub(r'^```(?:markdown|md)?\s*\n?', '', ai_response, flags=re.IGNORECASE)
+        ai_response = re.sub(r'\n?```\s*$', '', ai_response)
 
         # 解析得分
         score_match = re.search(r'综合健康得分:\s*(\d+)', ai_response)
@@ -164,7 +164,7 @@ def generate_health_analysis(db, user_id=1, is_auto=False, days=7):
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (today_str, score, glucose_summary, bp_summary, exercise_summary, med_summary, "", ai_response, 1 if is_auto else 0, user_id, days))
         db.commit()
-        
+
         return {
             "success": True,
             "analysis_id": c.lastrowid,
@@ -173,7 +173,18 @@ def generate_health_analysis(db, user_id=1, is_auto=False, days=7):
         }
     except Exception as e:
         traceback.print_exc()
-        return {"success": False, "error": str(e)}
+        err_text = str(e).lower()
+        error_type = 'analysis_failed'
+        details = {}
+        if '429' in err_text or 'quota' in err_text or 'rate limit' in err_text:
+            error_type = 'quota_exceeded'
+            # 尝试从错误信息中提取等待秒数
+            wait_match = re.search(r'(\d+)\s*秒', str(e))
+            if wait_match:
+                details['retry_after'] = int(wait_match.group(1))
+            else:
+                details['retry_after'] = 60
+        return {"success": False, "error": str(e), "error_type": error_type, "details": details}
 
 def auto_trigger_health_analysis(db, user_id=1):
     """
