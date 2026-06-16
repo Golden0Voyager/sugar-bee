@@ -40,6 +40,7 @@ from typing import Optional
 
 import httpx
 from mcp.server.fastmcp import FastMCP
+from utils.db import get_raw_conn
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DB_PATH = os.environ.get("DB_PATH", os.path.join(PROJECT_ROOT, "glucose.db"))
@@ -75,6 +76,10 @@ def _api_headers(user_id: int) -> dict:
 
 
 def _db() -> sqlite3.Connection:
+    """获取数据库连接。SQLite 模式下使用本地文件（兼容现有测试/本地运行），PostgreSQL 模式下使用连接池。"""
+    from core import config
+    if config.DB_TYPE == 'postgres':
+        return get_raw_conn()
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
