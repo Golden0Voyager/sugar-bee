@@ -166,6 +166,17 @@ except ImportError:  # pragma: no cover（生产环境会安装）
 _connection_pool = None
 
 
+def _pg_dsn() -> str:
+    """把 SQLAlchemy 风格的 URL 转换成 psycopg2 可识别的 DSN。
+
+    SQLAlchemy 使用 postgresql+psycopg2://，而 psycopg2.connect 只需要 postgresql://。
+    """
+    url = config.DATABASE_URL or ""
+    if url.startswith("postgresql+psycopg2://"):
+        return url.replace("postgresql+psycopg2://", "postgresql://", 1)
+    return url
+
+
 def _get_pool():
     """获取 PostgreSQL 连接池（惰性初始化）。"""
     global _connection_pool
@@ -175,7 +186,7 @@ def _get_pool():
         _connection_pool = pool.ThreadedConnectionPool(
             minconn=1,
             maxconn=10,
-            dsn=config.DATABASE_URL,
+            dsn=_pg_dsn(),
             cursor_factory=RealDictCursor,
             keepalives=1,
             keepalives_idle=30,
@@ -375,7 +386,7 @@ def _init_db_postgres():
     """PostgreSQL schema 初始化（一次性创建完整表结构）。"""
     import psycopg2
 
-    conn = psycopg2.connect(config.DATABASE_URL)
+    conn = psycopg2.connect(_pg_dsn())
     try:
         c = conn.cursor()
 
