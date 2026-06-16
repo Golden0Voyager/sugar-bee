@@ -4,6 +4,14 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # 支持通过环境变量自定义数据库路径（Docker / 生产环境常用）
 DB_NAME = os.environ.get("SUGAR_BEE_DB_PATH", os.path.join(BASE_DIR, "glucose.db"))
+
+# 数据库连接配置：本地/测试默认 SQLite；Cloud Run 生产通过 Secret Manager 注入 PostgreSQL URL
+DATABASE_URL = os.environ.get("SUGAR_BEE_DATABASE_URL", f"sqlite:///{DB_NAME}")
+DB_TYPE = os.environ.get(
+    "SUGAR_BEE_DB_TYPE",
+    "postgres" if DATABASE_URL.startswith("postgresql") else "sqlite",
+)
+
 AVATAR_FOLDER = os.path.join(BASE_DIR, "static", "avatars")
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg'}
 
