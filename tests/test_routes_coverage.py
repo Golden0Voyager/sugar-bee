@@ -187,7 +187,6 @@ class TestChatStream:
         with patch('routes.api_chat.call_chat_stream') as mock_stream, \
              patch('routes.api_chat.build_chat_context', return_value='test context'), \
              patch('routes.api_chat.get_db') as mock_get_db, \
-             patch('routes.api_chat.sqlite3.connect'), \
              patch('routes.api_chat.CHAT_AVAILABLE', True):
             mock_stream.return_value = chunks
             mock_c = MagicMock()
@@ -212,7 +211,6 @@ class TestChatStream:
         with patch('routes.api_chat.call_chat_stream') as mock_stream, \
              patch('routes.api_chat.build_chat_context', return_value='test context'), \
              patch('routes.api_chat.get_db') as mock_get_db, \
-             patch('routes.api_chat.sqlite3.connect'), \
              patch('routes.api_chat.CHAT_AVAILABLE', True):
             mock_stream.side_effect = Exception("AI service unavailable")
             mock_c = MagicMock()
@@ -237,13 +235,13 @@ class TestChatStream:
         with patch('routes.api_chat.call_chat_stream') as mock_stream, \
              patch('routes.api_chat.build_chat_context', return_value='test context'), \
              patch('routes.api_chat.get_db') as mock_get_db, \
-             patch('routes.api_chat.sqlite3.connect', side_effect=Exception("save fail")), \
              patch('routes.api_chat.CHAT_AVAILABLE', True):
             mock_stream.return_value = chunks
             mock_c = MagicMock()
             mock_c.fetchall.return_value = []
             mock_db = MagicMock()
             mock_db.cursor.return_value = mock_c
+            mock_db.execute.side_effect = Exception("save fail")
             mock_get_db.return_value = mock_db
 
             resp = client_authenticated.post('/api/chat/stream',
@@ -400,18 +398,16 @@ class TestUserBranches:
 
     def test_switch_user_password_wrong(self, client_authenticated):
         """L43-47: has_password=True + 密码错误 -> 401 (含 SQL 查询路径)"""
+        mock_row = MagicMock()
+        mock_row.__getitem__.return_value = '_test'  # 支持 row['username']
+        mock_c = MagicMock()
+        mock_c.fetchone.return_value = mock_row
+        mock_db = MagicMock()
+        mock_db.cursor.return_value = mock_c
         with patch('routes.api_user.user_manager.has_password', return_value=True), \
              patch('routes.api_user.user_manager.get_user', return_value={'id': 1, 'username': '_test'}), \
              patch('routes.api_user.user_manager.authenticate', return_value=False), \
-             patch('routes.api_user.sqlite3.connect') as mock_connect:
-            mock_row = MagicMock()
-            mock_row.__getitem__.return_value = '_test'  # 支持 row['username']
-            mock_c = MagicMock()
-            mock_c.fetchone.return_value = mock_row
-            mock_conn = MagicMock()
-            mock_conn.cursor.return_value = mock_c
-            mock_connect.return_value = mock_conn
-
+             patch('routes.api_user.get_db', return_value=mock_db):
             resp = client_authenticated.post('/switch_user/1',
                 data=json.dumps({'password': 'wrong'}),
                 content_type='application/json')
@@ -1475,18 +1471,16 @@ class TestAuthChangePassword:
 
     def test_change_password_wrong_old(self, client_authenticated):
         """L95-103: has_password=True + 旧密码错误 -> 400"""
+        mock_row = MagicMock()
+        mock_row.__getitem__.return_value = '_test'
+        mock_c = MagicMock()
+        mock_c.fetchone.return_value = mock_row
+        mock_db = MagicMock()
+        mock_db.cursor.return_value = mock_c
         with patch('routes.api_auth.user_manager.has_password', return_value=True), \
              patch('routes.api_auth.user_manager.get_user', return_value={'id': 1, 'username': '_test'}), \
              patch('routes.api_auth.user_manager.authenticate', return_value=False), \
-             patch('routes.api_auth.sqlite3.connect') as mock_connect:
-            mock_row = MagicMock()
-            mock_row.__getitem__.return_value = '_test'
-            mock_c = MagicMock()
-            mock_c.fetchone.return_value = mock_row
-            mock_conn = MagicMock()
-            mock_conn.cursor.return_value = mock_c
-            mock_connect.return_value = mock_conn
-
+             patch('routes.api_auth.get_db', return_value=mock_db):
             resp = client_authenticated.post('/change_password',
                 data=json.dumps({'old_password': 'wrong', 'new_password': 'newpass123'}),
                 content_type='application/json')
@@ -1495,19 +1489,17 @@ class TestAuthChangePassword:
 
     def test_change_password_success_with_password(self, client_authenticated):
         """L106-107: has_password=True + 旧密码正确 -> 200"""
+        mock_row = MagicMock()
+        mock_row.__getitem__.return_value = '_test'
+        mock_c = MagicMock()
+        mock_c.fetchone.return_value = mock_row
+        mock_db = MagicMock()
+        mock_db.cursor.return_value = mock_c
         with patch('routes.api_auth.user_manager.has_password', return_value=True), \
              patch('routes.api_auth.user_manager.get_user', return_value={'id': 1, 'username': '_test'}), \
              patch('routes.api_auth.user_manager.authenticate', return_value=True), \
              patch('routes.api_auth.user_manager.set_password'), \
-             patch('routes.api_auth.sqlite3.connect') as mock_connect:
-            mock_row = MagicMock()
-            mock_row.__getitem__.return_value = '_test'
-            mock_c = MagicMock()
-            mock_c.fetchone.return_value = mock_row
-            mock_conn = MagicMock()
-            mock_conn.cursor.return_value = mock_c
-            mock_connect.return_value = mock_conn
-
+             patch('routes.api_auth.get_db', return_value=mock_db):
             resp = client_authenticated.post('/change_password',
                 data=json.dumps({'old_password': 'correct', 'new_password': 'newpass123'}),
                 content_type='application/json')
