@@ -1,27 +1,33 @@
-from flask import Flask, render_template, session
-import sqlite3
-import datetime
-import os
-import traceback
-import threading
-import glob as glob_mod
 import atexit
+import datetime
+import glob as glob_mod
+import os
 import shutil
+import sqlite3
+import threading
+import traceback
+
 from dotenv import load_dotenv
+from flask import Flask, render_template, session
+
 import settings
 
 load_dotenv(override=True)
 
-from user_manager import UserManager  # noqa: E402
-from core.config import DB_NAME, AVATAR_FOLDER  # noqa: E402
-from utils.auth import login_required  # noqa: E402
-from utils.db import get_db, close_db, init_db  # noqa: E402
+from core.config import AVATAR_FOLDER, DB_NAME  # noqa: E402
 from services import (  # noqa: E402
     build_timeline,
+    get_dashboard_stats,
     predict_morning_fpg,
     predict_post_exercise_glucose,
-    get_dashboard_stats
 )
+from services.gcs_sync import (  # noqa: E402
+    backup_db_to_gcs,
+    sync_file_to_gcs,
+)
+from user_manager import UserManager  # noqa: E402
+from utils.auth import login_required  # noqa: E402
+from utils.db import close_db, get_db, init_db  # noqa: E402
 
 # ========== 配置 ==========
 app = Flask(__name__)
@@ -72,7 +78,7 @@ user_manager = UserManager(DB_NAME)
 
 # AI 功能可用性检查
 try:
-    from ai_client import call_ai, AI_AVAILABLE
+    from ai_client import AI_AVAILABLE, call_ai
 except ImportError:  # pragma: no cover (子进程隔离)
     AI_AVAILABLE = False  # pragma: no cover
     def call_ai(*args, **kwargs): return "AI Not Available"  # pragma: no cover
@@ -95,7 +101,7 @@ def index():
         db = get_db()
         c = db.cursor()
         current_user_id = session.get('current_user_id')
-        
+
         # 1. 自动触发分析与预测 (后台运行)
         def _run_predictions(user_id):
             try:
@@ -160,7 +166,11 @@ def auto_backup():
         backup_path = os.path.join(AUTO_BACKUP_DIR, f'glucose_auto_{today}.db')
         if not os.path.exists(backup_path):
             shutil.copy2(DB_NAME, backup_path)
-        
+
+        # Cloud Run / 生产环境：同时上传当前数据库到 GCS
+        if os.environ.get('GCS_BUCKET_NAME'):
+            backup_db_to_gcs()
+
         cutoff = datetime.date.today() - datetime.timedelta(days=AUTO_BACKUP_KEEP_DAYS)
         for f in glob_mod.glob(os.path.join(AUTO_BACKUP_DIR, 'glucose_auto_*.db')):
             try:
@@ -176,7 +186,38 @@ def auto_backup():
         _auto_backup_timer.daemon = True
         _auto_backup_timer.start()
 
+
 atexit.register(lambda: _auto_backup_timer.cancel() if _auto_backup_timer else None)
+
+
+# ========== GCS 周期性备份（Cloud Run 无状态环境）==========
+GCS_BACKUP_INTERVAL = int(os.environ.get('GCS_BACKUP_INTERVAL', 300))
+_periodic_gcs_timer = None
+
+
+def periodic_gcs_backup():
+    """每 5 分钟将当前数据库备份到 GCS，并同步 Garmin token。"""
+    global _periodic_gcs_timer
+    try:
+        if os.environ.get('GCS_BUCKET_NAME'):
+            backup_db_to_gcs()
+            # Garmin token 持久化
+            token_dir = os.environ.get('GARMIN_TOKEN_DIR', os.path.join(BASE_DIR, '.garmin_tokens'))
+            token_file = os.path.join(token_dir, 'garmin_tokens.json')
+            if os.path.isfile(token_file):
+                sync_file_to_gcs(token_file, 'garmin_tokens/garmin_tokens.json')
+    except Exception as e:
+        print(f'[GCS Periodic] Error: {e}')
+    finally:
+        _periodic_gcs_timer = threading.Timer(GCS_BACKUP_INTERVAL, periodic_gcs_backup)
+        _periodic_gcs_timer.daemon = True
+        _periodic_gcs_timer.start()
+
+
+atexit.register(lambda: _periodic_gcs_timer.cancel() if _periodic_gcs_timer else None)
+
+# 停机/退出时尽量把当前数据库备份到 GCS
+atexit.register(lambda: backup_db_to_gcs() if os.environ.get('GCS_BUCKET_NAME') else None)
 
 # ========== Garmin 自动同步 ==========
 GARMIN_SYNC_INTERVAL = int(os.environ.get('GARMIN_SYNC_INTERVAL', 7200))
@@ -216,26 +257,30 @@ atexit.register(lambda: _garmin_sync_timer.cancel() if _garmin_sync_timer else N
 
 
 def start_background_tasks():
-    """启动所有后台定时任务（自动备份、Garmin 同步）。
-    
+    """启动所有后台定时任务（自动备份、Garmin 同步、GCS 周期性备份）。
+
     由 Gunicorn master 进程通过 when_ready 钩子调用，
     或在开发模式（python app.py）下直接调用。
     """
     auto_backup()
     if os.environ.get('GARMIN_EMAIL'):
         auto_garmin_sync()
+    # Cloud Run / 生产环境启用更频繁的 GCS 备份
+    if os.environ.get('GCS_BUCKET_NAME'):
+        periodic_gcs_backup()
 
 
 # ========== 蓝图注册 ==========
+from routes.api_admin import bp_admin  # noqa: E402
 from routes.api_auth import bp_auth  # noqa: E402
 from routes.api_chat import bp_chat  # noqa: E402
-from routes.api_records import bp_records  # noqa: E402
-from routes.api_meds import bp_meds  # noqa: E402
-from routes.api_health import bp_health  # noqa: E402
-from routes.api_admin import bp_admin  # noqa: E402
-from routes.api_user import bp_user  # noqa: E402
 from routes.api_dashboard import bp_dashboard  # noqa: E402
+from routes.api_health import bp_health  # noqa: E402
+from routes.api_internal import bp_internal  # noqa: E402
+from routes.api_meds import bp_meds  # noqa: E402
 from routes.api_prediction import bp_prediction  # noqa: E402
+from routes.api_records import bp_records  # noqa: E402
+from routes.api_user import bp_user  # noqa: E402
 
 app.register_blueprint(bp_auth)
 app.register_blueprint(bp_chat)
@@ -246,6 +291,7 @@ app.register_blueprint(bp_admin)
 app.register_blueprint(bp_user)
 app.register_blueprint(bp_dashboard)
 app.register_blueprint(bp_prediction)
+app.register_blueprint(bp_internal)
 
 # 为敏感端点添加请求限速（在 Blueprint 注册后配置，避免循环导入）
 # Flask Blueprint view_functions 使用 "blueprint.endpoint" 格式
