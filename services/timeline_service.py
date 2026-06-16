@@ -1,6 +1,7 @@
 import datetime
 from collections import defaultdict
 import settings
+from utils.sql_dialect import interval_sql
 
 def build_timeline(cursor, user_id, days=90):
     """
@@ -18,8 +19,8 @@ def build_timeline(cursor, user_id, days=90):
                     CASE WHEN is_predicted = 1 AND verified_by_real_id IS NOT NULL THEN 1 ELSE 0 END as is_verified
                     FROM records
                     WHERE user_id = ?
-                    AND timestamp > datetime('now', ?)
-                    ORDER BY timestamp ASC""", (user_id, f'-{days} days'))
+                    AND timestamp > {}
+                    ORDER BY timestamp ASC""".format(interval_sql(int(days))), (user_id,))
     rows = cursor.fetchall()
     records = [dict(row) for row in rows]
 
