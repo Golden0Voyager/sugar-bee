@@ -73,7 +73,7 @@ class UserManager:
     def get_current_user_id(self):
         """从 g（token 路径）或 session 获取当前用户 ID"""
         from flask import g
-        return getattr(g, 'current_user_id', None) or session.get('current_user_id', 1)  # 默认用户 1
+        return getattr(g, 'current_user_id', None) or session.get('current_user_id')
 
     def set_current_user(self, user_id):
         """设置当前用户"""
