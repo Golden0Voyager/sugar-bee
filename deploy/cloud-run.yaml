@@ -16,7 +16,7 @@ spec:
       containerConcurrency: 1
       timeoutSeconds: 300
       containers:
-        - image: gcr.io/project-c0560c79-7c6a-4f31-a11/sugar-bee
+        - image: asia-east2-docker.pkg.dev/project-c0560c79-7c6a-4f31-a11/sugar-bee/sugar-bee
           ports:
             - containerPort: 8080
           env:
