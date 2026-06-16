@@ -1,10 +1,10 @@
 from flask import Blueprint, request, session, redirect, url_for, render_template
 import re
-import sqlite3
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from user_manager import UserManager
 from core.config import DB_NAME
+from utils.db import get_db
 from utils.responses import api_success, api_error
 from utils.auth import login_required
 
@@ -68,11 +68,10 @@ def set_password():
         return render_template('login.html', error='用户不存在', set_password_mode=False)
     
     pw_hash = generate_password_hash(password)
-    db = sqlite3.connect(DB_NAME)
+    db = get_db()
     db.execute("UPDATE app_users SET password_hash = ? WHERE id = ?", (pw_hash, user['id']))
     db.commit()
-    db.close()
-    
+
     return render_template('login.html', success='密码设置成功，请登录', set_password_mode=False)
 
 
@@ -94,12 +93,10 @@ def change_password():
 
     # 如果已有密码，需要验证旧密码
     if user_manager.has_password(user_id):
-        conn = sqlite3.connect(DB_NAME)
-        conn.row_factory = sqlite3.Row
-        c = conn.cursor()
+        db = get_db()
+        c = db.cursor()
         c.execute("SELECT username FROM app_users WHERE id = ?", (user_id,))
         row = c.fetchone()
-        conn.close()
         if not row or not user_manager.authenticate(row['username'], old_password):
             return api_error('旧密码错误', status_code=400, error_type='auth_error')
 
