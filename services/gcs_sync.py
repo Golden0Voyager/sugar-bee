@@ -9,7 +9,7 @@ import datetime
 import os
 from typing import Any
 
-from core.config import DB_NAME, GCS_BUCKET_NAME, GCS_DB_PATH
+from core.config import DB_NAME, DB_TYPE, GCS_BUCKET_NAME, GCS_DB_PATH
 
 
 def _get_storage_client() -> Any | None:
@@ -45,7 +45,12 @@ def restore_db_from_gcs() -> None:
     """从 GCS 恢复最新的数据库文件到本地 DB_NAME。
 
     首次运行（GCS 中无备份）时直接返回，由 init_db() 创建新库。
+    PostgreSQL 模式下该操作无意义，直接跳过（依赖 Cloud SQL 自动备份）。
     """
+    if DB_TYPE != 'sqlite':
+        print('[GCS] PostgreSQL 模式，跳过数据库恢复（依赖 Cloud SQL 自动备份）')
+        return
+
     bucket = get_gcs_bucket()
     if bucket is None:
         return
@@ -77,7 +82,13 @@ def backup_db_to_gcs(blob_name: str | None = None) -> None:
 
     Args:
         blob_name: GCS 目标对象路径，默认使用 GCS_DB_PATH。
+
+    PostgreSQL 模式下该操作无意义，直接跳过（依赖 Cloud SQL 自动备份）。
     """
+    if DB_TYPE != 'sqlite':
+        print('[GCS] PostgreSQL 模式，跳过数据库备份（依赖 Cloud SQL 自动备份）')
+        return
+
     bucket = get_gcs_bucket()
     if bucket is None:
         return
