@@ -257,9 +257,10 @@ class TestGarminSyncActivities:
     """sync_activities() 完整测试"""
 
     @patch('services.garmin_service._get_client')
-    @patch('services.garmin_service.sqlite3')
-    def test_no_activities(self, mock_sqlite3, mock_get_client):
+    @patch('services.garmin_service.get_raw_conn')
+    def test_no_activities(self, mock_get_raw_conn, mock_get_client):
         from services.garmin_service import sync_activities
+        mock_get_raw_conn.return_value = MagicMock()
         mock_client = MagicMock()
         mock_client.get_activities_by_date.return_value = []
         mock_get_client.return_value = mock_client
@@ -268,8 +269,8 @@ class TestGarminSyncActivities:
         assert result == {'inserted': 0, 'skipped': 0, 'total': 0}
 
     @patch('services.garmin_service._get_client')
-    @patch('services.garmin_service.sqlite3')
-    def test_inserts_new_activities(self, mock_sqlite3, mock_get_client):
+    @patch('services.garmin_service.get_raw_conn')
+    def test_inserts_new_activities(self, mock_get_raw_conn, mock_get_client):
         from services.garmin_service import sync_activities
         mock_client = MagicMock()
         mock_act = {
@@ -295,7 +296,7 @@ class TestGarminSyncActivities:
         mock_c = MagicMock()
         mock_c.fetchone.return_value = None
         mock_conn.cursor.return_value = mock_c
-        mock_sqlite3.connect.return_value = mock_conn
+        mock_get_raw_conn.return_value = mock_conn
 
         result = sync_activities(user_id=1, days=30)
         assert result['inserted'] == 1
@@ -303,8 +304,8 @@ class TestGarminSyncActivities:
         assert result['total'] == 1
 
     @patch('services.garmin_service._get_client')
-    @patch('services.garmin_service.sqlite3')
-    def test_skips_duplicates(self, mock_sqlite3, mock_get_client):
+    @patch('services.garmin_service.get_raw_conn')
+    def test_skips_duplicates(self, mock_get_raw_conn, mock_get_client):
         from services.garmin_service import sync_activities
         mock_client = MagicMock()
         mock_act = {
@@ -322,7 +323,7 @@ class TestGarminSyncActivities:
         # fetchone returns None first time (no existing), then (1,) second time (exists)
         mock_c.fetchone.side_effect = [None, (1,)]
         mock_conn.cursor.return_value = mock_c
-        mock_sqlite3.connect.return_value = mock_conn
+        mock_get_raw_conn.return_value = mock_conn
 
         result = sync_activities(user_id=1, days=30)
         assert result['inserted'] == 1
@@ -330,9 +331,10 @@ class TestGarminSyncActivities:
         assert result['total'] == 2
 
     @patch('services.garmin_service._get_client')
-    @patch('services.garmin_service.sqlite3')
-    def test_skips_activity_without_id(self, mock_sqlite3, mock_get_client):
+    @patch('services.garmin_service.get_raw_conn')
+    def test_skips_activity_without_id(self, mock_get_raw_conn, mock_get_client):
         from services.garmin_service import sync_activities
+        mock_get_raw_conn.return_value = MagicMock()
         mock_client = MagicMock()
         mock_act = {
             'activityType': {'typeKey': 'running'},
@@ -348,12 +350,13 @@ class TestGarminSyncActivities:
         assert result['total'] == 1
 
     @patch('services.garmin_service._get_client')
-    @patch('services.garmin_service.sqlite3')
-    def test_too_many_requests(self, mock_sqlite3, mock_get_client):
+    @patch('services.garmin_service.get_raw_conn')
+    def test_too_many_requests(self, mock_get_raw_conn, mock_get_client):
         from services.garmin_service import (
             sync_activities,
             GarminConnectTooManyRequestsError,
         )
+        mock_get_raw_conn.return_value = MagicMock()
         mock_client = MagicMock()
         mock_client.get_activities_by_date.side_effect = (
             GarminConnectTooManyRequestsError("rate limit")
@@ -364,12 +367,13 @@ class TestGarminSyncActivities:
             sync_activities(user_id=1, days=30)
 
     @patch('services.garmin_service._get_client')
-    @patch('services.garmin_service.sqlite3')
-    def test_connection_error(self, mock_sqlite3, mock_get_client):
+    @patch('services.garmin_service.get_raw_conn')
+    def test_connection_error(self, mock_get_raw_conn, mock_get_client):
         from services.garmin_service import (
             sync_activities,
             GarminConnectConnectionError,
         )
+        mock_get_raw_conn.return_value = MagicMock()
         mock_client = MagicMock()
         mock_client.get_activities_by_date.side_effect = (
             GarminConnectConnectionError("network error")
