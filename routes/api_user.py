@@ -1,6 +1,5 @@
 from flask import Blueprint, request, jsonify, session, current_app
 import re
-import sqlite3
 import traceback
 import os
 import datetime
@@ -31,12 +30,10 @@ def switch_user(user_id):
         if user_manager.has_password(user_id):
             data = request.json or {}
             password = data.get('password', '')
-            conn = sqlite3.connect(DB_NAME)
-            conn.row_factory = sqlite3.Row
-            c = conn.cursor()
+            db = get_db()
+            c = db.cursor()
             c.execute("SELECT username FROM app_users WHERE id = ?", (user_id,))
             row = c.fetchone()
-            conn.close()
             if not row or not user_manager.authenticate(row['username'], password):
                 return api_error("密码错误", status_code=401)
 
