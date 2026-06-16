@@ -296,7 +296,38 @@ gcloud run deploy sugar-bee \
 
 ---
 
-## 11. 环境变量清单
+## 11. 本地 SQLite 与 Cloud SQL 数据同步
+
+生产数据进入 Cloud SQL PostgreSQL 后，若想把增量记录补回到本地 SQLite（例如给家人本地备份或开发调试），可使用自带的同步脚本：
+
+```bash
+# 1. 启动 Cloud SQL Auth Proxy
+./cloud-sql-proxy --port 5433 YOUR_PROJECT_ID:asia-east2:sugar-bee-postgres
+
+# 2. 设置环境变量并执行同步
+export SUGAR_BEE_DATABASE_URL="postgresql://sugar_bee_user:PASSWORD@localhost:5433/sugar_bee"
+export SUGAR_BEE_DB_PATH="/Users/hainingyu/Code/sugar_bee/glucose.db"
+
+uv run python scripts/sync_pg_to_sqlite.py
+```
+
+### 同步机制
+
+- **首次运行**：全量拉取所有表
+- **后续运行**：
+  - `records`、`chat_messages`、`medication_plans`、`medication_logs`、`dosage_history`、`health_analyses`、`user_auth_providers` 按 `id` 增量拉取
+  - `app_users`、`user_profiles` 每次全量同步（小表，避免遗漏更新）
+- **状态文件**：`.pg_sync_state.json` 记录各表最后同步的游标
+- **冲突处理**：使用 `INSERT OR REPLACE`，以 PostgreSQL 数据为准
+
+### 限制
+
+- 删除云端数据不会自动同步到本地删除；如需完全镜像，可删除 `.pg_sync_state.json` 后重新全量同步
+- 头像、Garmin token 仍通过 GCS 同步，不在此脚本范围内
+
+---
+
+## 12. 环境变量清单
 
 | 变量 | 来源 | 必需 | 说明 |
 |------|------|------|------|
@@ -314,9 +345,10 @@ gcloud run deploy sugar-bee \
 
 ---
 
-## 12. 相关文档
+## 13. 相关文档
 
 - [`docs/plans/260612-cloud-run-deployment-plan.md`](./260612-cloud-run-deployment-plan.md) — 旧版 SQLite + GCS 方案（已废弃）
 - [`utils/db.py`](../../utils/db.py) — 双模式数据库连接层
 - [`utils/sql_dialect.py`](../../utils/sql_dialect.py) — SQL 方言适配助手
 - [`core/config.py`](../../core/config.py) — 数据库配置
+- [`scripts/sync_pg_to_sqlite.py`](../../scripts/sync_pg_to_sqlite.py) — PostgreSQL → SQLite 同步脚本
