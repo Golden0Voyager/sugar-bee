@@ -10,9 +10,7 @@ import datetime
 import os
 import tempfile
 import threading
-from unittest.mock import patch, MagicMock, DEFAULT
-
-
+from unittest.mock import DEFAULT, MagicMock, patch
 
 # ============================================================
 # index 路由 — 预测锁 + Garmin 用户 + 异常
@@ -240,7 +238,7 @@ class TestAutoGarminSync:
             auto_garmin_sync()
 
     def test_sync_lock_held(self, monkeypatch):
-        from app import auto_garmin_sync, _garmin_lock
+        from app import _garmin_lock, auto_garmin_sync
         with tempfile.TemporaryDirectory() as tmp:
             token_dir = os.path.join(tmp, '.tokens')
             os.makedirs(token_dir)
@@ -336,11 +334,9 @@ app.py 未覆盖分支补全测试
   - L172-173: 备份外层异常 → except 打印（外层）
   - L208-209: Garmin 自动同步异常
 """
-import sys
-import subprocess
 import importlib
-
-
+import subprocess
+import sys
 
 # ============================================================
 # L35-42: SECRET_KEY 生产环境检查
@@ -470,16 +466,11 @@ class TestPredictionThreadException:
 
     def test_prediction_thread_exception(self, client_authenticated):
         """L107-108: predict_morning_fpg 在线程内抛出异常 -> except 捕获
-        使用 SyncThread 让 threading.Thread 同步执行，确保覆盖率跟踪。
-        """
-        class SyncThread:
-            def __init__(self, target=None, args=(), kwargs=None, daemon=None):
-                self._target = target
-                self._args = args
-                self._kwargs = kwargs or {}
-            def start(self):
-                self._target(*self._args, **self._kwargs)
 
+        让真实 threading.Thread 在后台执行；predict_morning_fpg 抛异常后，
+        线程内部的 try/except 会捕获，index 路由仍返回 200。
+        不再 patch threading.Thread，避免破坏 Flask-Limiter 的 threading.Timer。
+        """
         with patch('app.predict_morning_fpg',
                    side_effect=Exception("prediction failed")), \
              patch('app.predict_post_exercise_glucose'), \
@@ -488,8 +479,7 @@ class TestPredictionThreadException:
              patch('app.get_dashboard_stats'), \
              patch('app.user_manager.get_user', return_value=None), \
              patch('app.os.environ.get', return_value=''), \
-             patch('app.render_template', return_value='rendered'), \
-             patch('app.threading.Thread', SyncThread):
+             patch('app.render_template', return_value='rendered'):
 
             mock_c = MagicMock()
             mock_db = MagicMock()
@@ -514,8 +504,9 @@ class TestAutoBackupCleanup:
 
     def test_backup_cleanup_exception(self):
         """L170-171: 备份文件名解析失败 -> except pass"""
-        import app
         import tempfile
+
+        import app
 
         with tempfile.TemporaryDirectory() as tmpdir:
             bad_file = os.path.join(tmpdir, 'glucose_auto_bad_date.db')
@@ -626,16 +617,18 @@ class TestInitDbError:
     """init_db 异常处理分支"""
 
     def test_init_db_connection_error(self, monkeypatch):
-        from utils.db import init_db
         import sqlite3
+
+        from utils.db import init_db
         def broken_connect(*args, **kwargs):
             raise Exception("disk I/O error")
         monkeypatch.setattr(sqlite3, 'connect', broken_connect)
         init_db()
 
     def test_init_db_cursor_error(self, monkeypatch):
-        from utils.db import init_db
         import sqlite3
+
+        from utils.db import init_db
         mock_conn = MagicMock()
         mock_conn.cursor.side_effect = Exception("cursor error")
         monkeypatch.setattr(sqlite3, 'connect', lambda *a, **kw: mock_conn)
