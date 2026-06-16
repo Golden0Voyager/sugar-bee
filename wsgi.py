@@ -6,11 +6,13 @@ WSGI 入口文件
 """
 
 from app import app
+from core.config import DB_TYPE
 from services.gcs_sync import restore_db_from_gcs
 from utils.db import init_db
 
-# 1. 先从 GCS 恢复数据库（Cloud Run 无状态环境必需）
-restore_db_from_gcs()
+# 1. 先从 GCS 恢复数据库（仅 SQLite 模式；Cloud Run PostgreSQL 由 Cloud SQL 托管）
+if DB_TYPE == 'sqlite':
+    restore_db_from_gcs()
 
 # 2. 初始化数据库（幂等操作，每个 worker 启动时执行）
 with app.app_context():
