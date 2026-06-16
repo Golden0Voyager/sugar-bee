@@ -26,7 +26,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # 先复制依赖文件并安装（利用 Docker 缓存层）
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt gunicorn
+RUN pip install --no-cache-dir -r requirements.txt gunicorn google-cloud-storage
 
 # 复制应用代码
 COPY . .
