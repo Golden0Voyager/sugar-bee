@@ -2,11 +2,9 @@ from flask import Blueprint, request, jsonify, Response, stream_with_context, se
 import datetime
 import json
 import uuid
-import sqlite3
 
 from ai_client import call_chat_stream, CHAT_AVAILABLE
 import settings
-from core.config import DB_NAME
 from utils.auth import login_required
 from utils.db import get_db
 
@@ -145,10 +143,9 @@ def chat_stream():
             if full_reply:
                 reply_text = "".join(full_reply)
                 try:
-                    conn = sqlite3.connect(DB_NAME)
-                    conn.execute("INSERT INTO chat_messages (user_id, session_id, role, content) VALUES (?, ?, 'assistant', ?)", (user_id, session_id, reply_text))
-                    conn.commit()
-                    conn.close()
+                    db = get_db()
+                    db.execute("INSERT INTO chat_messages (user_id, session_id, role, content) VALUES (?, ?, 'assistant', ?)", (user_id, session_id, reply_text))
+                    db.commit()
                 except Exception:
                     pass
             yield "data: [DONE]\n\n"
