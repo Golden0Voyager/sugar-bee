@@ -30,7 +30,6 @@ class TestIndexRoute:
             settings=DEFAULT,
             predict_morning_fpg=DEFAULT,
             predict_post_exercise_glucose=DEFAULT,
-            sqlite3=DEFAULT,
         )
 
     def test_index_is_garmin_user(self, isolate_db, client_authenticated):
