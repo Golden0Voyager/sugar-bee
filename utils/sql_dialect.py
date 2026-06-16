@@ -61,6 +61,13 @@ def date_sql(column: str) -> str:
     return f"DATE({column})"
 
 
+def epoch_sql(column: str) -> str:
+    """返回时间戳 epoch 秒数的 SQL 表达式。"""
+    if config.DB_TYPE == "postgres":
+        return f"EXTRACT(EPOCH FROM {column})"
+    return f"strftime('%s', {column})"
+
+
 def insert_or_ignore_sql(table: str, columns: list[str], conflict_col: str | None = None) -> str:
     """返回 INSERT OR IGNORE 风格的 SQL（PostgreSQL 使用 ON CONFLICT DO NOTHING）。
 
