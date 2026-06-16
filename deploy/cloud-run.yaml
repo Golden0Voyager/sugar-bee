@@ -11,12 +11,12 @@ spec:
         run.googleapis.com/cpu-throttling: 'true'
         run.googleapis.com/execution-environment: gen2
         # Cloud SQL 实例连接（PostgreSQL 生产模式必需）
-        run.googleapis.com/cloudsql-instances: 'YOUR_PROJECT_ID:asia-east2:YOUR_INSTANCE_NAME'
+        run.googleapis.com/cloudsql-instances: 'project-c0560c79-7c6a-4f31-a11:asia-east2:sugar-bee-db-hk'
     spec:
       containerConcurrency: 1
       timeoutSeconds: 300
       containers:
-        - image: gcr.io/YOUR_PROJECT_ID/sugar-bee
+        - image: gcr.io/project-c0560c79-7c6a-4f31-a11/sugar-bee
           ports:
             - containerPort: 8080
           env:
@@ -58,7 +58,7 @@ spec:
               port: 8080
             periodSeconds: 30
             failureThreshold: 3
-      serviceAccountName: sugar-bee@YOUR_PROJECT_ID.iam.gserviceaccount.com
+      serviceAccountName: sugar-bee@project-c0560c79-7c6a-4f31-a11.iam.gserviceaccount.com
   traffic:
     - latestRevision: true
       percent: 100
