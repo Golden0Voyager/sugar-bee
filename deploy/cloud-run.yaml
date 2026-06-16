@@ -10,6 +10,8 @@ spec:
       annotations:
         run.googleapis.com/cpu-throttling: 'true'
         run.googleapis.com/execution-environment: gen2
+        # Cloud SQL 实例连接（PostgreSQL 生产模式必需）
+        run.googleapis.com/cloudsql-instances: 'YOUR_PROJECT_ID:asia-east2:YOUR_INSTANCE_NAME'
     spec:
       containerConcurrency: 1
       timeoutSeconds: 300
@@ -20,16 +22,25 @@ spec:
           env:
             - name: FLASK_ENV
               value: production
+            - name: SUGAR_BEE_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  key: latest
+                  name: SUGAR_BEE_DATABASE_URL
             - name: SECRET_KEY
-              value: 'YOUR_SECRET_KEY'
+              valueFrom:
+                secretKeyRef:
+                  key: latest
+                  name: SUGAR_BEE_SECRET_KEY
             - name: GCS_BUCKET_NAME
               value: sugar-bee-data
-            - name: GCS_DB_PATH
-              value: db/glucose.db
             - name: GUNICORN_WORKERS
               value: '1'
             - name: INTERNAL_API_TOKEN
-              value: 'YOUR_INTERNAL_API_TOKEN'
+              valueFrom:
+                secretKeyRef:
+                  key: latest
+                  name: SUGAR_BEE_INTERNAL_API_TOKEN
           resources:
             limits:
               cpu: '1'
