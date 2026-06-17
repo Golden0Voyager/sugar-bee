@@ -90,7 +90,7 @@ def serial_pk_sql() -> str:
 
 
 def bool_type() -> str:
-    return "BOOLEAN"
+    return "SMALLINT"
 
 
 def double_type() -> str:
