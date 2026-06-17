@@ -250,9 +250,11 @@ class _CompatCursor:
         try:
             result = self._cursor.execute(sql, parameters)
         except IndexError:
-            print(f"[DB DEBUG] IndexError executing SQL: {sql[:200]}")
-            print(f"[DB DEBUG] Parameters count: {len(parameters)}")
-            print(f"[DB DEBUG] %s count in SQL: {sql.count('%s')}")
+            import traceback
+            print(f"[DB REPR] sql={sql[:200]!r}")
+            print(f"[DB REPR] params={parameters!r}")
+            print(f"[DB REPR] #%s={sql.count('%s')} #?={sql.count('?')}")
+            traceback.print_exc()
             raise
         if 'RETURNING' in sql.upper():
             try:
