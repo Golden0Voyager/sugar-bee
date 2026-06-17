@@ -247,7 +247,13 @@ class _CompatCursor:
         self._lastrowid = None
         if parameters is None:
             parameters = ()
-        result = self._cursor.execute(sql, parameters)
+        try:
+            result = self._cursor.execute(sql, parameters)
+        except IndexError:
+            print(f"[DB DEBUG] IndexError executing SQL: {sql[:200]}")
+            print(f"[DB DEBUG] Parameters count: {len(parameters)}")
+            print(f"[DB DEBUG] %s count in SQL: {sql.count('%s')}")
+            raise
         if 'RETURNING' in sql.upper():
             try:
                 row = self._cursor.fetchone()
