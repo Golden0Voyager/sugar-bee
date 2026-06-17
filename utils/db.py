@@ -264,11 +264,24 @@ class _CompatCursor:
         self._lastrowid = None
         if parameters is None:
             parameters = ()
-        if config.DB_TYPE == 'postgres' and parameters:
-            sql = _inline_params(sql, parameters)
-            parameters = ()
+        orig_sql = sql
+        inlined = config.DB_TYPE == 'postgres' and parameters
+        if inlined:
+            try:
+                sql = _inline_params(sql, parameters)
+                parameters = ()
+                print(f"[DB MIX] inlined OK: sql={sql[:80]!r} params={orig_sql.count('?')}?", flush=True)
+            except Exception as e:
+                print(f"[DB MIX] inline FAILED: {e}", flush=True)
+                raise
         sql = _normalize_sql(sql, config.DB_TYPE)
-        result = self._cursor.execute(sql, parameters)
+        print(f"[DB MIX] db_type={config.DB_TYPE} inlined={inlined} sql_chars={len(sql)} params={len(parameters)}", flush=True)
+        try:
+            result = self._cursor.execute(sql, parameters)
+        except IndexError as e:
+            print(f"[DB MIX] IndexError from psycopg2: sql={sql[:150]!r}", flush=True)
+            print(f"[DB MIX] params={parameters!r}", flush=True)
+            raise
         if 'RETURNING' in sql.upper():
             try:
                 row = self._cursor.fetchone()
