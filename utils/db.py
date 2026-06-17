@@ -235,6 +235,24 @@ class _CompatRow:
         return (_normalize_value(v) for v in self._row.values())
 
 
+def _inline_params(sql: str, params: tuple) -> str:
+    """用 psycopg2 的 adapt() 将参数直接嵌入 SQL，绕过 C 扩展的 %s 处理。
+
+    psycopg2-binary 2.9.12 的 C 扩展在 SQL 包含中文 LIKE 模式时
+    （如 ``LIKE '%餐后2小时%'``）会因 `pq_escape_placeholders` 内部
+    索引越界而抛 `IndexError`。将参数直接替换为转义后的值，零参数传递。
+    """
+    from psycopg2.extensions import adapt
+    parts = sql.split('?')
+    result = parts[0]
+    for i, param in enumerate(params):
+        quoted = adapt(param).getquoted()
+        if isinstance(quoted, bytes):
+            quoted = quoted.decode('utf-8')
+        result += quoted + parts[i + 1]
+    return result
+
+
 class _CompatCursor:
     """包装 psycopg2 RealDictCursor，返回 _CompatRow 并处理占位符转换。"""
 
@@ -243,19 +261,14 @@ class _CompatCursor:
         self._lastrowid = None
 
     def execute(self, sql, parameters=None):
-        sql = _normalize_sql(sql, config.DB_TYPE)
         self._lastrowid = None
         if parameters is None:
             parameters = ()
-        try:
-            result = self._cursor.execute(sql, parameters)
-        except IndexError:
-            import traceback
-            print(f"[DB REPR] sql={sql[:200]!r}")
-            print(f"[DB REPR] params={parameters!r}")
-            print(f"[DB REPR] #%s={sql.count('%s')} #?={sql.count('?')}")
-            traceback.print_exc()
-            raise
+        if config.DB_TYPE == 'postgres' and parameters:
+            sql = _inline_params(sql, parameters)
+            parameters = ()
+        sql = _normalize_sql(sql, config.DB_TYPE)
+        result = self._cursor.execute(sql, parameters)
         if 'RETURNING' in sql.upper():
             try:
                 row = self._cursor.fetchone()
