@@ -12,12 +12,12 @@ import uuid
 from flask import Blueprint, request
 
 from user_manager import UserManager
-from core.config import DB_NAME
+from core import config as core_config
 from utils.responses import api_success, api_error
 from utils.db import get_db
 from utils.auth import login_required
 
-user_manager = UserManager(DB_NAME)
+user_manager = UserManager(core_config.DB_NAME)
 
 bp_health_sync = Blueprint('health_sync', __name__, url_prefix='/api/v1/health-sync')
 
@@ -274,6 +274,25 @@ def sync_health_data():
 
         db.commit()
         return api_success(data={'inserted': inserted, 'skipped': skipped})
+    except Exception as e:
+        traceback.print_exc()
+        return api_error(str(e), status_code=500)
+
+
+@bp_health_sync.route('/unbind', methods=['POST'])
+@login_required
+def unbind_device():
+    """解除当前用户的所有设备绑定。"""
+    try:
+        current_user_id = user_manager.get_current_user_id()
+        db = get_db()
+        c = db.cursor()
+        c.execute(
+            "DELETE FROM device_bindings WHERE user_id = ? AND device_id IS NOT NULL",
+            (current_user_id,),
+        )
+        db.commit()
+        return api_success(message="绑定已解除")
     except Exception as e:
         traceback.print_exc()
         return api_error(str(e), status_code=500)

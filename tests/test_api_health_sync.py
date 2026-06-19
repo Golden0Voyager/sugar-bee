@@ -1,5 +1,6 @@
 """Apple Health sync API: bind endpoints"""
 import json
+import pytest
 from unittest.mock import patch, MagicMock
 
 
@@ -131,38 +132,42 @@ class TestHealthSyncBindFromShortcut:
         assert result.status_code != 401
 
 
+def _bind_device(client):
+    """helper: 完成一次完整的设备绑定流程，返回 (device_id, device_token)"""
+    # 先登录
+    with client.session_transaction() as sess:
+        from user_manager import UserManager
+        from core import config as _core_config
+        um = UserManager(_core_config.DB_NAME)
+        import uuid as _uuid
+        unique_name = f'_sync_test_{_uuid.uuid4().hex[:8]}'
+        user_id = um.create_user(unique_name, 'Sync测试', {})
+
+        # 清理可能的旧数据
+        from utils.db import get_raw_conn, put_raw_conn
+        clean_conn = get_raw_conn()
+        clean_conn.execute("DELETE FROM device_bindings WHERE user_id = ?", (user_id,))
+        clean_conn.commit()
+        put_raw_conn(clean_conn)
+
+        sess['current_user_id'] = user_id
+
+    # 生成绑定码
+    resp = client.post('/api/v1/health-sync/bind')
+    code = resp.json['data']['bind_code']
+
+    # 完成绑定
+    resp = client.post('/api/v1/health-sync/bind_from_shortcut',
+                        json={'code': code, 'device_name': 'Test Phone'})
+    data = resp.json['data']
+    return data['device_id'], data['device_token']
+
+
 class TestHealthSyncSync:
     """Apple Health 数据同步测试"""
 
     def _bind_device(self, client):
-        """helper: 完成一次完整的设备绑定流程，返回 (device_id, device_token)"""
-        # 先登录
-        with client.session_transaction() as sess:
-            from user_manager import UserManager
-            from core.config import DB_NAME
-            um = UserManager(DB_NAME)
-            import uuid as _uuid
-            unique_name = f'_sync_test_{_uuid.uuid4().hex[:8]}'
-            user_id = um.create_user(unique_name, 'Sync测试', {})
-
-            # 清理可能的旧数据
-            from utils.db import get_raw_conn, put_raw_conn
-            clean_conn = get_raw_conn()
-            clean_conn.execute("DELETE FROM device_bindings WHERE user_id = ?", (user_id,))
-            clean_conn.commit()
-            put_raw_conn(clean_conn)
-
-            sess['current_user_id'] = user_id
-
-        # 生成绑定码
-        resp = client.post('/api/v1/health-sync/bind')
-        code = resp.json['data']['bind_code']
-
-        # 完成绑定
-        resp = client.post('/api/v1/health-sync/bind_from_shortcut',
-                            json={'code': code, 'device_name': 'Test Phone'})
-        data = resp.json['data']
-        return data['device_id'], data['device_token']
+        return _bind_device(client)
 
     def test_sync_success(self, client):
         """成功同步 Apple Health 数据"""
@@ -347,3 +352,27 @@ class TestHealthSyncSync:
             },
         )
         assert result.json['data']['inserted'] == 1
+
+class TestHealthSyncUnbind:
+    """解除绑定测试"""
+
+    def test_unbind_success(self, client):
+        """成功解除绑定"""
+        device_id, device_token = _bind_device(client)
+
+        # 确认已绑定
+        confirm_resp = client.get('/api/v1/health-sync/confirm_binding')
+        assert confirm_resp.json['data']['device_id'] is not None
+
+        # 解除绑定
+        result = client.post('/api/v1/health-sync/unbind')
+        assert result.status_code == 200
+
+        # 确认已解除
+        confirm_resp2 = client.get('/api/v1/health-sync/confirm_binding')
+        assert confirm_resp2.json['data']['device_id'] is None
+
+    def test_unbind_requires_auth(self, client):
+        """未登录返回 401"""
+        result = client.post('/api/v1/health-sync/unbind', content_type='application/json')
+        assert result.status_code == 401
