@@ -6,9 +6,8 @@ import datetime
 import random
 import secrets
 import traceback
-import uuid
 
-from flask import Blueprint, request
+from flask import Blueprint
 
 from user_manager import UserManager
 from core.config import DB_NAME
@@ -19,6 +18,9 @@ from utils.auth import login_required
 user_manager = UserManager(DB_NAME)
 
 bp_health_sync = Blueprint('health_sync', __name__, url_prefix='/api/v1/health-sync')
+
+# 绑定码过期时间：30 分钟
+BIND_CODE_EXPIRY_SECONDS = 1800
 
 
 def _get_bind_code() -> str:
@@ -64,11 +66,11 @@ def bind_device():
 
         return api_success(data={
             'bind_code': bind_code,
-            'expires_in': 1800,
+            'expires_in': BIND_CODE_EXPIRY_SECONDS,
         })
     except Exception as e:
         traceback.print_exc()
-        return api_error(str(e), status_code=500)
+        return api_error("绑定码生成失败", status_code=500)
 
 
 @bp_health_sync.route('/confirm_binding', methods=['GET'])
