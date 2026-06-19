@@ -24,6 +24,9 @@ bp_health_sync = Blueprint('health_sync', __name__, url_prefix='/api/v1/health-s
 # 绑定码过期时间：30 分钟
 BIND_CODE_EXPIRY_SECONDS = 1800
 
+# Apple Health 数据源标识（用于去重）
+SOURCE_APPLE_HEALTH = 'apple_health'
+
 
 def _get_bind_code() -> str:
     """生成 6 位数字绑定码。"""
@@ -189,7 +192,7 @@ def sync_health_data():
     """iOS 捷径同步 Apple Health 数据。
 
     请求头: X-Device-Id, X-Device-Token
-    请求体: {"start_date": "...", "end_date": "...", "records": [...]}
+    请求体: {"records": [...]}
     记录字段: type, value, unit, timestamp
     响应: {"status": "success", "data": {"inserted": N, "skipped": M}}
 
@@ -236,7 +239,7 @@ def sync_health_data():
             # 检查重复
             c.execute(
                 "SELECT id FROM records WHERE external_id = ? AND source = ?",
-                (r_external_id, 'apple_health'),
+                (r_external_id, SOURCE_APPLE_HEALTH),
             )
             if c.fetchone():
                 skipped += 1
@@ -247,22 +250,25 @@ def sync_health_data():
                 c.execute(
                     "INSERT INTO records (user_id, type, value, unit, timestamp, "
                     "systolic_pressure, external_id, source) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, 'apple_health')",
-                    (user_id, '血压', r_value, r.get('unit', 'mmHg'), r_timestamp, r_value, r_external_id),
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    (user_id, '血压', r_value, r.get('unit', 'mmHg'), r_timestamp,
+                     r_value, r_external_id, SOURCE_APPLE_HEALTH),
                 )
             elif r_type == '血压舒张压':
                 c.execute(
                     "INSERT INTO records (user_id, type, value, unit, timestamp, "
                     "diastolic_pressure, external_id, source) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, 'apple_health')",
-                    (user_id, '血压', r_value, r.get('unit', 'mmHg'), r_timestamp, r_value, r_external_id),
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    (user_id, '血压', r_value, r.get('unit', 'mmHg'), r_timestamp,
+                     r_value, r_external_id, SOURCE_APPLE_HEALTH),
                 )
             else:
                 c.execute(
                     "INSERT INTO records (user_id, type, value, unit, timestamp, "
                     "external_id, source) "
-                    "VALUES (?, ?, ?, ?, ?, ?, 'apple_health')",
-                    (user_id, r_type, r_value, r.get('unit', ''), r_timestamp, r_external_id),
+                    "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    (user_id, r_type, r_value, r.get('unit', ''), r_timestamp,
+                     r_external_id, SOURCE_APPLE_HEALTH),
                 )
             inserted += 1
 
