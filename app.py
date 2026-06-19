@@ -301,6 +301,10 @@ app.view_functions['auth.login'] = limiter.limit("10 per minute")(app.view_funct
 app.view_functions['auth.set_password'] = limiter.limit("5 per minute")(app.view_functions['auth.set_password'])
 app.view_functions['auth.change_password'] = limiter.limit("10 per minute")(app.view_functions['auth.change_password'])
 
+# Apple Health 同步端点限速
+app.view_functions['health_sync.bind_device'] = limiter.limit("5 per minute")(app.view_functions['health_sync.bind_device'])
+app.view_functions['health_sync.bind_from_shortcut'] = limiter.limit("10 per minute")(app.view_functions['health_sync.bind_from_shortcut'])
+app.view_functions['health_sync.sync_health_data'] = limiter.limit("30 per minute")(app.view_functions['health_sync.sync_health_data'])
 
 # ========== 健康检查 ==========
 @app.route('/health')
