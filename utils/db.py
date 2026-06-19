@@ -634,6 +634,22 @@ def _init_db_postgres():
         ''')
         c.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_auth_provider_uid ON user_auth_providers(provider, provider_uid)')
 
+        # 设备绑定表（Apple Health 同步）
+        c.execute(f'''
+            CREATE TABLE IF NOT EXISTS device_bindings (
+                id {serial_pk_sql()},
+                user_id INTEGER NOT NULL,
+                bind_code TEXT,
+                code_expires_at {timestamp_type()},
+                device_id TEXT,
+                device_token TEXT,
+                device_name TEXT,
+                created_at {timestamp_type()} {current_timestamp_default()},
+                bound_at {timestamp_type()},
+                FOREIGN KEY (user_id) REFERENCES app_users(id)
+            )
+        ''')
+
         # 性能索引
         c.execute('CREATE INDEX IF NOT EXISTS idx_records_user_ts ON records(user_id, timestamp DESC)')
         c.execute('CREATE INDEX IF NOT EXISTS idx_records_user_pred ON records(user_id, is_predicted, timestamp)')
@@ -831,6 +847,20 @@ def _init_db_sqlite():
             FOREIGN KEY (user_id) REFERENCES app_users(id)
         )''')
         c.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_auth_provider_uid ON user_auth_providers(provider, provider_uid)')
+
+        # 设备绑定表（Apple Health 同步）
+        c.execute('''CREATE TABLE IF NOT EXISTS device_bindings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            bind_code TEXT,
+            code_expires_at TEXT,
+            device_id TEXT,
+            device_token TEXT,
+            device_name TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            bound_at DATETIME,
+            FOREIGN KEY (user_id) REFERENCES app_users(id)
+        )''')
 
         # ========== 性能索引 ==========
         c.execute('CREATE INDEX IF NOT EXISTS idx_records_user_ts ON records(user_id, timestamp DESC)')
