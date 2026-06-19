@@ -63,6 +63,8 @@ omit = [
     "garmin_login.py",
     "test_ai_compare.py",
     "main.py",
+    "mcp_adapter/*",
+    "scripts/sync_pg_to_sqlite.py",
 ]
 
 [tool.coverage.report]
