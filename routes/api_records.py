@@ -11,6 +11,7 @@ from core.config import DB_NAME
 from utils.responses import api_success, api_error
 from utils.auth import login_required, login_or_token_required
 from utils.db import get_db
+from utils.sql_dialect import interval_sql, date_format_sql
 from glucose_parser import parse_glucose_input, split_by_emoji
 from services import (
     link_prediction_to_real_record
@@ -74,8 +75,8 @@ def get_user_stats(db, user_id=None):
             AND type NOT LIKE '%血压%'
             AND systolic_pressure IS NULL
             AND is_predicted = 0
-            AND timestamp > datetime('now', '-30 days')
-        """, (user_id,))
+            AND timestamp > {}
+        """.format(interval_sql(30)), (user_id,))
         row = c.fetchone()
         stats['avg_fasting'] = round(row[0], 1) if row and row[0] else '未知'
 
@@ -87,8 +88,8 @@ def get_user_stats(db, user_id=None):
             AND type NOT LIKE '%血压%'
             AND systolic_pressure IS NULL
             AND is_predicted = 0
-            AND timestamp > datetime('now', '-30 days')
-        """, (user_id,))
+            AND timestamp > {}
+        """.format(interval_sql(30)), (user_id,))
         row = c.fetchone()
         stats['avg_postmeal'] = round(row[0], 1) if row and row[0] else '未知'
 
@@ -181,7 +182,7 @@ def add_record():
         if not current_user_id:
             if request.is_json:
                 return api_error("未登录或会话已过期", status_code=401)
-            return redirect(url_for('login'))
+            return redirect(url_for('auth.login'))
 
         if weight and not bmi:
             try:
@@ -343,12 +344,12 @@ def parse_ai():
                     c.execute("""
                         SELECT value, notes FROM records
                         WHERE user_id = ?
-                        AND strftime('%Y-%m-%d %H:%M', timestamp) = strftime('%Y-%m-%d %H:%M', ?)
+                        AND {} = {}
                         AND is_predicted = 1
                         AND value > 0
                         AND systolic_pressure IS NULL
                         ORDER BY created_at DESC LIMIT 1
-                    """, (uid, timestamp))
+                    """.format(date_format_sql('timestamp', '%Y-%m-%d %H:%M'), date_format_sql('?', '%Y-%m-%d %H:%M')), (uid, timestamp))
                     existing_prediction = c.fetchone()
                     if existing_prediction:
                         record['predicted_value'] = existing_prediction[0]
@@ -442,9 +443,9 @@ def batch_add():
 
             if timestamp:
                 if is_pred:
-                    c.execute("DELETE FROM records WHERE user_id = ? AND strftime('%Y-%m-%d %H:%M', timestamp) = strftime('%Y-%m-%d %H:%M', ?) AND type = ? AND is_predicted = 1", (record_uid, timestamp, r_type))
+                    c.execute("DELETE FROM records WHERE user_id = ? AND {} = {} AND type = ? AND is_predicted = 1".format(date_format_sql('timestamp', '%Y-%m-%d %H:%M'), date_format_sql('?', '%Y-%m-%d %H:%M')), (record_uid, timestamp, r_type))
                 elif conflict_resolution == 'overwrite':
-                    c.execute("DELETE FROM records WHERE user_id = ? AND strftime('%Y-%m-%d %H:%M', timestamp) = strftime('%Y-%m-%d %H:%M', ?) AND is_predicted = 0", (record_uid, timestamp))
+                    c.execute("DELETE FROM records WHERE user_id = ? AND {} = {} AND is_predicted = 0".format(date_format_sql('timestamp', '%Y-%m-%d %H:%M'), date_format_sql('?', '%Y-%m-%d %H:%M')), (record_uid, timestamp))
                 elif conflict_resolution == 'skip':
                     continue
 

@@ -4,6 +4,7 @@ import json
 import traceback
 from ai_client import call_ai, AI_AVAILABLE
 import settings
+from utils.sql_dialect import epoch_sql, date_sql
 
 
 def link_prediction_to_real_record(db, real_record_id, user_id, record_date, record_type, real_value, record_timestamp=None):
@@ -55,17 +56,17 @@ def link_prediction_to_real_record(db, real_record_id, user_id, record_date, rec
             type_condition = f"type LIKE '%{record_type}%' AND type NOT LIKE '%血压%'"
 
         if record_timestamp:
-            c.execute(f"""
+            c.execute("""
                 SELECT id, value, timestamp FROM records
-                WHERE user_id = ? AND DATE(timestamp) = ? AND ({type_condition})
+                WHERE user_id = ? AND {} = ? AND ({})
                 AND is_predicted = 1 AND verified_by_real_id IS NULL AND value > 0 AND systolic_pressure IS NULL
-                ORDER BY ABS(strftime('%s', timestamp) - strftime('%s', ?))
+                ORDER BY ABS({} - {})
                 LIMIT 1
-            """, (user_id, record_date, record_timestamp))
+            """.format(date_sql('timestamp'), type_condition, epoch_sql('timestamp'), epoch_sql('?')), (user_id, record_date, record_timestamp))
         else:
             c.execute(f"""
                 SELECT id, value FROM records
-                WHERE user_id = ? AND DATE(timestamp) = ? AND ({type_condition})
+                WHERE user_id = ? AND {date_sql('timestamp')} = ? AND ({type_condition})
                 AND is_predicted = 1 AND verified_by_real_id IS NULL AND value > 0 AND systolic_pressure IS NULL
                 ORDER BY timestamp ASC
                 LIMIT 1

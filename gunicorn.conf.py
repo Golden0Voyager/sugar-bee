@@ -72,9 +72,11 @@ def worker_int(worker):
 
 def on_exit(server):
     """Master 进程退出时调用"""
-    try:
-        from services.gcs_sync import backup_db_to_gcs
-        backup_db_to_gcs()
-    except Exception as e:  # pragma: no cover
-        print(f"[Gunicorn] GCS 停机备份失败: {e}")
+    from core.config import DB_TYPE
+    if DB_TYPE == 'sqlite':
+        try:
+            from services.gcs_sync import backup_db_to_gcs
+            backup_db_to_gcs()
+        except Exception as e:  # pragma: no cover
+            print(f"[Gunicorn] GCS 停机备份失败: {e}")
     print("[Gunicorn] 服务器已关闭")

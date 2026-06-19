@@ -427,8 +427,8 @@ class TestGarminMapActivityException:
 
     @patch('services.garmin_service._get_client')
     @patch('services.garmin_service._map_activity')
-    @patch('services.garmin_service.sqlite3')
-    def test_map_activity_exception_continues(self, mock_sqlite3, mock_map, mock_get_client):
+    @patch('services.garmin_service.get_raw_conn')
+    def test_map_activity_exception_continues(self, mock_get_raw_conn, mock_map, mock_get_client):
         """L168-170: _map_activity 抛异常 -> except/traceback/continue"""
         from services.garmin_service import sync_activities
         mock_map.side_effect = Exception("mapping failed")
@@ -441,7 +441,7 @@ class TestGarminMapActivityException:
         mock_c = MagicMock()
         mock_c.fetchone.return_value = None
         mock_conn.cursor.return_value = mock_c
-        mock_sqlite3.connect.return_value = mock_conn
+        mock_get_raw_conn.return_value = mock_conn
 
         result = sync_activities(user_id=1, days=30)
         assert result['inserted'] == 0

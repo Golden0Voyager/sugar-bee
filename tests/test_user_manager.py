@@ -312,3 +312,18 @@ class TestUserSyncGarmin:
             assert resp.status_code == 500, \
                 f"预期 500, 得到 {resp.status_code}: {resp.data}"
             assert 'Garmin 同步失败' in resp.json['message']
+
+
+class TestUserManagerPostgres:
+    """UserManager PostgreSQL 路径（lines 33-37）"""
+
+    def test_db_conn_pg_path(self, monkeypatch):
+        from unittest.mock import MagicMock
+        import core.config as config
+        monkeypatch.setattr(config, 'DB_TYPE', 'postgres')
+        from user_manager import _db_conn
+        mock_conn = MagicMock()
+        monkeypatch.setattr('user_manager.get_raw_conn', lambda: mock_conn)
+        monkeypatch.setattr('user_manager.put_raw_conn', lambda c: None)
+        with _db_conn(db_path=None) as conn:
+            assert conn is mock_conn

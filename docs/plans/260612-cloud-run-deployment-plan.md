@@ -1,9 +1,33 @@
 # Sugar Bee → Google Cloud Run 部署方案
 
-> 最后更新：2026-06-12
-> 目标：将 Sugar Bee（蜜蜂控糖）部署到 Google Cloud Run，供国内家人访问
+> ~~最后更新：2026-06-12~~
+> **⚠️ 此方案已被废弃** — 详见下方说明
+
+> ~~目标：将 Sugar Bee（蜜蜂控糖）部署到 Google Cloud Run，供国内家人访问~~
 
 ---
+
+## ⛔ 重要：此方案已被废弃（2026-06-16）
+
+~~本计划描述的是 **SQLite + GCS（Cloud Storage）持久化**方案，已被以下方案取代：~~
+
+**实际采用的方案：SQLite → PostgreSQL 迁移 + Cloud SQL + Cloud Run**
+
+| 旧方案（已废弃） | 新方案（已实施） |
+|--|--|
+| SQLite 本地文件数据库 | PostgreSQL（Cloud SQL db-f1-micro） |
+| GCS 定期备份/恢复做持久化 | Cloud SQL 全托管，数据天然持久 |
+| 每 5 分钟 GCS 上传，启动时从 GCS 恢复 | 直接连接 Cloud SQL，无需额外的备份/恢复逻辑 |
+| 仅支持单 worker（SQLite 写锁） | 支持多 worker 并发 |
+| `services/gcs_sync.py` + `wsgi.py` 恢复逻辑 | `utils/db.py` 双模式（SQLite 本地 / PostgreSQL 生产） |
+
+**废弃原因**：SQLite 在 Cloud Run 的临时文件系统上不可靠，GCS 备份/恢复胶水代码复杂且易出错。改用 Cloud SQL 后数据安全、并发支持、运维成本都大幅改善。详见 [`docs/infra/google-cloud-deployment-learning-path.md`](../../../docs/infra/google-cloud-deployment-learning-path.md)。
+
+**注意**：以下内容仅作为历史参考保留，代码中 GCS 相关实现（`services/gcs_sync.py`、`routes/api_internal.py` 等）已不再使用。
+
+---
+
+
 
 ## 目录
 

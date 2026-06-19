@@ -92,6 +92,14 @@ class TestRestoreDbFromGcs:
         captured = capsys.readouterr()
         assert '列举备份对象失败' in captured.out
 
+    def test_postgres_skips_restore(self, gcs_env, mock_storage, monkeypatch, capsys):
+        _, _, bucket = mock_storage
+        monkeypatch.setattr(gcs_env, 'DB_TYPE', 'postgres')
+        gcs_env.restore_db_from_gcs()
+        captured = capsys.readouterr()
+        assert 'PostgreSQL 模式，跳过数据库恢复' in captured.out
+        bucket.list_blobs.assert_not_called()
+
 
 class TestBackupDbToGcs:
     def test_no_bucket_skips(self, gcs_env, monkeypatch):
@@ -125,6 +133,14 @@ class TestBackupDbToGcs:
         gcs_env.backup_db_to_gcs()
         captured = capsys.readouterr()
         assert '上传数据库失败' in captured.out
+
+    def test_postgres_skips_backup(self, gcs_env, mock_storage, monkeypatch, capsys):
+        _, _, bucket = mock_storage
+        monkeypatch.setattr(gcs_env, 'DB_TYPE', 'postgres')
+        gcs_env.backup_db_to_gcs()
+        captured = capsys.readouterr()
+        assert 'PostgreSQL 模式，跳过数据库备份' in captured.out
+        bucket.blob.assert_not_called()
 
 
 class TestSyncFile:

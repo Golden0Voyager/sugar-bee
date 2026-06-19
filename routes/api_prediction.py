@@ -9,6 +9,7 @@ from core.config import DB_NAME
 from utils.responses import api_success, api_error
 from utils.auth import login_required
 from utils.db import get_db
+from utils.sql_dialect import interval_sql, date_sql
 from services import (
     predict_morning_fpg,
     predict_post_exercise_glucose,
@@ -113,10 +114,9 @@ def prediction_comparison():
             WHERE p.user_id = ?
             AND p.is_predicted = 1
             AND p.verified_by_real_id IS NOT NULL
-            AND p.timestamp > datetime('now', ? || ' days')
-        """
-        params = [current_user_id, f'-{days}']
-
+            AND p.timestamp > {}
+        """.format(interval_sql(days))
+        params = [current_user_id]
         if glucose_type:
             query += " AND p.type = ?"
             params.append(glucose_type)
@@ -167,8 +167,8 @@ def prediction_accuracy():
             WHERE user_id = ?
             AND is_predicted = 1
             AND verified_by_real_id IS NOT NULL
-            AND timestamp > datetime('now', ? || ' days')
-        """, (current_user_id, f'-{days}'))
+            AND timestamp > {}
+        """.format(interval_sql(days)), (current_user_id,))
 
         row = c.fetchone()
 
@@ -381,9 +381,9 @@ def prediction_status():
             WHERE user_id = ?
             AND is_predicted = 1
             AND verified_by_real_id IS NOT NULL
-            AND timestamp > datetime('now', '-7 days')
+            AND timestamp > {}
             GROUP BY type
-        """, (current_user_id,))
+        """.format(interval_sql(7)), (current_user_id,))
 
         accuracy_by_type = {}
         for row in c.fetchall():

@@ -30,7 +30,6 @@ class TestIndexRoute:
             settings=DEFAULT,
             predict_morning_fpg=DEFAULT,
             predict_post_exercise_glucose=DEFAULT,
-            sqlite3=DEFAULT,
         )
 
     def test_index_is_garmin_user(self, isolate_db, client_authenticated):
@@ -778,3 +777,173 @@ def test_api_success_empty_message(client):
     resp = api_success(message="")
     data = resp[0].get_json()
     assert 'message' not in data
+
+
+# ============================================================
+# auto_backup 带 GCS 路径（line 172）
+# ============================================================
+
+class TestAutoBackupGCS:
+    """auto_backup 函数 — GCS 分支"""
+
+    def test_backup_uploads_to_gcs(self, monkeypatch):
+        monkeypatch.setenv('GCS_BUCKET_NAME', 'test-bucket')
+        monkeypatch.setattr('app._auto_backup_timer', MagicMock())
+        monkeypatch.setattr('os.path.exists', lambda p: True)
+        monkeypatch.setattr('os.makedirs', lambda p, exist_ok: None)
+        monkeypatch.setattr('shutil.copy2', lambda *a: None)
+        import app as app_mod
+        mock_backup_to_gcs = MagicMock()
+        monkeypatch.setattr(app_mod, 'backup_db_to_gcs', mock_backup_to_gcs)
+        # 设置 DB_NAME 存在
+        monkeypatch.setattr('os.path.isfile', lambda p: True)
+        # 需要让 os.path.exists(DB_NAME) 返回 True
+        from core.config import DB_NAME
+        monkeypatch.setattr('os.path.exists', lambda p: True if p == DB_NAME else False)
+        app_mod.auto_backup()
+        mock_backup_to_gcs.assert_called_once()
+
+    def test_backup_no_gcs_skips_upload(self, monkeypatch):
+        monkeypatch.delenv('GCS_BUCKET_NAME', raising=False)
+        monkeypatch.setattr('app._auto_backup_timer', MagicMock())
+        monkeypatch.setattr('os.path.exists', lambda p: True)
+        monkeypatch.setattr('os.makedirs', lambda p, exist_ok: None)
+        monkeypatch.setattr('shutil.copy2', lambda *a: None)
+        from core.config import DB_NAME
+        monkeypatch.setattr('os.path.exists', lambda p: True if p == DB_NAME else False)
+        import app as app_mod
+        mock_backup_to_gcs = MagicMock()
+        monkeypatch.setattr(app_mod, 'backup_db_to_gcs', mock_backup_to_gcs)
+        app_mod.auto_backup()
+        mock_backup_to_gcs.assert_not_called()
+
+
+# ============================================================
+# periodic_gcs_backup（lines 201-214）
+# ============================================================
+
+class TestPeriodicGCSBackup:
+    """periodic_gcs_backup 函数"""
+
+    def test_periodic_gcs_backup_called(self, monkeypatch):
+        monkeypatch.setenv('GCS_BUCKET_NAME', 'test-bucket')
+        import app as app_mod
+        mock_backup = MagicMock()
+        monkeypatch.setattr(app_mod, 'backup_db_to_gcs', mock_backup)
+        mock_timer = MagicMock()
+        monkeypatch.setattr(threading, 'Timer', lambda interval, func, **kw: mock_timer)
+
+        app_mod.periodic_gcs_backup()
+        mock_backup.assert_called_once()
+        mock_timer.start.assert_called_once()
+        assert mock_timer.daemon is True
+
+    def test_periodic_gcs_backup_no_bucket(self, monkeypatch):
+        monkeypatch.delenv('GCS_BUCKET_NAME', raising=False)
+        import app as app_mod
+        mock_backup = MagicMock()
+        monkeypatch.setattr(app_mod, 'backup_db_to_gcs', mock_backup)
+        mock_timer = MagicMock()
+        monkeypatch.setattr(threading, 'Timer', lambda interval, func, **kw: mock_timer)
+
+        app_mod.periodic_gcs_backup()
+        mock_backup.assert_not_called()
+        mock_timer.start.assert_called_once()
+
+    def test_periodic_gcs_backup_with_token_sync(self, monkeypatch):
+        monkeypatch.setenv('GCS_BUCKET_NAME', 'test-bucket')
+        monkeypatch.setenv('GARMIN_TOKEN_DIR', '/tmp/garmin_tokens')
+        import app as app_mod
+        mock_backup = MagicMock()
+        monkeypatch.setattr(app_mod, 'backup_db_to_gcs', mock_backup)
+        mock_sync = MagicMock()
+        monkeypatch.setattr(app_mod, 'sync_file_to_gcs', mock_sync)
+        mock_timer = MagicMock()
+        monkeypatch.setattr(threading, 'Timer', lambda interval, func, **kw: mock_timer)
+        # 模拟 token 文件存在
+        original_isfile = os.path.isfile
+        monkeypatch.setattr('os.path.isfile',
+                            lambda p: True if 'garmin_tokens.json' in str(p) else original_isfile(p))
+
+        app_mod.periodic_gcs_backup()
+        mock_backup.assert_called_once()
+        mock_sync.assert_called_once()
+
+
+# ============================================================
+# start_background_tasks 带 GCS（line 270）
+# ============================================================
+
+class TestStartBackgroundTasksGCS:
+    """start_background_tasks — GCS 路径"""
+
+    def test_starts_gcs_backup(self, monkeypatch):
+        monkeypatch.setenv('GCS_BUCKET_NAME', 'test-bucket')
+        monkeypatch.delenv('GARMIN_EMAIL', raising=False)
+        import app as app_mod
+        calls = []
+        monkeypatch.setattr(app_mod, 'auto_backup', lambda: calls.append('backup'))
+        mock_periodic = MagicMock()
+        monkeypatch.setattr(app_mod, 'periodic_gcs_backup', mock_periodic)
+
+        app_mod.start_background_tasks()
+        assert 'backup' in calls
+        mock_periodic.assert_called_once()
+
+
+class TestPeriodicGCSBackupError:
+    """periodic_gcs_backup 异常处理（line 209-210）"""
+
+    def test_periodic_gcs_backup_exception(self, monkeypatch):
+        """备份抛异常时被 except 捕获"""
+        monkeypatch.setenv('GCS_BUCKET_NAME', 'test-bucket')
+        import app as app_mod
+        mock_backup = MagicMock(side_effect=Exception("GCS error"))
+        monkeypatch.setattr(app_mod, 'backup_db_to_gcs', mock_backup)
+        mock_timer = MagicMock()
+        monkeypatch.setattr(threading, 'Timer', lambda interval, func, **kw: mock_timer)
+        with patch('builtins.print'):
+            app_mod.periodic_gcs_backup()
+            mock_timer.start.assert_called_once()
+
+
+# ============================================================
+# AI 预测闭包异常路径（lines 111-112）
+# ============================================================
+
+class TestAiPredictionError:
+    """后台预测线程的异常处理"""
+
+    def test_prediction_thread_error(self, monkeypatch, app):
+        """预测函数抛异常时被闭包 except 捕获"""
+        from app import _prediction_running
+
+        _prediction_running.clear()
+        mock_conn = MagicMock()
+        monkeypatch.setattr('app.get_raw_conn', lambda: mock_conn)
+        monkeypatch.setattr('app.put_raw_conn', lambda c: None)
+        monkeypatch.setattr('app.predict_morning_fpg',
+                            MagicMock(side_effect=ValueError("pred fail")))
+        monkeypatch.setattr('app.predict_post_exercise_glucose', MagicMock())
+
+        with patch('builtins.print') as mock_print:
+            with patch('app.render_template', return_value=''):
+                with patch('app.build_timeline', return_value=([], [])):
+                    with patch('app.get_dashboard_stats', return_value={}):
+                        mock_user = MagicMock()
+                        mock_user.get.return_value = ['glucose', 'blood_pressure']
+                        monkeypatch.setattr('app.user_manager.get_user',
+                                            lambda uid: mock_user)
+                        monkeypatch.setattr('app.settings', MagicMock())
+                        monkeypatch.setattr('app.settings.USER_EMOJI_MAP', {})
+
+                        with app.test_client() as client:
+                            with client.session_transaction() as sess:
+                                sess['current_user_id'] = 1
+                            client.get('/')
+
+        import time
+        time.sleep(0.3)
+        print_calls = [c for c in mock_print.call_args_list
+                       if '后台预测出错' in str(c)]
+        assert len(print_calls) > 0

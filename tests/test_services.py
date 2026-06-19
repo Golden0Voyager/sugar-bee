@@ -526,6 +526,48 @@ class TestHealthAnalysis:
 
     @patch('services.health_service.AI_AVAILABLE', True)
     @patch('services.health_service.call_ai')
+    def test_quota_exceeded_429(self, mock_ai):
+        """429 错误返回 quota_exceeded"""
+        from services.health_service import generate_health_analysis
+        mock_ai.side_effect = Exception("429 Too Many Requests")
+        mock_c = MagicMock()
+        mock_c.fetchone.side_effect = [None]
+        mock_c.fetchall.side_effect = [[], [], [], [], [], [], [], []]
+        mock_db = MagicMock()
+        mock_db.cursor.return_value = mock_c
+        result = generate_health_analysis(mock_db, user_id=1)
+        assert result['error_type'] == 'quota_exceeded'
+
+    @patch('services.health_service.AI_AVAILABLE', True)
+    @patch('services.health_service.call_ai')
+    def test_quota_with_seconds(self, mock_ai):
+        """quota 含等待秒数时提取 retry_after"""
+        from services.health_service import generate_health_analysis
+        mock_ai.side_effect = Exception("quota limit, 30 秒后重试")
+        mock_c = MagicMock()
+        mock_c.fetchone.side_effect = [None]
+        mock_c.fetchall.side_effect = [[], [], [], [], [], [], [], []]
+        mock_db = MagicMock()
+        mock_db.cursor.return_value = mock_c
+        result = generate_health_analysis(mock_db, user_id=1)
+        assert result['details'].get('retry_after') == 30
+
+    @patch('services.health_service.AI_AVAILABLE', True)
+    @patch('services.health_service.call_ai')
+    def test_rate_limit_no_seconds(self, mock_ai):
+        """rate limit 不含秒数时默认 60"""
+        from services.health_service import generate_health_analysis
+        mock_ai.side_effect = Exception("rate limit exceeded")
+        mock_c = MagicMock()
+        mock_c.fetchone.side_effect = [None]
+        mock_c.fetchall.side_effect = [[], [], [], [], [], [], [], []]
+        mock_db = MagicMock()
+        mock_db.cursor.return_value = mock_c
+        result = generate_health_analysis(mock_db, user_id=1)
+        assert result['details'].get('retry_after') == 60
+
+    @patch('services.health_service.AI_AVAILABLE', True)
+    @patch('services.health_service.call_ai')
     def test_auto_trigger(self, mock_ai):
         from services.health_service import auto_trigger_health_analysis
         mock_ai.return_value = "综合健康得分: 90"

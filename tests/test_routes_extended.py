@@ -201,10 +201,10 @@ class TestAuthRoutes:
         app = Flask(__name__)
 
         with patch('routes.api_auth.user_manager.get_user_by_username') as mock_gubu, \
-             patch('routes.api_auth.sqlite3.connect') as mock_connect:
+             patch('routes.api_auth.get_db') as mock_get_db:
             mock_gubu.return_value = {'id': 1, 'username': 'test'}
             mock_conn = MagicMock()
-            mock_connect.return_value = mock_conn
+            mock_get_db.return_value = mock_conn
 
             with app.test_request_context('/set_password', method='POST',
                                            data={'username': 'test', 'password': 'newpass123'}):

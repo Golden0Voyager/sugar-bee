@@ -34,6 +34,9 @@ static/avatars/
 user_data/
 .garmin_tokens/
 garmin_cookies.json
+# 同步脚本状态
+.pg_sync_state.json
+
 # 日志
 *.log
 # 自动备份

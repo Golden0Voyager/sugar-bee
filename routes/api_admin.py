@@ -6,10 +6,11 @@ import sqlite3
 import traceback
 
 from user_manager import UserManager
-from core.config import DB_NAME
+from core.config import DB_NAME, DB_TYPE
 from utils.responses import api_success, api_error
 from utils.auth import login_required
 from utils.db import get_db
+from utils.sql_dialect import date_format_sql, group_concat_sql
 
 # 获取项目根目录 (app.py 所在目录)
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
@@ -21,6 +22,8 @@ bp_admin = Blueprint('admin', __name__)
 def backup_database():
     """备份数据库 - 下载 .db 文件"""
     try:
+        if DB_TYPE == 'postgres':
+            return api_error("PostgreSQL 模式下请使用 Cloud SQL 托管备份", status_code=400)
         if not os.path.exists(DB_NAME):
             return api_error("数据库文件不存在", status_code=404)
 
@@ -54,6 +57,8 @@ def backup_database():
 def restore_database():
     """恢复数据库 - 上传 .db 文件覆盖当前数据库"""
     try:
+        if DB_TYPE == 'postgres':
+            return api_error("PostgreSQL 模式下请使用 Cloud SQL 托管备份", status_code=400)
         if 'file' not in request.files:
             return api_error("未选择文件", status_code=400)
 
@@ -110,17 +115,17 @@ def find_duplicates():
 
         c.execute("""
             SELECT
-                strftime('%Y-%m-%d %H:%M', timestamp) as time_key,
+                {} as time_key,
                 type,
                 value,
                 COUNT(*) as count,
-                GROUP_CONCAT(id) as ids
+                {} as ids
             FROM records
             WHERE user_id = ?
             GROUP BY time_key, type, value
             HAVING count > 1
             ORDER BY timestamp DESC
-        """, (current_user_id,))
+        """.format(date_format_sql('timestamp', '%Y-%m-%d %H:%M'), group_concat_sql('id')), (current_user_id,))
 
         duplicates = []
         for row in c.fetchall():
@@ -155,15 +160,15 @@ def delete_duplicates():
 
         c.execute("""
             SELECT
-                strftime('%Y-%m-%d %H:%M', timestamp) as time_key,
+                {} as time_key,
                 type,
                 value,
-                GROUP_CONCAT(id ORDER BY id) as ids
+                {} as ids
             FROM records
             WHERE user_id = ?
             GROUP BY time_key, type, value
             HAVING COUNT(*) > 1
-        """, (current_user_id,))
+        """.format(date_format_sql('timestamp', '%Y-%m-%d %H:%M'), group_concat_sql('id')), (current_user_id,))
 
         deleted_count = 0
         for row in c.fetchall():

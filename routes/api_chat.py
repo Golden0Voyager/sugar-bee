@@ -2,13 +2,12 @@ from flask import Blueprint, request, jsonify, Response, stream_with_context, se
 import datetime
 import json
 import uuid
-import sqlite3
 
 from ai_client import call_chat_stream, CHAT_AVAILABLE
 import settings
-from core.config import DB_NAME
 from utils.auth import login_required
 from utils.db import get_db
+from utils.sql_dialect import interval_sql
 
 bp_chat = Blueprint('chat', __name__, url_prefix='/api/chat')
 CHAT_HISTORY_LIMIT = 20
@@ -86,12 +85,12 @@ def build_chat_context(db, user_id):
     c.execute("""
         SELECT value, type, timestamp FROM records
         WHERE user_id = ? AND value > 0 AND is_predicted = 0
-        AND timestamp > datetime('now', ? || ' days')
+        AND timestamp > {}
         AND type NOT IN ('跑步', '运动')
         AND type NOT LIKE '%血压%'
         AND systolic_pressure IS NULL
         ORDER BY timestamp DESC
-    """, (user_id, f'-{days}'))
+    """.format(interval_sql(days)), (user_id,))
     glucose = c.fetchall()
     if glucose:
         vals = [r[0] for r in glucose]
@@ -145,10 +144,9 @@ def chat_stream():
             if full_reply:
                 reply_text = "".join(full_reply)
                 try:
-                    conn = sqlite3.connect(DB_NAME)
-                    conn.execute("INSERT INTO chat_messages (user_id, session_id, role, content) VALUES (?, ?, 'assistant', ?)", (user_id, session_id, reply_text))
-                    conn.commit()
-                    conn.close()
+                    db = get_db()
+                    db.execute("INSERT INTO chat_messages (user_id, session_id, role, content) VALUES (?, ?, 'assistant', ?)", (user_id, session_id, reply_text))
+                    db.commit()
                 except Exception:
                     pass
             yield "data: [DONE]\n\n"

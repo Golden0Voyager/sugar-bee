@@ -2,6 +2,7 @@ import datetime
 import traceback
 import re
 from ai_client import call_ai, AI_AVAILABLE
+from utils.sql_dialect import interval_sql
 
 def generate_health_analysis(db, user_id=1, is_auto=False, days=7):
     """
@@ -36,12 +37,12 @@ def generate_health_analysis(db, user_id=1, is_auto=False, days=7):
             FROM records r
             LEFT JOIN records p ON p.verified_by_real_id = r.id AND p.is_predicted = 1
             WHERE r.user_id = ? AND r.value > 0 AND r.is_predicted = 0
-            AND r.timestamp > datetime('now', ? || ' days')
+            AND r.timestamp > {}
             AND r.type NOT IN ('跑步', '运动')
             AND r.type NOT LIKE '%血压%'
             AND r.systolic_pressure IS NULL
             ORDER BY r.timestamp DESC
-        """, (user_id, f'-{days}'))
+        """.format(interval_sql(days)), (user_id,))
         glucose_records = c.fetchall()
 
         # 2. 血压数据
@@ -49,9 +50,9 @@ def generate_health_analysis(db, user_id=1, is_auto=False, days=7):
             SELECT systolic_pressure, diastolic_pressure, pulse_rate, timestamp, spo2
             FROM records
             WHERE user_id = ? AND systolic_pressure > 0
-            AND timestamp > datetime('now', ? || ' days')
+            AND timestamp > {}
             ORDER BY timestamp DESC
-        """, (user_id, f'-{days}'))
+        """.format(interval_sql(days)), (user_id,))
         bp_records = c.fetchall()
 
         # 3. 运动数据
@@ -59,9 +60,9 @@ def generate_health_analysis(db, user_id=1, is_auto=False, days=7):
             SELECT distance, duration, heart_rate, max_heart_rate, calories, pace, cadence, steps, vo2max, timestamp
             FROM records
             WHERE user_id = ? AND (type IN ('跑步', '运动') OR distance > 0)
-            AND timestamp > datetime('now', ? || ' days')
+            AND timestamp > {}
             ORDER BY timestamp DESC
-        """, (user_id, f'-{days}'))
+        """.format(interval_sql(days)), (user_id,))
         exercise_records = c.fetchall()
 
         # 4. 饮食数据
@@ -69,9 +70,9 @@ def generate_health_analysis(db, user_id=1, is_auto=False, days=7):
             SELECT calories, carbs_grams, gi_value, diet_analysis, notes, type, timestamp
             FROM records
             WHERE user_id = ? AND calories > 0 AND type NOT IN ('跑步', '运动', '走路', '骑行', '游泳', '健身')
-            AND timestamp > datetime('now', ? || ' days')
+            AND timestamp > {}
             ORDER BY timestamp DESC
-        """, (user_id, f'-{days}'))
+        """.format(interval_sql(days)), (user_id,))
         diet_records = c.fetchall()  # noqa: F841
 
         # 5. 用药方案
@@ -88,9 +89,9 @@ def generate_health_analysis(db, user_id=1, is_auto=False, days=7):
             SELECT medication_name, notes, timestamp
             FROM records
             WHERE user_id = ? AND medication_name IS NOT NULL AND medication_name != ''
-            AND timestamp > datetime('now', ? || ' days')
+            AND timestamp > {}
             ORDER BY timestamp DESC
-        """, (user_id, f'-{days}'))
+        """.format(interval_sql(days)), (user_id,))
         temp_med_records = c.fetchall()  # noqa: F841
 
         # 5c. 服药依从性
@@ -98,16 +99,16 @@ def generate_health_analysis(db, user_id=1, is_auto=False, days=7):
             SELECT ml.plan_id, mp.medication_name, COUNT(*) as taken_count
             FROM medication_logs ml
             JOIN medication_plans mp ON ml.plan_id = mp.id
-            WHERE ml.user_id = ? AND ml.log_date > date('now', ? || ' days') AND ml.taken = 1
+            WHERE ml.user_id = ? AND ml.log_date > {} AND ml.taken = 1
             GROUP BY ml.plan_id
-        """, (user_id, f'-{days}'))
+        """.format(interval_sql(days)), (user_id,))
         adherence_records = c.fetchall()  # noqa: F841
         # 6. 体重数据
         c.execute("""
             SELECT weight, bmi, timestamp FROM records
-            WHERE user_id = ? AND weight > 0 AND timestamp > datetime('now', ? || ' days')
+            WHERE user_id = ? AND weight > 0 AND timestamp > {}
             ORDER BY timestamp DESC
-        """, (user_id, f'-{days}'))
+        """.format(interval_sql(days)), (user_id,))
         weight_records = c.fetchall()  # noqa: F841
         glucose_summary = ""
         if glucose_records:

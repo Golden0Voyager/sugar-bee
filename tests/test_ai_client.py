@@ -586,3 +586,73 @@ class TestCallAiNoApiKey:
         # the function skips all provider blocks and raises
         with pytest.raises(Exception, match="所有 AI 模型均不可用"):
             call_ai('test')
+
+
+class TestCallAiGeminiRaise:
+    """call_ai Gemini 全失败后 raise（line 185 区域）"""
+
+    @patch('ai_client.AI_AVAILABLE', True)
+    @patch('ai_client.MODELSCOPE_API_KEY', 'ms-key')
+    @patch('ai_client.VOLC_API_KEY', 'volc-key')
+    @patch('ai_client.GEMINI_API_KEY', 'gemini-key')
+    @patch('ai_client._try_provider')
+    def test_gemini_all_fail_after_volc(self, mock_try):
+        """Volc 和 Gemini 均失败，最终 raise"""
+        from ai_client import call_ai
+        mock_try.return_value = (None, Exception("volc failed"))
+
+        with patch('ai_client._call_gemini_model') as mock_gemini:
+            mock_gemini.side_effect = [Exception("gemini1 fail"), Exception("gemini2 fail")]
+
+            with pytest.raises(Exception):
+                call_ai('test prompt')
+            # Gemini 应该被尝试了两次（2 个模型）
+            assert mock_gemini.call_count == 2
+
+
+class TestStreamChatSenseNovaFail:
+    """call_chat_stream SenseNova 失败后无 ModelScope 时 raise（line 244）"""
+
+    @patch('ai_client.SENSENOVA_API_KEY', 'fake-key')
+    @patch('ai_client.MODELSCOPE_API_KEY', None)
+    @patch('openai.OpenAI')
+    def test_sensenova_fail_no_fallback(self, mock_openai_cls):
+        from ai_client import call_chat_stream
+        mock_client = MagicMock()
+        mock_openai_cls.return_value = mock_client
+        mock_client.chat.completions.create.side_effect = Exception("SenseNova down")
+
+        with pytest.raises(Exception):
+            list(call_chat_stream([{"role": "user", "content": "hi"}]))
+
+
+class TestStreamChatNoApiKey:
+    """call_chat_stream 无任何 API Key 时 raise（line 256）"""
+
+    @patch('ai_client.SENSENOVA_API_KEY', None)
+    @patch('ai_client.MODELSCOPE_API_KEY', None)
+    def test_no_api_key_raises(self):
+        from ai_client import call_chat_stream
+        with pytest.raises(Exception, match="未配置聊天 AI 服务"):
+            list(call_chat_stream([{"role": "user", "content": "hi"}]))
+
+
+class TestStreamChatDirect:
+    """_stream_chat 直接测试"""
+
+    def test_extra_body_provided(self):
+        """直接调用 _stream_chat 传 extra_body"""
+        from ai_client import _stream_chat
+
+        mock_client = MagicMock()
+        chunk = MagicMock()
+        chunk.choices = [MagicMock()]
+        chunk.choices[0].delta.content = "test"
+        mock_client.chat.completions.create.return_value = [chunk]
+
+        result = list(_stream_chat(mock_client, 'test-model',
+                                    [{"role": "user", "content": "hi"}],
+                                    extra_body={"extra": "value"}))
+        assert result == ["test"]
+        call_kwargs = mock_client.chat.completions.create.call_args[1]
+        assert call_kwargs.get('extra_body') == {"extra": "value"}

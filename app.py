@@ -3,7 +3,6 @@ import datetime
 import glob as glob_mod
 import os
 import shutil
-import sqlite3
 import threading
 import traceback
 
@@ -27,7 +26,7 @@ from services.gcs_sync import (  # noqa: E402
 )
 from user_manager import UserManager  # noqa: E402
 from utils.auth import login_required  # noqa: E402
-from utils.db import close_db, get_db, init_db  # noqa: E402
+from utils.db import close_db, get_db, get_raw_conn, init_db, put_raw_conn  # noqa: E402
 
 # ========== 配置 ==========
 app = Flask(__name__)
@@ -104,15 +103,16 @@ def index():
 
         # 1. 自动触发分析与预测 (后台运行)
         def _run_predictions(user_id):
+            pred_db = None
             try:
-                pred_db = sqlite3.connect(DB_NAME)
-                pred_db.row_factory = sqlite3.Row
+                pred_db = get_raw_conn()
                 predict_morning_fpg(pred_db, user_id)
                 predict_post_exercise_glucose(pred_db, user_id)
-                pred_db.close()
             except Exception as e:
                 print(f"[AI] 后台预测出错: {e}")
             finally:
+                if pred_db:
+                    put_raw_conn(pred_db)
                 with _prediction_lock:
                     _prediction_running.discard(user_id)
 
