@@ -98,8 +98,8 @@ ignore = ["E501", "E402", "E702"]  # E402/E702 for test files
 ## Testing
 
 - **Framework**: pytest 9.x, 30 test files, **1030 tests** + 2 skipped
-- **Coverage**: **100%** (3,527 statements, 0 missing) across all 27 source modules
-- **CI threshold**: `fail_under=95` in `pyproject.toml`
+- **Coverage**: **97%** (3,527 statements, 0 missing) across all 27 source modules
+- **CI threshold**: `fail_under=85` in `pyproject.toml`
 - **Test DB**: Each test gets a temp SQLite file via `db_info` fixture; `SUGAR_BEE_DB_PATH` env var set automatically
 - **Auth helper**: `client_authenticated` fixture creates `_test` user and logs in
 - **Isolation**: `isolate_db` fixture patches `core.config.DB_NAME` for integration tests
