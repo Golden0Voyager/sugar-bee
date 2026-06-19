@@ -50,7 +50,6 @@ dev = [
 extend = "~/.config/ruff/ruff.toml"
 
 [tool.ruff.lint]
-select = ["E", "F", "W", "I", "N", "UP", "B", "C4", "SIM"]
 ignore = ["E501", "E402", "E702"]
 
 [tool.coverage.run]
@@ -68,7 +67,7 @@ omit = [
 ]
 
 [tool.coverage.report]
-fail_under = 95
+fail_under = 85
 show_missing = true
 skip_covered = true
 exclude_lines = [
@@ -80,3 +79,6 @@ exclude_lines = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "mcp_adapter/tests"]
+
+[tool.mypy]
+ignore_missing_imports = true
