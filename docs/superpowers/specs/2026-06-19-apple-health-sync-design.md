@@ -10,6 +10,35 @@
 iOS Shortcuts → POST /api/v1/health-sync/* → Sugar Bee App → records 表
 ```
 
+## iOS 捷径分发
+
+Sugar Bee 提供**现成的 `.shortcut` 文件**，用户一键导入，无需自己搭建捷径。
+
+### 分发方式
+
+1. 使用 Apple Shortcuts App 创建完整捷径（读取剪贴板、绑定、读取 Apple Health、发请求、显示结果）
+2. 导出为 `.shortcut` 文件
+3. 上传到 Sugar Bee `static/` 目录（或 GitHub Release）
+4. 用户通过 Safari 打开下载链接 → 自动跳转 Shortcuts App → 点「添加快捷指令」
+
+### 捷径包含的内容
+
+| 步骤 | 说明 |
+|------|------|
+| 从剪贴板获取绑定码 | 首次绑定用 |
+| 读取 Apple Health 数据 | 血糖、体重、步数、血压、血氧、心率 |
+| HTTP POST 请求 | 携带 device_id + device_token |
+| 显示结果 | 同步成功/失败提示 |
+
+### 用户操作步骤
+
+```
+1. 打开 Sugar Bee 设置页 → 点"绑定 iOS 设备" → 复制绑定码
+2. 点"下载 iOS 捷径" → 导入 Shortcuts App
+3. 运行捷径 → 自动完成绑定 + 同步
+4. 后续只需运行捷径即可同步最新数据
+```
+
 ## 绑定流程
 
 1. 用户在 Sugar Bee 设置页点击"绑定 iOS 设备"
@@ -88,7 +117,12 @@ iOS Shortcuts → POST /api/v1/health-sync/* → Sugar Bee App → records 表
 
 - 数据库 schema（已有 `external_id`、`source` 字段）
 - 现有路由和页面
-- 不需要前端页面改动（除设置页加一个按钮）
+
+## 前端页面改动
+
+- 设置页增加「绑定 iOS 设备」按钮
+- 绑定成功后显示已绑定设备信息
+- 提供「下载 iOS 捷径」链接（`.shortcut` 文件放 `static/` 目录）
 
 ## 后续可扩展
 
