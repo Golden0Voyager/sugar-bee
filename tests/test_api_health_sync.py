@@ -129,3 +129,221 @@ class TestHealthSyncBindFromShortcut:
         )
         # 不能验证是否成功（因为没有有效 code），但至少不返回 401
         assert result.status_code != 401
+
+
+class TestHealthSyncSync:
+    """Apple Health 数据同步测试"""
+
+    def _bind_device(self, client):
+        """helper: 完成一次完整的设备绑定流程，返回 (device_id, device_token)"""
+        # 先登录
+        with client.session_transaction() as sess:
+            from user_manager import UserManager
+            from core.config import DB_NAME
+            um = UserManager(DB_NAME)
+            import uuid as _uuid
+            unique_name = f'_sync_test_{_uuid.uuid4().hex[:8]}'
+            user_id = um.create_user(unique_name, 'Sync测试', {})
+
+            # 清理可能的旧数据
+            from utils.db import get_raw_conn, put_raw_conn
+            clean_conn = get_raw_conn()
+            clean_conn.execute("DELETE FROM device_bindings WHERE user_id = ?", (user_id,))
+            clean_conn.commit()
+            put_raw_conn(clean_conn)
+
+            sess['current_user_id'] = user_id
+
+        # 生成绑定码
+        resp = client.post('/api/v1/health-sync/bind')
+        code = resp.json['data']['bind_code']
+
+        # 完成绑定
+        resp = client.post('/api/v1/health-sync/bind_from_shortcut',
+                            json={'code': code, 'device_name': 'Test Phone'})
+        data = resp.json['data']
+        return data['device_id'], data['device_token']
+
+    def test_sync_success(self, client):
+        """成功同步 Apple Health 数据"""
+        device_id, device_token = self._bind_device(client)
+
+        result = client.post(
+            '/api/v1/health-sync/sync',
+            headers={'X-Device-Id': device_id, 'X-Device-Token': device_token},
+            json={
+                'start_date': '2026-06-19T00:00:00',
+                'end_date': '2026-06-19T23:59:59',
+                'records': [{
+                    'external_id': 'apple_health:test-001',
+                    'type': '血糖',
+                    'value': 6.2,
+                    'unit': 'mmol/L',
+                    'timestamp': '2026-06-19T07:15:00+08:00',
+                }, {
+                    'external_id': 'apple_health:test-002',
+                    'type': '步数',
+                    'value': 8500,
+                    'unit': 'steps',
+                    'timestamp': '2026-06-19T12:00:00+08:00',
+                }],
+            },
+        )
+        assert result.status_code == 200
+        assert result.json['data']['inserted'] == 2
+        assert result.json['data']['skipped'] == 0
+
+    def test_sync_dedup(self, client):
+        """重复 external_id 应跳过"""
+        device_id, device_token = self._bind_device(client)
+
+        # 第一次：插入
+        client.post(
+            '/api/v1/health-sync/sync',
+            headers={'X-Device-Id': device_id, 'X-Device-Token': device_token},
+            json={
+                'records': [{
+                    'external_id': 'apple_health:dedup-001',
+                    'type': '血糖',
+                    'value': 5.5,
+                    'timestamp': '2026-06-19T08:00:00+08:00',
+                }],
+            },
+        )
+
+        # 第二次：相同 external_id 应跳过
+        result = client.post(
+            '/api/v1/health-sync/sync',
+            headers={'X-Device-Id': device_id, 'X-Device-Token': device_token},
+            json={
+                'records': [{
+                    'external_id': 'apple_health:dedup-001',
+                    'type': '血糖',
+                    'value': 5.5,
+                    'timestamp': '2026-06-19T08:00:00+08:00',
+                }, {
+                    'external_id': 'apple_health:dedup-002',
+                    'type': '体重',
+                    'value': 72.0,
+                    'unit': 'kg',
+                    'timestamp': '2026-06-19T08:05:00+08:00',
+                }],
+            },
+        )
+        assert result.json['data']['inserted'] == 1
+        assert result.json['data']['skipped'] == 1
+
+    def test_sync_no_auth_header(self, client):
+        """缺少鉴权头返回 401"""
+        result = client.post(
+            '/api/v1/health-sync/sync',
+            json={'records': []},
+        )
+        assert result.status_code == 401
+
+    def test_sync_invalid_token(self, client):
+        """无效 device_token 返回 401"""
+        result = client.post(
+            '/api/v1/health-sync/sync',
+            headers={'X-Device-Id': 'fake-id', 'X-Device-Token': 'fake-token'},
+            json={'records': [{'type': '血糖', 'value': 5.0, 'timestamp': '2026-06-19T10:00:00'}]},
+        )
+        assert result.status_code == 401
+
+    def test_sync_empty_records(self, client):
+        """空 records 返回错误"""
+        device_id, device_token = self._bind_device(client)
+        result = client.post(
+            '/api/v1/health-sync/sync',
+            headers={'X-Device-Id': device_id, 'X-Device-Token': device_token},
+            json={'records': []},
+        )
+        assert result.status_code == 400
+
+    def test_sync_blood_pressure(self, client):
+        """血压记录应正确拆分"""
+        device_id, device_token = self._bind_device(client)
+
+        result = client.post(
+            '/api/v1/health-sync/sync',
+            headers={'X-Device-Id': device_id, 'X-Device-Token': device_token},
+            json={
+                'records': [{
+                    'external_id': 'apple_health:bp-sys',
+                    'type': '血压收缩压',
+                    'value': 120,
+                    'unit': 'mmHg',
+                    'timestamp': '2026-06-19T09:00:00+08:00',
+                }, {
+                    'external_id': 'apple_health:bp-dia',
+                    'type': '血压舒张压',
+                    'value': 80,
+                    'unit': 'mmHg',
+                    'timestamp': '2026-06-19T09:00:00+08:00',
+                }],
+            },
+        )
+        assert result.json['data']['inserted'] == 2
+
+    def test_sync_heart_rate(self, client):
+        """心率和血氧记录"""
+        device_id, device_token = self._bind_device(client)
+
+        result = client.post(
+            '/api/v1/health-sync/sync',
+            headers={'X-Device-Id': device_id, 'X-Device-Token': device_token},
+            json={
+                'records': [{
+                    'external_id': 'apple_health:hr-001',
+                    'type': '心率',
+                    'value': 72,
+                    'unit': 'bpm',
+                    'timestamp': '2026-06-19T10:00:00+08:00',
+                }, {
+                    'external_id': 'apple_health:spo2-001',
+                    'type': '血氧',
+                    'value': 98,
+                    'unit': '%',
+                    'timestamp': '2026-06-19T10:05:00+08:00',
+                }],
+            },
+        )
+        assert result.json['data']['inserted'] == 2
+
+    def test_sync_missing_required_fields(self, client):
+        """缺少必填字段的记录应被跳过"""
+        device_id, device_token = self._bind_device(client)
+
+        result = client.post(
+            '/api/v1/health-sync/sync',
+            headers={'X-Device-Id': device_id, 'X-Device-Token': device_token},
+            json={
+                'records': [
+                    {'type': '血糖', 'value': 6.0, 'timestamp': '2026-06-19T10:00:00+08:00'},  # valid
+                    {'type': '血糖', 'timestamp': '2026-06-19T10:00:00+08:00'},  # missing value
+                    {'value': 6.0, 'timestamp': '2026-06-19T10:00:00+08:00'},  # missing type
+                    {'type': '血糖', 'value': 6.0},  # missing timestamp
+                ],
+            },
+        )
+        assert result.json['data']['inserted'] == 1
+        assert result.json['data']['skipped'] == 3
+
+    def test_sync_weight(self, client):
+        """体重记录"""
+        device_id, device_token = self._bind_device(client)
+
+        result = client.post(
+            '/api/v1/health-sync/sync',
+            headers={'X-Device-Id': device_id, 'X-Device-Token': device_token},
+            json={
+                'records': [{
+                    'external_id': 'apple_health:weight-001',
+                    'type': '体重',
+                    'value': 72.5,
+                    'unit': 'kg',
+                    'timestamp': '2026-06-19T07:00:00+08:00',
+                }],
+            },
+        )
+        assert result.json['data']['inserted'] == 1

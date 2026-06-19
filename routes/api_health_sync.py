@@ -3,6 +3,7 @@
 通过 iOS 快捷指令将 Apple Health 数据写入 Sugar Bee。
 """
 import datetime
+import hmac
 import random
 import secrets
 import traceback
@@ -32,6 +33,27 @@ def _get_bind_code() -> str:
 def _generate_device_token() -> str:
     """生成 32 字节随机设备令牌（URL-safe base64，约 43 字符）。"""
     return secrets.token_urlsafe(32)
+
+
+def _verify_device_auth(device_id: str, device_token: str) -> int | None:
+    """验证 device_id + device_token，返回绑定的 user_id 或 None。
+
+    使用 HMAC 常量时间比较防计时攻击。
+    """
+    try:
+        db = get_db()
+        c = db.cursor()
+        c.execute(
+            "SELECT user_id, device_token FROM device_bindings "
+            "WHERE device_id = ? AND device_token IS NOT NULL",
+            (device_id,),
+        )
+        row = c.fetchone()
+        if row and hmac.compare_digest(row['device_token'], device_token):
+            return row['user_id']
+    except Exception:
+        pass
+    return None
 
 
 @bp_health_sync.route('/bind', methods=['POST'])
@@ -157,6 +179,95 @@ def confirm_binding():
                 'bound_at': row['bound_at'],
             })
         return api_success(data={'device_id': None})
+    except Exception as e:
+        traceback.print_exc()
+        return api_error(str(e), status_code=500)
+
+
+@bp_health_sync.route('/sync', methods=['POST'])
+def sync_health_data():
+    """iOS 捷径同步 Apple Health 数据。
+
+    请求头: X-Device-Id, X-Device-Token
+    请求体: {"start_date": "...", "end_date": "...", "records": [...]}
+    记录字段: type, value, unit, timestamp
+    响应: {"status": "success", "data": {"inserted": N, "skipped": M}}
+
+    去重: 每条记录设 external_id = "apple_health:<uuid>" + source = "apple_health"，
+          写入前检查是否已存在。
+    """
+    try:
+        # 1. 设备鉴权
+        device_id = request.headers.get('X-Device-Id', '')
+        device_token = request.headers.get('X-Device-Token', '')
+        if not device_id or not device_token:
+            return api_error("缺少设备鉴权信息", status_code=401)
+
+        user_id = _verify_device_auth(device_id, device_token)
+        if user_id is None:
+            return api_error("设备鉴权失败", status_code=401)
+
+        # 2. 解析请求体
+        data = request.get_json(force=True)
+        if not data:
+            return api_error("请求体为空")
+        records = data.get('records', [])
+        if not records:
+            return api_error("records 列表为空")
+
+        db = get_db()
+        c = db.cursor()
+        inserted = 0
+        skipped = 0
+
+        # 3. 逐条写入（去重基于 external_id + source）
+        for r in records:
+            r_type = r.get('type', '')
+            r_value = r.get('value')
+            r_timestamp = r.get('timestamp')
+
+            if not r_type or r_value is None or not r_timestamp:
+                skipped += 1
+                continue
+
+            # 生成去重 ID（如果 iOS 捷径未提供则自动生成）
+            r_external_id = r.get('external_id', '') or f"apple_health:{uuid.uuid4()}"
+
+            # 检查重复
+            c.execute(
+                "SELECT id FROM records WHERE external_id = ? AND source = ?",
+                (r_external_id, 'apple_health'),
+            )
+            if c.fetchone():
+                skipped += 1
+                continue
+
+            # 血压特殊处理：拆分为收缩压和舒张压
+            if r_type == '血压收缩压':
+                c.execute(
+                    "INSERT INTO records (user_id, type, value, unit, timestamp, "
+                    "systolic_pressure, external_id, source) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, 'apple_health')",
+                    (user_id, '血压', r_value, r.get('unit', 'mmHg'), r_timestamp, r_value, r_external_id),
+                )
+            elif r_type == '血压舒张压':
+                c.execute(
+                    "INSERT INTO records (user_id, type, value, unit, timestamp, "
+                    "diastolic_pressure, external_id, source) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, 'apple_health')",
+                    (user_id, '血压', r_value, r.get('unit', 'mmHg'), r_timestamp, r_value, r_external_id),
+                )
+            else:
+                c.execute(
+                    "INSERT INTO records (user_id, type, value, unit, timestamp, "
+                    "external_id, source) "
+                    "VALUES (?, ?, ?, ?, ?, ?, 'apple_health')",
+                    (user_id, r_type, r_value, r.get('unit', ''), r_timestamp, r_external_id),
+                )
+            inserted += 1
+
+        db.commit()
+        return api_success(data={'inserted': inserted, 'skipped': skipped})
     except Exception as e:
         traceback.print_exc()
         return api_error(str(e), status_code=500)
