@@ -579,3 +579,50 @@ class TestPredictionStatusDeep:
         fasting = next(s for s in data['slots'] if s['key'] == 'fasting')
         assert fasting['status'] == 'verified', f"应为 verified, 得到 {fasting}"
         assert fasting.get('cgm') is True, "应标记为 CGM 来源"
+
+
+class TestAddRecordUnauthenticated:
+    """add_record/batch_add 未登录路径（lines 183-185）"""
+
+    def test_add_no_session_json(self, client):
+        """JSON 请求未登录 -> 401"""
+        resp = client.post('/add',
+            json={'type': '空腹', 'value': 6.0})
+        assert resp.status_code == 401
+
+    def test_add_no_session_form(self, client):
+        """表单请求未登录 -> redirect"""
+        resp = client.post('/add',
+            data={'type': '空腹', 'value': 6.0})
+        assert resp.status_code == 302
+
+    def test_batch_add_no_session(self, client):
+        """batch_add 未登录 -> 401"""
+        resp = client.post('/batch_add',
+            json={'records': [{'type': '空腹', 'value': 6.0}]})
+        assert resp.status_code == 401
+
+    def test_add_handler_session_check_json(self, client_authenticated):
+        """已登录但 user_id None → handler JSON 返回 401（line 183）"""
+        with patch('routes.api_records.user_manager.get_current_user_id',
+                   return_value=None):
+            resp = client_authenticated.post('/add',
+                json={'type': '空腹', 'value': 6.0})
+        assert resp.status_code == 401
+
+    def test_add_handler_session_check_form(self, client_authenticated):
+        """已登录但 user_id None → handler 表单返回 redirect（line 185）"""
+        with patch('routes.api_records.user_manager.get_current_user_id',
+                   return_value=None):
+            resp = client_authenticated.post('/add',
+                data={'type': '空腹', 'value': 6.0})
+        assert resp.status_code == 302
+
+    def test_batch_add_handler_session_check(self, client_authenticated):
+        """已登录但 user_id None → batch_add 返回 401（line 381）"""
+        with patch('routes.api_records.user_manager.get_current_user_id',
+                   return_value=None):
+            resp = client_authenticated.post('/batch_add',
+                json={'records': [{'type': '空腹', 'value': 6.0}]})
+        assert resp.status_code == 401
+        assert resp.status_code == 401

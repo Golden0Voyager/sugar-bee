@@ -2,7 +2,7 @@
 from unittest.mock import patch, MagicMock
 
 
-class TestGetUserConfig:
+class TestGetUserConfigExtended:
     """get_user_config() 和 _get_default_config() 测试"""
 
     def test_default_config(self):

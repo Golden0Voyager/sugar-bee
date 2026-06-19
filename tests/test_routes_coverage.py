@@ -1573,6 +1573,27 @@ class TestHealthAnalyze:
             assert resp.status_code == 500
             assert resp.json['status'] == 'error'
 
+    def test_analyze_health_skipped(self, client_authenticated):
+        """今日已生成分析 -> 200"""
+        with patch('routes.api_health.get_db') as mock_get_db, \
+             patch('routes.api_health.generate_health_analysis') as mock_gen:
+            mock_gen.return_value = {'skipped': True, 'message': '今日已生成分析'}
+            mock_db = MagicMock()
+            mock_get_db.return_value = mock_db
+            resp = client_authenticated.post('/analyze_health',
+                data=json.dumps({'days': 7}), content_type='application/json')
+            assert resp.status_code == 200
+            assert resp.json['message'] == '今日已生成分析'
+
+    def test_analyze_health_quota_exception(self, client_authenticated):
+        """AI 配额用尽 -> 429"""
+        with patch('routes.api_health.get_db',
+                   side_effect=Exception("429 quota exceeded")):
+            resp = client_authenticated.post('/analyze_health',
+                data=json.dumps({'days': 7}), content_type='application/json')
+            assert resp.status_code == 429
+            assert resp.json['status'] == 'error'
+
 
 class TestHealthLatestAnalysis:
     """get_latest_analysis 全路径 (L44-53)"""
