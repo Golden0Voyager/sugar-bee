@@ -78,33 +78,34 @@ class TestHealthSyncBindFromShortcut:
         assert result.status_code == 400
 
     def test_bind_from_shortcut_code_already_used(self, client_authenticated):
-        """绑定码只能使用一次（已用则返回 404）"""
+        """绑定码只能使用一次（已用则返回 404，因 bind_code 已被清空）"""
         code = self._create_valid_bind_code(client_authenticated)
         # 第一次使用
         client_authenticated.post(
             '/api/v1/health-sync/bind_from_shortcut',
             json={'code': code, 'device_name': 'iPhone 15'},
         )
-        # 再次使用同一码
+        # 再次使用同一码（bind_code 已被设为 NULL → 404）
         result = client_authenticated.post(
             '/api/v1/health-sync/bind_from_shortcut',
             json={'code': code, 'device_name': 'iPhone 15'},
         )
         assert result.status_code == 404
 
-    def test_bind_from_shortcut_expired_code(self, client_authenticated):
+    def test_bind_from_shortcut_expired_code(self, client_authenticated, app):
         """过期绑定码返回 404"""
         code = self._create_valid_bind_code(client_authenticated)
-        # 模拟过期：直接修改数据库
-        import sqlite3
-        from core.config import DB_NAME
-        conn = sqlite3.connect(DB_NAME)
-        conn.execute(
-            "UPDATE device_bindings SET code_expires_at = '2020-01-01' WHERE bind_code = ?",
-            (code,),
-        )
-        conn.commit()
-        conn.close()
+        # 模拟过期：通过 Flask app 上下文 + get_raw_conn 修改数据库
+        from utils.db import get_raw_conn, put_raw_conn
+        _conn = get_raw_conn()
+        try:
+            _conn.execute(
+                "UPDATE device_bindings SET code_expires_at = '2020-01-01' WHERE bind_code = ?",
+                (code,),
+            )
+            _conn.commit()
+        finally:
+            put_raw_conn(_conn)
 
         result = client_authenticated.post(
             '/api/v1/health-sync/bind_from_shortcut',
