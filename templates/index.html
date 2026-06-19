@@ -8961,11 +8961,12 @@
         input.value = '';
     }
 
-    // 设置 modal 打开时加载用户列表
+    // 设置 modal 打开时加载用户列表和同步状态
     document.getElementById('userSettingsModal')?.addEventListener('show.bs.modal', function() {
         loadSettingsUserList();
         loadAccountBindings();
         loadEnabledModules();
+        checkIOSBinding();
     });
 
     // ========== 功能模块开关 ==========
