@@ -306,6 +306,7 @@ from routes.api_auth import bp_auth  # noqa: E402
 from routes.api_chat import bp_chat  # noqa: E402
 from routes.api_dashboard import bp_dashboard  # noqa: E402
 from routes.api_health import bp_health  # noqa: E402
+from routes.api_health_sync import bp_health_sync  # noqa: E402
 from routes.api_internal import bp_internal  # noqa: E402
 from routes.api_meds import bp_meds  # noqa: E402
 from routes.api_prediction import bp_prediction  # noqa: E402
@@ -322,6 +323,7 @@ app.register_blueprint(bp_user)
 app.register_blueprint(bp_dashboard)
 app.register_blueprint(bp_prediction)
 app.register_blueprint(bp_internal)
+app.register_blueprint(bp_health_sync)
 
 # 为敏感端点添加请求限速（在 Blueprint 注册后配置，避免循环导入）
 # Flask Blueprint view_functions 使用 "blueprint.endpoint" 格式
