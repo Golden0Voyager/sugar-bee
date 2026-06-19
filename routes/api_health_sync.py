@@ -87,7 +87,7 @@ def bind_from_shortcut():
         if not data:
             return api_error("请求体为空")
         code = data.get('code', '').strip()
-        device_name = data.get('device_name', 'Unknown Device')
+        device_name = (data.get('device_name') or 'Unknown Device').strip()
 
         if not code or not code.isdigit() or len(code) != 6:
             return api_error("无效的绑定码格式", status_code=400)
@@ -121,6 +121,9 @@ def bind_from_shortcut():
             "WHERE id = ? AND device_id IS NULL",
             (device_id, device_token, device_name, now, binding_id),
         )
+        if c.rowcount == 0:
+            db.commit()
+            return api_error("绑定冲突，请重新生成绑定码", status_code=409)
         db.commit()
 
         return api_success(data={
