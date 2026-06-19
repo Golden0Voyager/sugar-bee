@@ -41,6 +41,16 @@ spec:
                 secretKeyRef:
                   key: latest
                   name: SUGAR_BEE_INTERNAL_API_TOKEN
+            - name: GARMIN_USER_ID
+              valueFrom:
+                secretKeyRef:
+                  key: latest
+                  name: SUGAR_BEE_GARMIN_USER_ID
+            - name: GARMIN_EMAIL
+              valueFrom:
+                secretKeyRef:
+                  key: latest
+                  name: SUGAR_BEE_GARMIN_EMAIL
           resources:
             limits:
               cpu: '1'
