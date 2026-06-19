@@ -6,8 +6,9 @@ import datetime
 import random
 import secrets
 import traceback
+import uuid
 
-from flask import Blueprint
+from flask import Blueprint, request
 
 from user_manager import UserManager
 from core.config import DB_NAME
@@ -71,6 +72,64 @@ def bind_device():
     except Exception as e:
         traceback.print_exc()
         return api_error("绑定码生成失败", status_code=500)
+
+
+@bp_health_sync.route('/bind_from_shortcut', methods=['POST'])
+def bind_from_shortcut():
+    """iOS 捷径携带绑定码调用此端点完成绑定。
+
+    请求: POST /api/v1/health-sync/bind_from_shortcut
+    请求体: {"code": "123456", "device_name": "iPhone 15"}
+    响应: {"status": "success", "data": {"device_id": "uuid", "device_token": "token"}}
+    """
+    try:
+        data = request.get_json(force=True)
+        if not data:
+            return api_error("请求体为空")
+        code = data.get('code', '').strip()
+        device_name = data.get('device_name', 'Unknown Device')
+
+        if not code or not code.isdigit() or len(code) != 6:
+            return api_error("无效的绑定码格式", status_code=400)
+
+        db = get_db()
+        c = db.cursor()
+
+        # 查找有效绑定码（30 分钟内未过期、未使用）
+        c.execute(
+            "SELECT id, user_id FROM device_bindings "
+            "WHERE bind_code = ? AND device_id IS NULL "
+            "AND code_expires_at >= datetime('now') "
+            "ORDER BY created_at DESC LIMIT 1",
+            (code,),
+        )
+        row = c.fetchone()
+        if not row:
+            return api_error("绑定码无效或已过期", status_code=404)
+
+        binding_id = row['id']
+        user_id = row['user_id']
+
+        # 生成 device_id + device_token
+        device_id = str(uuid.uuid4())
+        device_token = _generate_device_token()
+        now = datetime.datetime.now().isoformat()
+
+        c.execute(
+            "UPDATE device_bindings SET device_id = ?, device_token = ?, "
+            "device_name = ?, bound_at = ?, bind_code = NULL, code_expires_at = NULL "
+            "WHERE id = ? AND device_id IS NULL",
+            (device_id, device_token, device_name, now, binding_id),
+        )
+        db.commit()
+
+        return api_success(data={
+            'device_id': device_id,
+            'device_token': device_token,
+        })
+    except Exception as e:
+        traceback.print_exc()
+        return api_error("设备绑定失败", status_code=500)
 
 
 @bp_health_sync.route('/confirm_binding', methods=['GET'])
