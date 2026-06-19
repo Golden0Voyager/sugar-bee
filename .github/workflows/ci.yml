@@ -32,13 +32,22 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt pytest pytest-cov pytest-flask flask
+          pip install -r requirements.txt pytest pytest-cov pytest-flask flask ruff mypy
+
+      - name: Run ruff check
+        run: ruff check app.py ai_client.py generate_report.py glucose_parser.py user_manager.py settings.py models.py routes/ utils/ mcp_adapter/ core/ services/
+
+      - name: Run mypy
+        run: mypy app.py ai_client.py generate_report.py glucose_parser.py user_manager.py settings.py models.py routes/ utils/ mcp_adapter/ core/ services/ || true
 
       - name: Run tests
         env:
           SECRET_KEY: test-secret-key-for-ci
           FLASK_ENV: testing
-        run: python -m pytest tests/ -q --cov=.
+        run: python -m pytest tests/ -q --cov
+
+      - name: Enforce coverage threshold
+        run: coverage report
 
       - name: Check Python syntax
         run: |
