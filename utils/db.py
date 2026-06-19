@@ -192,6 +192,7 @@ def _get_pool():
             keepalives_idle=30,
             keepalives_interval=10,
             keepalives_count=5,
+            client_encoding='UTF8',
         )
     return _connection_pool
 
@@ -246,11 +247,55 @@ def _inline_params(sql: str, params: tuple) -> str:
     parts = sql.split('?')
     result = parts[0]
     for i, param in enumerate(params):
-        quoted = adapt(param).getquoted()
-        if isinstance(quoted, bytes):
-            quoted = quoted.decode('utf-8')
+        if isinstance(param, str):
+            # 手动处理字符串：转义单引号 + UTF-8 编码，避免 latin-1 编码错误
+            escaped = param.replace("'", "''")
+            quoted = "'" + escaped + "'"
+        else:
+            quoted = adapt(param).getquoted()
+            if isinstance(quoted, bytes):
+                quoted = quoted.decode('utf-8')
         result += quoted + parts[i + 1]
     return result
+
+
+def _convert_sqlite_to_pg(sql: str) -> str:
+    """将内联后的 SQL 中的 SQLite 特有函数转换为 PostgreSQL 兼容语法。
+
+    该函数在 _inline_params 之后调用，此时 ? 已替换为内联字面量。
+    """
+    import re
+
+    # 1. DATE(column) → column::date
+    sql = re.sub(r"(?i)\bDATE\(([\w.]+)\)", r'\1::date', sql)
+
+    # 2. datetime('now', '-N unit') → NOW() - INTERVAL 'N unit'
+    #    datetime('now', '+N unit') → NOW() + INTERVAL 'N unit'
+    #    datetime(expr, '-N unit') → expr::timestamp - INTERVAL 'N unit'
+    #    datetime(expr, '+N unit') → expr::timestamp + INTERVAL 'N unit'
+    def _replace_dt(m):
+        expr = m.group(1).strip()
+        # Trim surrounding quotes if present on the expr (inline after ? → str literal)
+        if expr.startswith("'") and expr.endswith("'"):
+            expr = expr[1:-1]  # pragma: no cover (dead code — regex 已剥离引号)
+        modifier = m.group(2).strip()
+        if modifier.startswith('+'):
+            op = '+'
+        else:
+            op = '-'
+        number, unit = modifier[1:].strip().split(' ', 1)
+        return f"'{expr}'::timestamp {op} INTERVAL '{number} {unit}'"
+
+    sql = re.sub(
+        r"(?i)datetime\(\s*'([^']+)'\s*,\s*'([+-]\d+\s+\w+)'\s*\)",
+        _replace_dt,
+        sql,
+    )
+
+    # 3. datetime('now') → NOW()
+    sql = re.sub(r"(?i)datetime\(\s*'now'\s*\)", 'NOW()', sql)
+
+    return sql
 
 
 class _CompatCursor:
@@ -267,6 +312,8 @@ class _CompatCursor:
         if config.DB_TYPE == 'postgres' and parameters:
             sql = _inline_params(sql, parameters)
             parameters = None
+        if config.DB_TYPE == 'postgres':
+            sql = _convert_sqlite_to_pg(sql)
         sql = _normalize_sql(sql, config.DB_TYPE)
         result = self._cursor.execute(sql, parameters)
         if 'RETURNING' in sql.upper():
@@ -407,7 +454,7 @@ def _init_db_postgres():
     """PostgreSQL schema 初始化（一次性创建完整表结构）。"""
     import psycopg2
 
-    conn = psycopg2.connect(_pg_dsn())
+    conn = psycopg2.connect(_pg_dsn(), client_encoding='UTF8')
     try:
         c = conn.cursor()
 
