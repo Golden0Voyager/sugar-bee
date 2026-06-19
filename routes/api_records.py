@@ -182,7 +182,7 @@ def add_record():
         if not current_user_id:
             if request.is_json:
                 return api_error("未登录或会话已过期", status_code=401)
-            return redirect(url_for('login'))
+            return redirect(url_for('auth.login'))
 
         if weight and not bmi:
             try:
