@@ -1906,9 +1906,9 @@
                                     </div>
                                 </div>
                                 <div class="d-flex gap-2">
-                                    <a href="#" class="btn btn-outline-primary btn-sm" id="downloadShortcutLink">
+                                    <button class="btn btn-outline-primary btn-sm" id="downloadShortcutLink" onclick="showShortcutGuide()">
                                         <i class="bi bi-download"></i> 捷径下载
-                                    </a>
+                                    </button>
                                     <button class="btn btn-outline-danger btn-sm" onclick="resetIOSBinding()">
                                         <i class="bi bi-unlink"></i> 解绑
                                     </button>
@@ -8705,6 +8705,23 @@
 
     // 页面加载时检查绑定状态
     document.addEventListener('DOMContentLoaded', checkIOSBinding);
+
+    function showShortcutGuide() {
+        alert(
+            '【Sugar Bee iOS 捷径】\n\n' +
+            '捷径文件需要先在 iPhone 上制作。\n\n' +
+            '制作步骤：\n' +
+            '1. 在 iPhone 上打开「快捷指令」App\n' +
+            '2. 新建快捷指令\n' +
+            '3. 添加步骤「获取剪贴板」\n' +
+            '4. 添加步骤「获取健康样本」（选择数据类型）\n' +
+            '5. 添加步骤「URL」填入：\n' +
+            '   https://<你的服务器>/api/v1/health-sync/sync\n' +
+            '6. 添加步骤「获取请求内容」(POST, 含 device_id/device_token)\n' +
+            '7. 保存并运行\n\n' +
+            '后续可在项目 settings 页面下载预制的 .shortcut 文件一键导入。'
+        );
+    }
 
     // ========== 去重功能 ==========
 
