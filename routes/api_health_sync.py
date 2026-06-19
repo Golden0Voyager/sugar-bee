@@ -4,7 +4,6 @@
 """
 import datetime
 import hmac
-import random
 import secrets
 import traceback
 import uuid
@@ -29,8 +28,8 @@ SOURCE_APPLE_HEALTH = 'apple_health'
 
 
 def _get_bind_code() -> str:
-    """生成 6 位数字绑定码。"""
-    return str(random.randint(100000, 999999))
+    """生成 6 位数字绑定码（使用密码学安全随机数）。"""
+    return f"{secrets.randbelow(900000) + 100000}"
 
 
 def _generate_device_token() -> str:
@@ -184,7 +183,7 @@ def confirm_binding():
         return api_success(data={'device_id': None})
     except Exception as e:
         traceback.print_exc()
-        return api_error(str(e), status_code=500)
+        return api_error("查询绑定状态失败", status_code=500)
 
 
 @bp_health_sync.route('/sync', methods=['POST'])
@@ -276,7 +275,7 @@ def sync_health_data():
         return api_success(data={'inserted': inserted, 'skipped': skipped})
     except Exception as e:
         traceback.print_exc()
-        return api_error(str(e), status_code=500)
+        return api_error("数据同步失败", status_code=500)
 
 
 @bp_health_sync.route('/unbind', methods=['POST'])
@@ -295,4 +294,4 @@ def unbind_device():
         return api_success(message="绑定已解除")
     except Exception as e:
         traceback.print_exc()
-        return api_error(str(e), status_code=500)
+        return api_error("解除绑定失败", status_code=500)
