@@ -376,3 +376,80 @@ class TestHealthSyncUnbind:
         """未登录返回 401"""
         result = client.post('/api/v1/health-sync/unbind', content_type='application/json')
         assert result.status_code == 401
+
+
+class TestHealthSyncCoverage:
+    """覆盖边缘分支：异常处理、rowcount 检查等"""
+
+    def test_verify_device_auth_exception(self):
+        """_verify_device_auth 数据库异常返回 None"""
+        from routes.api_health_sync import _verify_device_auth
+        with patch('routes.api_health_sync.get_db') as mock_g:
+            mock_g.side_effect = Exception("DB error")
+            assert _verify_device_auth('d', 't') is None
+
+    def test_bind_from_shortcut_rowcount_zero(self, client_authenticated):
+        """bind_from_shortcut 遇到 rowcount==0 返回 409"""
+        with patch('routes.api_health_sync.get_db') as mock_g:
+            mock_c = MagicMock()
+            mock_c.fetchone.side_effect = [{'id': 99, 'user_id': 1}, None]
+            mock_c.rowcount = 0
+            mock_g.return_value.cursor.return_value = mock_c
+            result = client_authenticated.post(
+                '/api/v1/health-sync/bind_from_shortcut',
+                json={'code': '999999', 'device_name': 'Test'},
+            )
+            assert result.status_code == 409
+            assert '冲突' in result.json['message']
+
+    def test_bind_from_shortcut_exception(self, client_authenticated):
+        """bind_from_shortcut 异常返回 500"""
+        with patch('routes.api_health_sync.get_db') as mock_g:
+            mock_g.side_effect = Exception("DB error")
+            result = client_authenticated.post(
+                '/api/v1/health-sync/bind_from_shortcut',
+                json={'code': '123456', 'device_name': 'Test'},
+            )
+            assert result.status_code == 500
+
+    def test_confirm_binding_exception(self, client_authenticated):
+        """confirm_binding 异常返回 500"""
+        with patch('routes.api_health_sync.get_db') as mock_g:
+            mock_g.side_effect = Exception("DB error")
+            result = client_authenticated.get('/api/v1/health-sync/confirm_binding')
+            assert result.status_code == 500
+
+    def test_sync_empty_body(self, client):
+        """sync 空请求体（无 JSON body）返回 400"""
+        device_id, device_token = _bind_device(client)
+        result = client.post(
+            '/api/v1/health-sync/sync',
+            headers={'X-Device-Id': device_id, 'X-Device-Token': device_token},
+            content_type='application/json',
+            data='{}',
+        )
+        assert result.status_code == 400
+
+    def test_sync_exception(self):
+        """sync 异常返回 500"""
+        with patch('routes.api_health_sync._verify_device_auth') as mock_vda, \
+             patch('routes.api_health_sync.get_db') as mock_g:
+            mock_vda.return_value = 1
+            mock_g.side_effect = Exception("DB commit error")
+            from flask import Flask
+            _test_app = Flask(__name__)
+            with _test_app.test_request_context(
+                '/api/v1/health-sync/sync',
+                method='POST',
+                headers={'X-Device-Id': 'd', 'X-Device-Token': 't'},
+            ):
+                from routes.api_health_sync import sync_health_data
+                resp, code = sync_health_data()
+                assert code == 500
+
+    def test_unbind_exception(self, client_authenticated):
+        """unbind 异常返回 500"""
+        with patch('routes.api_health_sync.get_db') as mock_g:
+            mock_g.side_effect = Exception("DB error")
+            result = client_authenticated.post('/api/v1/health-sync/unbind')
+            assert result.status_code == 500
