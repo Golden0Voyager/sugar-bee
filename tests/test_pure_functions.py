@@ -181,3 +181,8 @@ class TestGetUserStats:
         stats = get_user_stats(mock_db, user_id=1)
         # On DB error, returns empty dict {} (stats is initialized empty, try/except returns it)
         assert stats == {}
+
+    def test_empty_stats_no_user_id(self):
+        from routes.api_records import get_user_stats
+        result = get_user_stats(MagicMock(), user_id=None)
+        assert result == {}
