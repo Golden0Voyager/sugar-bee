@@ -359,6 +359,32 @@ class TestMedsUpdateWithDosageHistory:
             assert len(plans[0]['dosage_history']) == 1
             assert plans[0]['dosage_history'][0]['new_dosage'] == '500mg'
 
+    def test_update_plan_not_found(self, client_authenticated):
+        """更新不存在的方案返回 Plan not found（line 105）"""
+        with patch('routes.api_meds.get_db') as mock_get_db:
+            mock_c = MagicMock()
+            mock_c.fetchone.return_value = None  # 方案不存在
+            mock_db = MagicMock()
+            mock_db.cursor.return_value = mock_c
+            mock_get_db.return_value = mock_db
+            result = client_authenticated.post('/update_medication_plan/999', json={
+                'medication_name': '药', 'dosage': '500mg',
+            })
+            assert result.status_code == 404
+            assert b'Plan not found' in result.data
+
+    def test_toggle_plan_not_found(self, client_authenticated):
+        """切换不存在的方案返回 Plan not found（line 150）"""
+        with patch('routes.api_meds.get_db') as mock_get_db:
+            mock_c = MagicMock()
+            mock_c.rowcount = 0  # 方案不存在
+            mock_db = MagicMock()
+            mock_db.cursor.return_value = mock_c
+            mock_get_db.return_value = mock_db
+            result = client_authenticated.post('/toggle_medication_plan/999')
+            assert result.status_code == 404
+            assert b'Plan not found' in result.data
+
 
 # ============================================================
 # api_admin: backup_database 下载 + restore_database 验证
@@ -535,3 +561,17 @@ class TestReportBuildPdfEdgeCases:
         assert result == '/tmp/test.pdf'
         # Setup was called internally
         mock_doc_instance.build.assert_called_once()
+
+    def test_backup_database_postgres(self, client_authenticated):
+        """备份接口在 PostgreSQL 模式下返回 400"""
+        with patch('routes.api_admin.DB_TYPE', 'postgres'):
+            result = client_authenticated.get('/backup_database')
+            assert result.status_code == 400
+            assert b'PostgreSQL' in result.data
+
+    def test_restore_database_postgres(self, client_authenticated):
+        """恢复接口在 PostgreSQL 模式下返回 400"""
+        with patch('routes.api_admin.DB_TYPE', 'postgres'):
+            result = client_authenticated.post('/restore_database')
+            assert result.status_code == 400
+            assert b'PostgreSQL' in result.data
