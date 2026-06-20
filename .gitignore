@@ -45,3 +45,4 @@ backups/
 .understand-anything/
 .codegraph/
 db_data/
+.pdca-status.json
