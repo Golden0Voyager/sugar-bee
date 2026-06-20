@@ -22,6 +22,8 @@ spec:
           env:
             - name: FLASK_ENV
               value: production
+            - name: TZ
+              value: Asia/Shanghai
             - name: SUGAR_BEE_DATABASE_URL
               valueFrom:
                 secretKeyRef:

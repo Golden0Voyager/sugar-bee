@@ -10,11 +10,12 @@ import uuid
 
 from flask import Blueprint, request
 
-from user_manager import UserManager
 from core import config as core_config
-from utils.responses import api_success, api_error
-from utils.db import get_db
+from user_manager import UserManager
 from utils.auth import login_required
+from utils.db import get_db
+from utils.responses import api_error, api_success
+from utils.sql_dialect import now_sql
 
 user_manager = UserManager(core_config.DB_NAME)
 
@@ -75,7 +76,7 @@ def bind_device():
         # 清除该用户的过期绑定码
         c.execute(
             "DELETE FROM device_bindings WHERE user_id = ? AND "
-            "bind_code IS NOT NULL AND code_expires_at < datetime('now')",
+            f"bind_code IS NOT NULL AND code_expires_at < {now_sql()}",
             (current_user_id,),
         )
 
@@ -93,7 +94,7 @@ def bind_device():
             'bind_code': bind_code,
             'expires_in': BIND_CODE_EXPIRY_SECONDS,
         })
-    except Exception as e:
+    except Exception:
         traceback.print_exc()
         return api_error("绑定码生成失败", status_code=500)
 
@@ -123,7 +124,7 @@ def bind_from_shortcut():
         c.execute(
             "SELECT id, user_id FROM device_bindings "
             "WHERE bind_code = ? AND device_id IS NULL "
-            "AND code_expires_at >= datetime('now') "
+            f"AND code_expires_at >= {now_sql()} "
             "ORDER BY created_at DESC LIMIT 1",
             (code,),
         )
@@ -132,7 +133,6 @@ def bind_from_shortcut():
             return api_error("绑定码无效或已过期", status_code=404)
 
         binding_id = row['id']
-        user_id = row['user_id']
 
         # 生成 device_id + device_token
         device_id = str(uuid.uuid4())
@@ -154,7 +154,7 @@ def bind_from_shortcut():
             'device_id': device_id,
             'device_token': device_token,
         })
-    except Exception as e:
+    except Exception:
         traceback.print_exc()
         return api_error("设备绑定失败", status_code=500)
 
@@ -181,7 +181,7 @@ def confirm_binding():
                 'bound_at': row['bound_at'],
             })
         return api_success(data={'device_id': None})
-    except Exception as e:
+    except Exception:
         traceback.print_exc()
         return api_error("查询绑定状态失败", status_code=500)
 
@@ -273,7 +273,7 @@ def sync_health_data():
 
         db.commit()
         return api_success(data={'inserted': inserted, 'skipped': skipped})
-    except Exception as e:
+    except Exception:
         traceback.print_exc()
         return api_error("数据同步失败", status_code=500)
 
@@ -292,6 +292,6 @@ def unbind_device():
         )
         db.commit()
         return api_success(message="绑定已解除")
-    except Exception as e:
+    except Exception:
         traceback.print_exc()
         return api_error("解除绑定失败", status_code=500)

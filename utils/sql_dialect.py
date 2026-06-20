@@ -15,8 +15,12 @@ def ph() -> str:
 
 
 def now_sql() -> str:
-    """返回当前时间的 SQL 表达式。"""
-    return "NOW()" if config.DB_TYPE == "postgres" else "datetime('now')"
+    """返回当前时间的 SQL 表达式（北京时间）。
+
+    SQLite 用 `'localtime'` 修饰符，依赖进程时区（容器 TZ=Asia/Shanghai）；
+    PostgreSQL 的 NOW() 依赖连接会话时区（见 utils/db.py 连接池 options）。
+    """
+    return "NOW()" if config.DB_TYPE == "postgres" else "datetime('now', 'localtime')"
 
 
 def interval_sql(days: int) -> str:
@@ -25,7 +29,7 @@ def interval_sql(days: int) -> str:
         raise TypeError("interval_sql only accepts int")
     if config.DB_TYPE == "postgres":
         return f"NOW() - INTERVAL '{days} days'"
-    return f"datetime('now', '-{days} days')"
+    return f"datetime('now', 'localtime', '-{days} days')"
 
 
 # Python strftime 格式 → PostgreSQL TO_CHAR 格式 的常用映射

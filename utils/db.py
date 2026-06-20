@@ -6,7 +6,6 @@
 from __future__ import annotations
 
 import datetime
-import os
 import sqlite3
 from typing import Any
 
@@ -93,7 +92,8 @@ class CursorWrapper:
             except Exception:
                 row = None
             if row is not None:
-                if hasattr(row, 'keys') and 'id' in row.keys():
+                # sqlite3.Row 的 `in` 按值判断而非键，必须用 .keys()（SIM118 在此不适用）
+                if hasattr(row, 'keys') and 'id' in row.keys():  # noqa: SIM118
                     self._lastrowid = row['id']
                 elif hasattr(row, '__getitem__'):
                     self._lastrowid = row[0]
@@ -193,6 +193,7 @@ def _get_pool():
             keepalives_interval=10,
             keepalives_count=5,
             client_encoding='UTF8',
+            options="-c timezone=Asia/Shanghai",
         )
     return _connection_pool
 

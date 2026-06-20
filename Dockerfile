@@ -14,7 +14,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONFAULTHANDLER=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    HOME=/app
+    HOME=/app \
+    TZ=Asia/Shanghai
 
 # 安装系统依赖（清理缓存减小镜像体积）
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -22,6 +23,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libc6-dev \
     libpq-dev \
     curl \
+    tzdata \
     && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 # 先复制依赖文件并安装（利用 Docker 缓存层）

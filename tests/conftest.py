@@ -5,8 +5,14 @@ import contextlib
 import os
 import sqlite3
 import tempfile
+import time
 
 import pytest
+
+# 强制测试时区为北京时间，保证 SQLite datetime('now','localtime') 在任意主机
+# （含 UTC 的 CI runner）上结果确定一致。必须在任何 datetime/SQLite 调用前生效。
+os.environ['TZ'] = 'Asia/Shanghai'
+time.tzset()
 
 # 强制测试环境配置
 os.environ.setdefault('SECRET_KEY', 'test-secret-key-not-for-production')

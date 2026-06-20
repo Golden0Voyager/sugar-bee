@@ -247,7 +247,7 @@ class TestSqlDialect:
     def test_now_sql_sqlite(self, monkeypatch):
         self._set_db_type(monkeypatch, 'sqlite')
         from utils.sql_dialect import now_sql
-        assert now_sql() == "datetime('now')"
+        assert now_sql() == "datetime('now', 'localtime')"
 
     def test_now_sql_postgres(self, monkeypatch):
         self._set_db_type(monkeypatch, 'postgres')
@@ -257,7 +257,7 @@ class TestSqlDialect:
     def test_interval_sql_sqlite(self, monkeypatch):
         self._set_db_type(monkeypatch, 'sqlite')
         from utils.sql_dialect import interval_sql
-        assert interval_sql(7) == "datetime('now', '-7 days')"
+        assert interval_sql(7) == "datetime('now', 'localtime', '-7 days')"
 
     def test_interval_sql_postgres(self, monkeypatch):
         self._set_db_type(monkeypatch, 'postgres')
@@ -379,7 +379,6 @@ class TestSqlDialect:
 
     def test_pg_dsn_strips_plus_psycopg2(self):
         """_pg_dsn() 应去掉 sqlalchemy 风格的 +psycopg2"""
-        from utils.db import _pg_dsn  # noqa: needed for import
         # 直接测试 DSN 转换逻辑
         import core.config as config
         original = config.DATABASE_URL
@@ -715,8 +714,9 @@ class TestPgPathsMocked:
 
     def test_get_pool_cached(self, monkeypatch):
         """_get_pool 重复调用返回缓存"""
-        import core.config as config
         from psycopg2.pool import ThreadedConnectionPool
+
+        import core.config as config
 
         monkeypatch.setattr(config, 'DB_TYPE', 'postgres')
         import utils.db as db_mod
