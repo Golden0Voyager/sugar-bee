@@ -21,13 +21,19 @@ jobs:
         run: uv python install 3.12
 
       - name: Install dependencies
-        run: uv sync --dev
+        run: uv sync --dev --frozen
 
       - name: Run ruff check
         run: uv run ruff check .
 
       - name: Run mypy
         run: uv run mypy app.py routes/ services/ utils/ core/ mcp_adapter/ || true
+      - name: Run security scan (bandit)
+        run: uv run bandit -c pyproject.toml -r . || true
+
+      - name: Run dependency audit
+        run: uv run --with pip-audit pip-audit || true
+
 
       - name: Set test environment
         run: |

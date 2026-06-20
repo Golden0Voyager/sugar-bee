@@ -105,7 +105,7 @@ uv run ruff check .
 ## 测试与质量
 
 - 测试框架：pytest，约 1030 个测试，覆盖率 100%
-- CI 阈值：`fail_under=95`
+- CI 阈值：`fail_under=85`
 - Lint：`ruff`，配置继承 `~/.config/ruff/ruff.toml`，项目扩展在 `pyproject.toml`
 
 ---

@@ -44,6 +44,8 @@ dev = [
     "pytest-flask>=1.3.0",
     "pytest-asyncio>=0.24.0",
     "garminconnect>=0.3.0",
+    "mypy>=1.13",
+    "bandit[toml]>=1.8",
 ]
 
 [tool.ruff]
@@ -94,4 +96,5 @@ testpaths = ["tests", "mcp_adapter/tests"]
 ignore_missing_imports = true
 
 [tool.bandit]
+exclude_dirs = ["tests", ".venv", "migrations", "mcp_adapter/tests"]
 skips = ["B101", "B311", "B404", "B603"]
