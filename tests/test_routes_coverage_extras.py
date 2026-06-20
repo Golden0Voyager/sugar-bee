@@ -1,10 +1,10 @@
 """扩展 routes 层覆盖率：api_records (64%→82%), api_dashboard (46%→68%), api_chat (74%→85%)"""
 import io
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock
 
-from tests.helpers import mock_health_settings, mock_day_settings
-
+from tests.helpers import mock_day_settings, mock_health_settings
 
 # ============================================================
 # api_records 扩展 — 覆盖 form data、BP/weight 重复检测、export、import、preview_import

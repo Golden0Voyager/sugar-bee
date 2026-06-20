@@ -36,10 +36,10 @@ import os
 import re
 import sqlite3
 from datetime import datetime
-from typing import Optional
 
 import httpx
 from mcp.server.fastmcp import FastMCP
+
 from utils.db import get_raw_conn
 from utils.sql_dialect import date_format_sql
 
@@ -53,7 +53,7 @@ DEFAULT_USER_ID = int(os.environ.get("DEFAULT_USER_ID", "1"))
 mcp = FastMCP("sugar-bee")
 
 
-def _normalize_timestamp(ts: Optional[str] = None) -> str:
+def _normalize_timestamp(ts: str | None = None) -> str:
     """校验并补全时间戳，确保格式为 YYYY-MM-DD HH:MM:SS。"""
     if not ts:
         return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -529,9 +529,9 @@ async def record_blood_pressure(
     user_id: int,
     systolic: int,
     diastolic: int,
-    pulse_rate: Optional[int] = None,
-    timestamp: Optional[str] = None,
-    notes: Optional[str] = None,
+    pulse_rate: int | None = None,
+    timestamp: str | None = None,
+    notes: str | None = None,
 ) -> str:
     """记录一次血压测量。调用前，请向用户展示所有参数并请求确认；仅在用户明确同意后再执行。"""
     err = _validate_bp(systolic, diastolic)
@@ -573,8 +573,8 @@ async def record_blood_pressure(
 async def record_weight(
     user_id: int,
     weight: float,
-    timestamp: Optional[str] = None,
-    notes: Optional[str] = None,
+    timestamp: str | None = None,
+    notes: str | None = None,
 ) -> str:
     """记录一次体重。会自动计算并更新 BMI。调用前，请向用户展示所有参数并请求确认；仅在用户明确同意后再执行。"""
     err = _validate_weight(weight)
@@ -608,8 +608,8 @@ async def record_glucose(
     user_id: int,
     value: float,
     record_type: str,
-    timestamp: Optional[str] = None,
-    notes: Optional[str] = None,
+    timestamp: str | None = None,
+    notes: str | None = None,
 ) -> str:
     """记录一次血糖。record_type 示例：空腹、早餐后2小时、午餐后2小时、晚餐后2小时、睡前。调用前，请向用户展示所有参数并请求确认；仅在用户明确同意后再执行。"""
     err = _validate_glucose(value)
@@ -645,13 +645,13 @@ async def record_exercise(
     user_id: int,
     exercise_type: str,
     distance: float,
-    duration: Optional[str] = None,
-    pace: Optional[str] = None,
-    heart_rate: Optional[int] = None,
-    steps: Optional[int] = None,
-    calories: Optional[int] = None,
-    notes: Optional[str] = None,
-    timestamp: Optional[str] = None,
+    duration: str | None = None,
+    pace: str | None = None,
+    heart_rate: int | None = None,
+    steps: int | None = None,
+    calories: int | None = None,
+    notes: str | None = None,
+    timestamp: str | None = None,
 ) -> str:
     """记录一次运动/锻炼。exercise_type 示例：跑步、走路、骑行、游泳、健身。distance 单位为公里。调用前，请向用户展示所有参数并请求确认；仅在用户明确同意后再执行。"""
     if heart_rate is not None:

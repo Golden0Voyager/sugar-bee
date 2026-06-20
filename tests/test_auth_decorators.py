@@ -1,8 +1,10 @@
 """
 认证装饰器测试
 """
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
 from flask import g
+
 import utils.auth
 
 

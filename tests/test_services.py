@@ -2,8 +2,7 @@
 Service 层 mock 测试 — 覆盖 prediction_service, timeline_service, health_service, dashboard_service
 """
 import json
-from unittest.mock import patch, MagicMock
-
+from unittest.mock import MagicMock, patch
 
 # ============================================================
 # prediction_service 测试

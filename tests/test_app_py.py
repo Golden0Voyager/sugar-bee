@@ -799,7 +799,7 @@ class TestAutoBackupGCS:
         monkeypatch.setattr('os.path.isfile', lambda p: True)
         # 需要让 os.path.exists(DB_NAME) 返回 True
         from core.config import DB_NAME
-        monkeypatch.setattr('os.path.exists', lambda p: True if p == DB_NAME else False)
+        monkeypatch.setattr('os.path.exists', lambda p: p == DB_NAME)
         app_mod.auto_backup()
         mock_backup_to_gcs.assert_called_once()
 
@@ -810,7 +810,7 @@ class TestAutoBackupGCS:
         monkeypatch.setattr('os.makedirs', lambda p, exist_ok: None)
         monkeypatch.setattr('shutil.copy2', lambda *a: None)
         from core.config import DB_NAME
-        monkeypatch.setattr('os.path.exists', lambda p: True if p == DB_NAME else False)
+        monkeypatch.setattr('os.path.exists', lambda p: p == DB_NAME)
         import app as app_mod
         mock_backup_to_gcs = MagicMock()
         monkeypatch.setattr(app_mod, 'backup_db_to_gcs', mock_backup_to_gcs)

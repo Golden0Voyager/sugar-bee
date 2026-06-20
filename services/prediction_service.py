@@ -1,10 +1,12 @@
+import contextlib
 import datetime
-import re
 import json
+import re
 import traceback
-from ai_client import call_ai, AI_AVAILABLE
+
 import settings
-from utils.sql_dialect import epoch_sql, date_sql
+from ai_client import AI_AVAILABLE, call_ai
+from utils.sql_dialect import date_sql, epoch_sql
 
 
 def link_prediction_to_real_record(db, real_record_id, user_id, record_date, record_type, real_value, record_timestamp=None):
@@ -139,10 +141,8 @@ def predict_morning_fpg(db, user_id=1):
             record_type = row[0] or ''
             timestamp = row[2] or ''
             if row[3] is not None:
-                try:
+                with contextlib.suppress(ValueError, TypeError):
                     total_carbs += float(row[3])
-                except (ValueError, TypeError):
-                    pass
             if row[4] is not None:
                 gi_values.append(row[4])
             hour = int(timestamp.split(' ')[1].split(':')[0]) if timestamp and ' ' in timestamp else 0
@@ -157,10 +157,8 @@ def predict_morning_fpg(db, user_id=1):
         for meal, config in default_meals.items():
             if not locals()[f'has_{meal}'] and config.get('enabled', True):
                 default_cal += config.get('calories', 300 if meal == 'breakfast' else 500)
-                try:
+                with contextlib.suppress(ValueError, TypeError):
                     total_carbs += float(config.get('carbs_grams', 45 if meal == 'breakfast' else 75))
-                except (ValueError, TypeError):
-                    pass
                 if config.get('gi_value'):
                     gi_values.append(config.get('gi_value'))
         cal_in += default_cal
@@ -402,7 +400,7 @@ def predict_remaining_glucose_slots(db, user_id=1, target_date=None, force_updat
             WHERE user_id = ? AND DATE(timestamp) = ? AND value > 0
             AND is_predicted = 0 AND systolic_pressure IS NULL""",
             (user_id, target_date))
-        measured_types = set(row[0] for row in c.fetchall())
+        measured_types = {row[0] for row in c.fetchall()}
 
         missing_slots = []
         for slot in all_slots:

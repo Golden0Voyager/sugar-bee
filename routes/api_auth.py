@@ -1,12 +1,13 @@
-from flask import Blueprint, request, session, redirect, url_for, render_template
 import re
+
+from flask import Blueprint, redirect, render_template, request, session, url_for
 from werkzeug.security import check_password_hash, generate_password_hash
 
-from user_manager import UserManager
 from core.config import DB_NAME
-from utils.db import get_db
-from utils.responses import api_success, api_error
+from user_manager import UserManager
 from utils.auth import login_required
+from utils.db import get_db
+from utils.responses import api_error, api_success
 
 bp_auth = Blueprint('auth', __name__)
 user_manager = UserManager(DB_NAME)
@@ -62,11 +63,11 @@ def set_password():
     password = request.form.get('password')
     if not username or not password:
         return render_template('login.html', error='参数错误', set_password_mode=False)
-    
+
     user = user_manager.get_user_by_username(username)
     if not user:
         return render_template('login.html', error='用户不存在', set_password_mode=False)
-    
+
     pw_hash = generate_password_hash(password)
     db = get_db()
     db.execute("UPDATE app_users SET password_hash = ? WHERE id = ?", (pw_hash, user['id']))

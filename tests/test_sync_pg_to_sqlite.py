@@ -1,12 +1,8 @@
 """测试 PostgreSQL → SQLite 同步脚本。"""
 from __future__ import annotations
 
-import json
-import os
 import sqlite3
-import tempfile
-from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 

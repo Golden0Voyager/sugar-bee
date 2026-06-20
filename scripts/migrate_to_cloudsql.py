@@ -8,18 +8,16 @@ Requires:
     - SUGAR_BEE_DATABASE_URL env var or --url argument
 """
 
-import os
-import sys
-import subprocess
-import time
-import signal
-import atexit
 import argparse
+import atexit
+import os
+import subprocess
+import sys
+import time
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, BASE_DIR)
 
-from core.config import DB_NAME
 
 TABLES_ORDER = [
     'app_users',
@@ -80,7 +78,7 @@ def get_pg_conn(host, port, user, password, dbname):
 
 
 def parse_db_url(url):
-    from urllib.parse import urlparse, parse_qs
+    from urllib.parse import parse_qs, urlparse
     # Handle postgresql+psycopg2://user:pass@/dbname?host=/cloudsql/...
     clean = url.replace('+psycopg2', '').replace('+psycopg', '')
     parsed = urlparse(clean)

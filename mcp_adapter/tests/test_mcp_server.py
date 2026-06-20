@@ -12,10 +12,9 @@ import datetime
 import os
 import re
 import tempfile
-from unittest.mock import MagicMock, patch, AsyncMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 
 # ============================================================
 # Fixtures
@@ -68,7 +67,7 @@ def mcp_db():
 @pytest.fixture
 def patch_db(mcp_db):
     """monkeypatch mcp_adapter.server.DB_PATH 指向临时数据库路径，返回连接供直接操作。
-    
+
     _db() 每次调用创建新连接，避免 _user_label 关闭连接后影响后续调用。
     """
     path, conn = mcp_db

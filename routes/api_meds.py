@@ -1,11 +1,12 @@
-from flask import Blueprint, request, jsonify
 import traceback
 
-from user_manager import UserManager
+from flask import Blueprint, jsonify, request
+
 from core.config import DB_NAME
-from utils.responses import api_success, api_error
+from user_manager import UserManager
 from utils.auth import login_required
 from utils.db import get_db
+from utils.responses import api_error, api_success
 
 user_manager = UserManager(DB_NAME)
 bp_meds = Blueprint('meds', __name__)

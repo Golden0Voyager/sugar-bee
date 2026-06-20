@@ -12,7 +12,6 @@ import json
 import sqlite3
 from unittest.mock import patch
 
-
 from services.prediction_service import (
     link_prediction_to_real_record,
     predict_morning_fpg,

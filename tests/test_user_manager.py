@@ -1,10 +1,12 @@
 """
 UserManager 用户管理模块测试 - 自建独立数据库避免锁冲突
 """
-import pytest
 import os
-import tempfile
 import sqlite3
+import tempfile
+
+import pytest
+
 from user_manager import UserManager
 
 
@@ -319,6 +321,7 @@ class TestUserManagerPostgres:
 
     def test_db_conn_pg_path(self, monkeypatch):
         from unittest.mock import MagicMock
+
         import core.config as config
         monkeypatch.setattr(config, 'DB_TYPE', 'postgres')
         from user_manager import _db_conn

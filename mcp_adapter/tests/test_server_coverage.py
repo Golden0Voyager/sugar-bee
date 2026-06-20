@@ -9,11 +9,10 @@ import datetime
 import os
 import sqlite3
 import tempfile
-from unittest.mock import MagicMock, patch, AsyncMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
-
 
 # ============================================================
 # Fixtures

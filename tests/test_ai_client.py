@@ -1,6 +1,7 @@
 """ai_client.py 测试 — mock OpenAI/Gemini 测试降级链、_try_provider、call_ai"""
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock
 
 
 class TestAiClientConfig:
@@ -8,16 +9,16 @@ class TestAiClientConfig:
 
     def test_ai_available_detection(self):
         # ai_client already imported at module level; test the concept
-        from ai_client import AI_AVAILABLE, MODELSCOPE_API_KEY, SENSENOVA_API_KEY, VOLC_API_KEY, GEMINI_API_KEY
+        from ai_client import AI_AVAILABLE, GEMINI_API_KEY, MODELSCOPE_API_KEY, SENSENOVA_API_KEY, VOLC_API_KEY
         expected = bool(MODELSCOPE_API_KEY or SENSENOVA_API_KEY or VOLC_API_KEY or GEMINI_API_KEY)
-        assert AI_AVAILABLE == expected
+        assert expected == AI_AVAILABLE
 
     def test_chat_available(self):
         from ai_client import CHAT_AVAILABLE, SENSENOVA_API_KEY
-        assert CHAT_AVAILABLE == bool(SENSENOVA_API_KEY)
+        assert bool(SENSENOVA_API_KEY) == CHAT_AVAILABLE
 
     def test_chat_model_configured(self):
-        from ai_client import SENSENOVA_CHAT_MODEL, SENSENOVA_CHAT_BASE_URL
+        from ai_client import SENSENOVA_CHAT_BASE_URL, SENSENOVA_CHAT_MODEL
         assert SENSENOVA_CHAT_MODEL == "deepseek-v4-flash"
         assert "sensenova.cn" in SENSENOVA_CHAT_BASE_URL
 
@@ -395,7 +396,6 @@ ai_client.py 最后覆盖冲刺 (87% → 100%)
   L174-180: Gemini failure + all-failed raise
 """
 from unittest.mock import patch
-
 
 # ============================================================
 # _call_gemini_model (L41-44, L54-58)

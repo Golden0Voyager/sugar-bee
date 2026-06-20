@@ -2,13 +2,21 @@
 SQLAlchemy 模型定义测试
 """
 import pytest
-from models import (
-    Base, Record, MedicationPlan, DosageHistory,
-    MedicationLog, HealthAnalysis, AppUser, UserProfile,
-    ChatMessage, UserAuthProvider
-)
 from sqlalchemy import create_engine, inspect
 from sqlalchemy.orm import Session
+
+from models import (
+    AppUser,
+    Base,
+    ChatMessage,
+    DosageHistory,
+    HealthAnalysis,
+    MedicationLog,
+    MedicationPlan,
+    Record,
+    UserAuthProvider,
+    UserProfile,
+)
 
 
 @pytest.fixture

@@ -7,11 +7,11 @@
 隔离方案：使用 conftest.py 中的 isolate_db fixture（通过 pytestmark 全局引入），
 每个测试前将 core.config.DB_NAME 指向独立临时 SQLite 文件。
 """
-import io
 import datetime
-import pytest
+import io
 from unittest.mock import patch
 
+import pytest
 
 # 所有测试自动使用独立临时数据库
 pytestmark = pytest.mark.usefixtures("isolate_db")

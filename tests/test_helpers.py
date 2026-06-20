@@ -3,19 +3,18 @@ import datetime
 from unittest.mock import MagicMock
 
 from tests.helpers import (
-    mock_health_settings,
-    mock_day_settings,
-    mock_dashboard_service_settings,
-    make_mock_db,
-    make_mock_cursor,
     MED_BASE,
-    med,
     freeze_date,
-    make_minimal_cursor,
-    make_dashboard_stats_fetchone,
     make_dashboard_stats_fetchall,
+    make_dashboard_stats_fetchone,
+    make_minimal_cursor,
+    make_mock_cursor,
+    make_mock_db,
+    med,
+    mock_dashboard_service_settings,
+    mock_day_settings,
+    mock_health_settings,
 )
-
 
 # ============================================================
 # mock_health_settings — 只设 return_value，不调用方法

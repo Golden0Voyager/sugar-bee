@@ -6,10 +6,7 @@ Sugar Bee - SQLAlchemy 模型定义
 未来可逐步迁移到 SQLAlchemy ORM。
 """
 
-from sqlalchemy import (
-    Column, Integer, Text, DateTime, Date, Boolean, Float,
-    ForeignKey, Index, MetaData
-)
+from sqlalchemy import Boolean, Column, Date, DateTime, Float, ForeignKey, Index, Integer, MetaData, Text
 from sqlalchemy.orm import declarative_base
 from sqlalchemy.sql import func
 

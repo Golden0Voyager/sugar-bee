@@ -1,5 +1,6 @@
 import datetime
 import json
+
 import settings
 from core.config import DB_NAME
 from user_manager import UserManager
@@ -172,7 +173,7 @@ def get_dashboard_stats(db, user_id):
     recent_glucose = c.fetchall()
     total_glucose = len(recent_glucose)
     ok_count = sum(1 for row in recent_glucose if settings.check_glucose_compliance(row[0], row[1] or '')['is_compliant'])
-    compliance = int((ok_count / total_glucose * 100)) if total_glucose > 0 else 0
+    compliance = int(ok_count / total_glucose * 100) if total_glucose > 0 else 0
 
     # === 7. 今日概览 ===
     today_schedule = [
@@ -214,19 +215,7 @@ def get_dashboard_stats(db, user_id):
             is_generic_post = '餐后' in rt and not ('早餐后' in rt or '午餐后' in rt or '晚餐后' in rt)
             is_generic_pre = '餐前' in rt and not ('早餐前' in rt or '午餐前' in rt or '晚餐前' in rt or '晚饭前' in rt)
 
-            if slot['key'] == 'fasting' and '空腹' in rt:
-                matched = True
-            elif slot['key'] == 'post_exercise' and '运动后' in rt:
-                matched = True
-            elif slot['key'] == 'post_breakfast' and ('早餐后' in rt or (is_generic_post and 10 <= rh < 13)):
-                matched = True
-            elif slot['key'] == 'post_lunch' and ('午餐后' in rt or (is_generic_post and 13 <= rh < 17)):
-                matched = True
-            elif slot['key'] == 'pre_dinner' and ('晚饭前' in rt or '晚餐前' in rt or (is_generic_pre and 16 <= rh < 19)):
-                matched = True
-            elif slot['key'] == 'post_dinner' and ('晚餐后' in rt or (is_generic_post and 19 <= rh < 23)):
-                matched = True
-            elif slot['key'] == 'bedtime' and '睡前' in rt:
+            if slot['key'] == 'fasting' and '空腹' in rt or slot['key'] == 'post_exercise' and '运动后' in rt or slot['key'] == 'post_breakfast' and ('早餐后' in rt or (is_generic_post and 10 <= rh < 13)) or slot['key'] == 'post_lunch' and ('午餐后' in rt or (is_generic_post and 13 <= rh < 17)) or slot['key'] == 'pre_dinner' and ('晚饭前' in rt or '晚餐前' in rt or (is_generic_pre and 16 <= rh < 19)) or slot['key'] == 'post_dinner' and ('晚餐后' in rt or (is_generic_post and 19 <= rh < 23)) or slot['key'] == 'bedtime' and '睡前' in rt:
                 matched = True
 
             if matched:

@@ -1,21 +1,22 @@
-from flask import Blueprint, request, jsonify
 import datetime
 import re
 import traceback
 
+from flask import Blueprint, jsonify, request
+
 import settings
-from user_manager import UserManager
 from core.config import DB_NAME
-from utils.responses import api_success, api_error
-from utils.auth import login_required
-from utils.db import get_db
-from utils.sql_dialect import interval_sql, date_sql
 from services import (
+    backfill_post_exercise_predictions,
     predict_morning_fpg,
     predict_post_exercise_glucose,
     predict_remaining_glucose_slots,
-    backfill_post_exercise_predictions
 )
+from user_manager import UserManager
+from utils.auth import login_required
+from utils.db import get_db
+from utils.responses import api_error, api_success
+from utils.sql_dialect import interval_sql
 
 user_manager = UserManager(DB_NAME)
 bp_prediction = Blueprint('prediction', __name__)
@@ -102,7 +103,7 @@ def prediction_comparison():
         days = request.args.get('days', 7, type=int)
         glucose_type = request.args.get('type', None)
 
-        query = """
+        query = f"""
             SELECT
                 p.type,
                 DATE(p.timestamp) as date,
@@ -114,8 +115,8 @@ def prediction_comparison():
             WHERE p.user_id = ?
             AND p.is_predicted = 1
             AND p.verified_by_real_id IS NOT NULL
-            AND p.timestamp > {}
-        """.format(interval_sql(days))
+            AND p.timestamp > {interval_sql(days)}
+        """
         params = [current_user_id]
         if glucose_type:
             query += " AND p.type = ?"
@@ -156,7 +157,7 @@ def prediction_accuracy():
         current_user_id = user_manager.get_current_user_id()
         days = request.args.get('days', 30, type=int)
 
-        c.execute("""
+        c.execute(f"""
             SELECT
                 COUNT(*) as total,
                 AVG(prediction_error) as avg_error,
@@ -167,8 +168,8 @@ def prediction_accuracy():
             WHERE user_id = ?
             AND is_predicted = 1
             AND verified_by_real_id IS NOT NULL
-            AND timestamp > {}
-        """.format(interval_sql(days)), (current_user_id,))
+            AND timestamp > {interval_sql(days)}
+        """, (current_user_id,))
 
         row = c.fetchone()
 
@@ -371,7 +372,7 @@ def prediction_status():
             slots.append(slot_data)
 
         # 近7天预测准确性统计
-        c.execute("""
+        c.execute(f"""
             SELECT
                 type,
                 COUNT(*) as total,
@@ -381,9 +382,9 @@ def prediction_status():
             WHERE user_id = ?
             AND is_predicted = 1
             AND verified_by_real_id IS NOT NULL
-            AND timestamp > {}
+            AND timestamp > {interval_sql(7)}
             GROUP BY type
-        """.format(interval_sql(7)), (current_user_id,))
+        """, (current_user_id,))
 
         accuracy_by_type = {}
         for row in c.fetchall():

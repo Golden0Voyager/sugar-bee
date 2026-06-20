@@ -12,13 +12,15 @@
 自动检测可用的 API Key，按优先级依次尝试。
 """
 
-import os
 import base64
+import os
+
 import httpx
 from dotenv import load_dotenv
-import settings
 from google import genai
 from google.genai import types
+
+import settings
 
 load_dotenv()
 
@@ -90,7 +92,7 @@ def _call_openai_compatible(api_key, base_url, model, prompt, images_data=None, 
     else:
         messages = [{"role": "user", "content": prompt}]
 
-    kwargs = dict(model=model, messages=messages, temperature=0.7)
+    kwargs = {"model": model, "messages": messages, "temperature": 0.7}
     if extra_body:
         kwargs['extra_body'] = extra_body
     response = client.chat.completions.create(**kwargs)
@@ -214,7 +216,7 @@ if CHAT_AVAILABLE:
 
 def _stream_chat(client, model, messages, extra_body=None):
     """通用 OpenAI 兼容流式聊天调用"""
-    kwargs = dict(model=model, messages=messages, stream=True)
+    kwargs = {"model": model, "messages": messages, "stream": True}
     if extra_body:
         kwargs["extra_body"] = extra_body
     response = client.chat.completions.create(**kwargs)

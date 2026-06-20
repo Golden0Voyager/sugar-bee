@@ -83,7 +83,7 @@ def _get_client():
             raise RuntimeError(
                 f"Garmin token 失效或登录失败（{e}）。请重新跑：\n"
                 f"  uv run python3 garmin_login.py"
-            )
+            ) from e
 
 
 def _map_activity(act, user_id):
@@ -142,9 +142,9 @@ def sync_activities(user_id, days=30):
         try:
             activities = client.get_activities_by_date(start, end) or []
         except GarminConnectTooManyRequestsError:
-            raise RuntimeError("Garmin 请求过于频繁，稍后再试")
+            raise RuntimeError("Garmin 请求过于频繁，稍后再试") from None
         except GarminConnectConnectionError as e:
-            raise RuntimeError(f"Garmin 连接错误：{e}")
+            raise RuntimeError(f"Garmin 连接错误：{e}") from e
 
         conn = get_raw_conn()
         c = conn.cursor()

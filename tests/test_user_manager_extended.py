@@ -1,5 +1,5 @@
 """user_manager.py 扩展测试 — get_user_config, provider 绑定, 密码管理, update_user_profile_partial"""
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 
 class TestGetUserConfigExtended:
@@ -276,8 +276,9 @@ class TestPasswordManagement:
             assert um.has_password(1) is False
 
     def test_authenticate_success(self):
-        from user_manager import UserManager
         from werkzeug.security import generate_password_hash
+
+        from user_manager import UserManager
         um = UserManager(':memory:')
         pw_hash = generate_password_hash('correct')
 
@@ -292,8 +293,9 @@ class TestPasswordManagement:
             assert result == 1
 
     def test_authenticate_wrong_password(self):
-        from user_manager import UserManager
         from werkzeug.security import generate_password_hash
+
+        from user_manager import UserManager
         um = UserManager(':memory:')
         pw_hash = generate_password_hash('correct')
 

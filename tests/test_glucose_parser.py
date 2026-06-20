@@ -2,6 +2,7 @@
 glucose_parser.py 非 AI 函数测试
 """
 import datetime
+
 import glucose_parser
 
 
@@ -292,7 +293,7 @@ class TestEnsureWeightCaptured:
 """glucose_parser 扩展测试 — _postprocess_records, _ensure_weight_captured, _infer_meal_type"""
 
 
-class TestPostprocessRecords:
+class TestPostprocessRecordsExtended:
     """_postprocess_records() 分类修正与字段修正测试"""
 
     def test_misclassified_exercise_to_meal(self):
@@ -389,7 +390,7 @@ class TestPostprocessRecords:
         assert result == []
 
 
-class TestEnsureWeightCaptured:
+class TestEnsureWeightCapturedExtended:
     """_ensure_weight_captured() 体重兜底检测测试"""
 
     def test_weight_already_present_skips(self):
@@ -441,7 +442,7 @@ class TestEnsureWeightCaptured:
         assert result[1]['weight'] == 74.5
 
 
-class TestInferMealType:
+class TestInferMealTypeExtended:
     """_infer_meal_type() 时间推断测试"""
 
     def test_breakfast(self):

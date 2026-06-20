@@ -52,7 +52,15 @@ line-length = 120
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "N", "UP", "B", "C4", "SIM"]
-ignore = ["E501", "E402", "E702"]
+# SIM102/103/108/117：全项目统一的风格偏好，全局忽略
+ignore = ["E501", "E402", "E702", "SIM102", "SIM103", "SIM108", "SIM117"]
+
+[tool.ruff.lint.per-file-ignores]
+# 测试文件：放宽命名与断言风格约束
+"tests/**" = ["B011", "B017", "N801", "N802", "N803", "N806", "E741"]
+"mcp_adapter/tests/**" = ["B011", "B017", "N801", "N802", "N803", "N806", "E741"]
+# 数据库迁移：ALTER TABLE 幂等 try/except/pass 是既定模式
+"utils/db.py" = ["SIM105"]
 
 [tool.coverage.run]
 source = ["."]
@@ -84,3 +92,6 @@ testpaths = ["tests", "mcp_adapter/tests"]
 
 [tool.mypy]
 ignore_missing_imports = true
+
+[tool.bandit]
+skips = ["B101", "B311", "B404", "B603"]

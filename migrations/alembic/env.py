@@ -2,10 +2,8 @@ import os
 import sys
 from logging.config import fileConfig
 
-from sqlalchemy import create_engine
-from sqlalchemy import pool
-
 from alembic import context
+from sqlalchemy import create_engine, pool
 
 # 将项目根目录加入路径，以便导入模型
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
@@ -20,6 +18,7 @@ if config.config_file_name is not None:
 
 # 导入模型元数据
 from models import Base
+
 target_metadata = Base.metadata
 
 # 从环境变量读取数据库 URL（支持 SQLite / PostgreSQL）
@@ -49,7 +48,7 @@ def run_migrations_offline() -> None:
 def run_migrations_online() -> None:
     """Run migrations in 'online' mode."""
     url = get_database_url()
-    
+
     # SQLite 不需要连接池
     if url.startswith('sqlite'):
         connectable = create_engine(url, poolclass=pool.NullPool)

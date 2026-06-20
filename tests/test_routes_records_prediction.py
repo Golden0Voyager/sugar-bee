@@ -8,8 +8,7 @@
                    460-461,479,481-483,497-498,510-511,538-539,552-553,572-573,589,598-599
 """
 import io
-from unittest.mock import patch, MagicMock
-
+from unittest.mock import MagicMock, patch
 
 # ============================================================
 # api_prediction.py — 特有测试
@@ -395,7 +394,7 @@ class TestRecordsExceptions:
         with patch('routes.api_records.get_db', side_effect=Exception("db error")), \
              patch('routes.api_records.pd') as mock_pd:
             mock_pd.read_csv.return_value = []
-            csv_data = 'value,type\n6.5,空腹'.encode('utf-8')
+            csv_data = 'value,type\n6.5,空腹'.encode()
             data = {'file': (io.BytesIO(csv_data), 'test.csv')}
             result = client_authenticated.post('/import', data=data,
                                                content_type='multipart/form-data')
@@ -403,7 +402,7 @@ class TestRecordsExceptions:
 
     def test_preview_import_exception(self, client_authenticated):
         with patch('routes.api_records.pd.read_csv', side_effect=Exception("parse error")):
-            csv_data = 'value,type\n6.5,空腹'.encode('utf-8')
+            csv_data = 'value,type\n6.5,空腹'.encode()
             data = {'file': (io.BytesIO(csv_data), 'test.csv')}
             result = client_authenticated.post('/preview_import', data=data,
                                                content_type='multipart/form-data')
