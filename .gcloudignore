@@ -1,0 +1,58 @@
+# Cloud Build 源码上传忽略清单
+# 注意：一旦此文件存在，gcloud 只读它、不再回退 .gitignore，
+# 因此必须同时覆盖「隐私/凭据」与「构建无关的体积」，但保留构建必需文件。
+
+# 版本控制
+.git/
+
+# Python 缓存 / 虚拟环境
+__pycache__/
+*.py[cod]
+*.so
+.venv/
+venv/
+env/
+.pytest_cache/
+.coverage
+htmlcov/
+.ruff_cache/
+.mypy_cache/
+
+# 数据库（真实健康数据，绝不上传）
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# 凭据 / 个人隐私数据
+.env
+.env.*
+user_config.json
+user_config.json.legacy.*
+.garmin_tokens/
+garmin_cookies.json
+secrets.json
+cookies.json
+
+# 运行时 / 上传数据
+static/avatars/
+user_data/
+backups/
+*.log
+logs/
+.pg_sync_state.json
+
+# AI 工具配置 / Skill 产物
+.claude/
+.gemini/
+.understand-anything/
+.codegraph/
+
+# 测试 / 文档（构建镜像不需要）
+tests/
+docs/
+*.md
+
+# OS
+.DS_Store
+Thumbs.db
