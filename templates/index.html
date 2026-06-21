@@ -1872,18 +1872,26 @@
                                         <div class="fw-medium">Apple Health 同步</div>
                                         <div class="text-muted small">绑定 iOS 设备后通过快捷指令同步健康数据</div>
                                         <div id="bind-code-display" class="d-none mt-2">
-                                            <div class="alert alert-info py-2 px-3 mb-0">
-                                                <strong>绑定码：</strong>
-                                                <span id="bind-code" class="fs-5 fw-bold font-monospace"></span>
-                                                <span class="text-muted ms-2 small">（30 分钟内有效）</span>
-                                                <button class="btn btn-sm btn-outline-secondary ms-2" onclick="copyBindCode()">
-                                                    <i class="bi bi-clipboard"></i> 复制
-                                                </button>
+                                            <div class="alert alert-info py-2 px-3 mb-0 d-flex align-items-center flex-wrap gap-2">
+                                                <div>
+                                                    <strong>绑定码：</strong>
+                                                    <span id="bind-code" class="fs-5 fw-bold font-monospace"></span>
+                                                    <span class="text-muted ms-2 small">（30 分钟内有效）</span>
+                                                </div>
+                                                <div class="ms-auto">
+                                                    <button class="btn btn-sm btn-outline-secondary" onclick="copyBindCode()">
+                                                        <i class="bi bi-clipboard"></i> 复制
+                                                    </button>
+                                                    <a class="btn btn-sm btn-outline-primary ms-1"
+                                                       href="/api/v1/health-sync/download-shortcut" download="SugarBee.sync.shortcut">
+                                                        <i class="bi bi-download"></i> 下载捷径
+                                                    </a>
+                                                </div>
                                             </div>
                                             <p class="text-muted small mt-2 mb-0">
                                                 1. 复制绑定码<br>
-                                                2. 在 iPhone 上运行「Sugar Bee 同步」捷径<br>
-                                                3. 捷径将自动完成绑定并同步数据
+                                                2. 点击「下载捷径」，在 iPhone 上导入「Sugar Bee 绑定」捷径<br>
+                                                3. 运行捷径，自动完成设备绑定
                                             </p>
                                         </div>
                                     </div>
