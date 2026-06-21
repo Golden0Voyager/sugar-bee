@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 import contextlib
+import datetime
 import json
 import os
 import sqlite3
@@ -51,6 +52,12 @@ def _normalize_value(value: Any) -> Any:
         return int(value)
     if isinstance(value, (list, dict)):
         return json.dumps(value, ensure_ascii=False)
+    # datetime/date 用固定格式，避免 str() 带微秒或时区后缀，与 App 的
+    # '%Y-%m-%d %H:%M:%S' 存储格式不一致（全项目统一北京时间 naive 墙钟）。
+    if isinstance(value, datetime.datetime):
+        return value.strftime('%Y-%m-%d %H:%M:%S')
+    if isinstance(value, datetime.date):
+        return value.strftime('%Y-%m-%d')
     return str(value)
 
 
@@ -191,12 +198,14 @@ def main() -> int:
                     count = sync_table(
                         pg_cur, sqlite_conn, table, pk_col, cursor_col, full_sync, state
                     )
+                    # 单表独立提交：成功才落盘
+                    sqlite_conn.commit()
                     total += count
                 except Exception as e:  # noqa: BLE001
-                    print(f"[{table}] 同步失败: {e}")
+                    # 单表失败回滚，避免全量表（先 DELETE 再插）被清空，且不影响其他表
+                    sqlite_conn.rollback()
+                    print(f"[{table}] 同步失败，已回滚: {e}")
                     # 继续同步其他表
-
-        sqlite_conn.commit()
     finally:
         pg_conn.close()
         sqlite_conn.close()

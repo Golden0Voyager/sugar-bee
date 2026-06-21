@@ -256,8 +256,16 @@ class TestSyncPgToSqlite:
             sync_module.get_pg_url()
 
     def test_normalize_value(self):
+        import datetime
+
         assert sync_module._normalize_value(True) == 1
         assert sync_module._normalize_value(False) == 0
         assert sync_module._normalize_value([1, 2]) == "[1, 2]"
         assert sync_module._normalize_value({"a": 1}) == '{"a": 1}'
         assert sync_module._normalize_value(None) is None
+        # datetime/date 固定为 App 的存储格式，丢弃微秒/时区后缀（#2 加固）
+        assert (
+            sync_module._normalize_value(datetime.datetime(2026, 6, 20, 9, 5, 0, 123456))
+            == "2026-06-20 09:05:00"
+        )
+        assert sync_module._normalize_value(datetime.date(2026, 6, 20)) == "2026-06-20"
