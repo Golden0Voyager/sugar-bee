@@ -124,6 +124,7 @@ class UserManager:
             c.execute("""
                 INSERT INTO app_users (username, display_name, is_active, password_hash)
                 VALUES (?, ?, 1, ?)
+                RETURNING id
             """, (username, display_name, password_hash))
             user_id = c.lastrowid
 

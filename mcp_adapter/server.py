@@ -277,7 +277,8 @@ def _insert_record(conn: sqlite3.Connection, record: dict) -> int:
             distance, duration, heart_rate, max_heart_rate, systolic_pressure, diastolic_pressure,
             pulse_rate, weight, bmi, medication_name, steps, pace, max_pace, cadence, vo2max,
             spo2, carbs_grams, gi_value)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           RETURNING id""",
         (
             user_id, value, unit, rtype, notes, timestamp,
             record.get("calories", 0), record.get("diet_analysis", ""),

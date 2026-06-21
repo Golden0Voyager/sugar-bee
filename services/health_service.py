@@ -165,6 +165,7 @@ def generate_health_analysis(db, user_id=1, is_auto=False, days=7):
             (analysis_date, health_score, glucose_summary, blood_pressure_summary, exercise_summary,
              medication_summary, recommendations, full_analysis, is_auto_generated, user_id, days)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            RETURNING id
         """, (today_str, score, glucose_summary, bp_summary, exercise_summary, med_summary, "", ai_response, 1 if is_auto else 0, user_id, days))
         db.commit()
 
