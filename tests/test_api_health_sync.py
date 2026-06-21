@@ -451,3 +451,62 @@ class TestHealthSyncCoverage:
             mock_g.side_effect = Exception("DB error")
             result = client_authenticated.post('/api/v1/health-sync/unbind')
             assert result.status_code == 500
+
+
+class TestHealthSyncDownloadShortcut:
+    """下载 iOS 捷径文件测试"""
+
+    def test_download_shortcut_requires_auth(self, client):
+        """未登录返回 401"""
+        result = client.get(
+            '/api/v1/health-sync/download-shortcut',
+            headers={'X-Requested-With': 'XMLHttpRequest'},
+        )
+        assert result.status_code == 401
+
+    def test_download_shortcut_success(self, client_authenticated):
+        """登录后下载返回合法 .shortcut 文件(binary plist)"""
+        result = client_authenticated.get(
+            '/api/v1/health-sync/download-shortcut',
+            headers={'X-Requested-With': 'XMLHttpRequest'},
+        )
+        assert result.status_code == 200
+        assert result.content_type == 'application/octet-stream'
+        assert 'SugarBee.sync.shortcut' in result.headers.get('Content-Disposition', '')
+
+        # 验证返回的是合法 plist 且包含 WFWorkflowActions
+        import plistlib
+        data = plistlib.loads(result.data)
+        assert 'WFWorkflow' in data
+        assert 'WFWorkflowActions' in data['WFWorkflow']
+        assert len(data['WFWorkflow']['WFWorkflowActions']) > 0
+        assert data['WFWorkflow']['WFWorkflowName'] == 'Sugar Bee 绑定'
+
+    def test_download_shortcut_uses_request_host(self, client_authenticated):
+        """生成的捷径 URL 使用请求 host"""
+        result = client_authenticated.get(
+            '/api/v1/health-sync/download-shortcut',
+            headers={'X-Requested-With': 'XMLHttpRequest'},
+        )
+        assert result.status_code == 200
+        import plistlib
+        data = plistlib.loads(result.data)
+        actions = data['WFWorkflow']['WFWorkflowActions']
+        # 找到 POST 动作并检查 URL
+        urls = [
+            a['WFWorkflowActionParameters'].get('WFURL', {}).get('Value', {}).get('string', '')
+            for a in actions
+            if a.get('WFWorkflowActionIdentifier') == 'is.workflow.actions.geturl'
+        ]
+        assert any('http://localhost/api/v1/health-sync/bind_from_shortcut' in u for u in urls)
+
+    def test_download_shortcut_generation_error(self, client_authenticated):
+        """生成异常返回 500"""
+        with patch('routes.api_health_sync.generate_binding_shortcut') as mock_gen:
+            mock_gen.side_effect = Exception("plist error")
+            result = client_authenticated.get(
+                '/api/v1/health-sync/download-shortcut',
+                headers={'X-Requested-With': 'XMLHttpRequest'},
+            )
+            assert result.status_code == 500
+            assert '捷径文件生成失败' in result.json['message']
