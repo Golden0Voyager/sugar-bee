@@ -380,8 +380,85 @@ class TestGarminSyncActivities:
         )
         mock_get_client.return_value = mock_client
 
-        with pytest.raises(RuntimeError, match='Garmin 连接错误'):
+        with pytest.raises(RuntimeError, match='Garmin 连接超时'):
             sync_activities(user_id=1, days=30)
+
+    @patch('services.garmin_service._get_client')
+    @patch('services.garmin_service.get_raw_conn')
+    @patch('services.garmin_service.time.sleep')
+    def test_connection_error_retries_then_succeeds(self, mock_sleep, mock_get_raw_conn, mock_get_client):
+        """网络瞬态错误应重试 3 次后成功"""
+        from services.garmin_service import (
+            sync_activities,
+            GarminConnectConnectionError,
+        )
+        mock_get_raw_conn.return_value = MagicMock()
+        mock_client = MagicMock()
+        mock_client.get_activities_by_date.side_effect = [
+            GarminConnectConnectionError("timeout 1"),
+            GarminConnectConnectionError("timeout 2"),
+            [],
+        ]
+        mock_get_client.return_value = mock_client
+
+        result = sync_activities(user_id=1, days=30)
+        assert result == {'inserted': 0, 'skipped': 0, 'total': 0}
+        assert mock_client.get_activities_by_date.call_count == 3
+        assert mock_sleep.call_count == 2
+
+    @patch('services.garmin_service._get_client')
+    @patch('services.garmin_service.get_raw_conn')
+    @patch('services.garmin_service.time.sleep')
+    def test_connection_error_retries_exhausted(self, mock_sleep, mock_get_raw_conn, mock_get_client):
+        """网络瞬态错误重试耗尽后抛出 RuntimeError"""
+        from services.garmin_service import (
+            sync_activities,
+            GarminConnectConnectionError,
+        )
+        mock_get_raw_conn.return_value = MagicMock()
+        mock_client = MagicMock()
+        mock_client.get_activities_by_date.side_effect = GarminConnectConnectionError("always fail")
+        mock_get_client.return_value = mock_client
+
+        with pytest.raises(RuntimeError, match='Garmin 连接超时'):
+            sync_activities(user_id=1, days=30)
+        assert mock_client.get_activities_by_date.call_count == 3
+        assert mock_sleep.call_count == 2
+
+    @patch('services.garmin_service.os.path.isfile')
+    @patch('services.garmin_service.sync_file_from_gcs')
+    @patch('services.garmin_service.Garmin')
+    def test_get_client_restores_token_from_gcs(self, mock_garmin_cls, mock_sync_gcs, mock_isfile):
+        """本地 token 缺失时应尝试从 GCS 恢复"""
+        from services.garmin_service import _get_client, TOKEN_DIR
+        token_file = os.path.join(TOKEN_DIR, 'garmin_tokens.json')
+
+        calls = []
+
+        def isfile_side_effect(path):
+            calls.append(path)
+            # 调用顺序: _get_client 检查(1) -> _ensure_token_from_gcs 检查(2) -> 恢复后检查(3)
+            return len(calls) >= 3 and path == token_file
+
+        mock_isfile.side_effect = isfile_side_effect
+        mock_sync_gcs.return_value = None
+        mock_client = MagicMock()
+        mock_garmin_cls.return_value = mock_client
+        result = _get_client()
+        assert result == mock_client
+        mock_sync_gcs.assert_called_once_with('garmin_tokens/garmin_tokens.json', token_file)
+
+    @patch('services.garmin_service.os.path.isfile')
+    @patch('services.garmin_service.sync_file_from_gcs')
+    @patch('services.garmin_service.Garmin')
+    def test_get_client_raises_when_gcs_restore_fails(self, mock_garmin_cls, mock_sync_gcs, mock_isfile):
+        """GCS 恢复失败且本地无 token 时应抛出 RuntimeError"""
+        from services.garmin_service import _get_client
+        mock_isfile.return_value = False
+        mock_sync_gcs.return_value = None
+        with pytest.raises(RuntimeError, match='未找到 Garmin token'):
+            _get_client()
+        mock_garmin_cls.assert_not_called()
 
 
 # ============================================================

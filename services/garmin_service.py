@@ -8,6 +8,7 @@ Garmin Connect 同步服务
 """
 import contextlib
 import os
+import time
 import traceback
 from datetime import date, timedelta
 
@@ -18,10 +19,46 @@ from garminconnect import (
     GarminConnectTooManyRequestsError,
 )
 
+from services.gcs_sync import sync_file_from_gcs
 from utils.db import get_raw_conn, put_raw_conn
 
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TOKEN_DIR = os.environ.get('GARMIN_TOKEN_DIR', os.path.join(_PROJECT_ROOT, '.garmin_tokens'))
+TOKEN_GCS_PATH = 'garmin_tokens/garmin_tokens.json'
+
+
+def _ensure_token_from_gcs():
+    """本地 Garmin token 缺失时，尝试从 GCS 恢复。"""
+    token_file = os.path.join(TOKEN_DIR, 'garmin_tokens.json')
+    if os.path.isfile(token_file):
+        return True
+    try:
+        sync_file_from_gcs(TOKEN_GCS_PATH, token_file)
+    except Exception as e:
+        print(f'[Garmin] 从 GCS 恢复 token 失败: {e}')
+        return False
+    return os.path.isfile(token_file)
+
+
+def _patch_garmin_timeout():
+    """Monkey-patch garminconnect client 默认超时从 15s 到 30s。"""
+    try:
+        from garminconnect.client import Client
+        orig_run_request = Client._run_request
+
+        def _run_request_patched(self, method, path, **kwargs):
+            if 'timeout' not in kwargs:
+                kwargs['timeout'] = 30
+            return orig_run_request(self, method, path, **kwargs)
+
+        Client._run_request = _run_request_patched
+        print('[Garmin] API 默认超时已调整为 30s')
+    except Exception as e:
+        print(f'[Garmin] 调整 API 超时时失败: {e}')
+
+
+_patch_garmin_timeout()
+
 
 # Garmin typeKey → 蜜蜂控糖 type 字符串（中文）
 @contextlib.contextmanager
@@ -64,14 +101,15 @@ TYPE_MAP = {
 
 
 def _get_client():
-    """仅用持久化 token 登录。没有 token 时直接报错，不用密码兜底以免撞 Garmin 限流。
+    """用持久化 token 登录。没有 token 时先尝试从 GCS 恢复，再报错。
     首次登录请跑 `uv run python3 garmin_login.py` 生成 token。"""
     token_file = os.path.join(TOKEN_DIR, 'garmin_tokens.json')
     if not os.path.isfile(token_file):
-        raise RuntimeError(
-            f"未找到 Garmin token ({token_file})。请先执行：\n"
-            f"  uv run python3 garmin_login.py"
-        )
+        if not _ensure_token_from_gcs():
+            raise RuntimeError(
+                f"未找到 Garmin token ({token_file})。请先执行：\n"
+                f"  uv run python3 garmin_login.py"
+            )
     is_cn = os.environ.get('GARMIN_IS_CN', '').lower() in ('1', 'true', 'yes')
     email = os.environ.get('GARMIN_EMAIL')
     with _no_proxy():
@@ -84,6 +122,25 @@ def _get_client():
                 f"Garmin token 失效或登录失败（{e}）。请重新跑：\n"
                 f"  uv run python3 garmin_login.py"
             )
+
+
+def _get_activities_with_retry(client, start, end):
+    """调用 get_activities_by_date，对网络瞬态错误做指数退避重试。"""
+    delays = [2, 4, 8]
+    last_exc = None
+    for attempt, delay in enumerate(delays):
+        try:
+            return client.get_activities_by_date(start, end) or []
+        except GarminConnectTooManyRequestsError:
+            raise
+        except (GarminConnectConnectionError, TimeoutError, ConnectionError) as e:
+            last_exc = e
+            if attempt < len(delays) - 1:
+                print(f'[Garmin] API 瞬态错误，{delay}s 后重试: {e}')
+                time.sleep(delay)
+            else:
+                break
+    raise last_exc
 
 
 def _map_activity(act, user_id):
@@ -140,11 +197,11 @@ def sync_activities(user_id, days=30):
         start = (date.today() - timedelta(days=days)).isoformat()
 
         try:
-            activities = client.get_activities_by_date(start, end) or []
+            activities = _get_activities_with_retry(client, start, end)
         except GarminConnectTooManyRequestsError:
             raise RuntimeError("Garmin 请求过于频繁，稍后再试")
-        except GarminConnectConnectionError as e:
-            raise RuntimeError(f"Garmin 连接错误：{e}")
+        except (GarminConnectConnectionError, TimeoutError, ConnectionError) as e:
+            raise RuntimeError(f"Garmin 连接超时：{e}")
 
         conn = get_raw_conn()
         c = conn.cursor()
