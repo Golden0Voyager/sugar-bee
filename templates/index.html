@@ -8381,8 +8381,19 @@
     /**
      * 显示完整健康分析报告（模态框）
      */
-    function showFullAnalysis() {
-        const analysis = {{ stats.latest_analysis | tojson | safe }};
+    // 缓存最新完整报告数据，供 showFullAnalysis / exportToPDF 使用
+    let _latestFullAnalysis = null;
+    async function showFullAnalysis() {
+        let analysis;
+        try {
+            const resp = await fetch('/get_latest_analysis');
+            if (!resp.ok) throw new Error('无报告数据');
+            analysis = await resp.json();
+            _latestFullAnalysis = analysis; // 缓存供 exportToPDF 使用
+        } catch (e) {
+            alert('暂无完整报告');
+            return;
+        }
 
         if (!analysis || !analysis.full_analysis) {
             alert('暂无完整报告');
@@ -8504,9 +8515,8 @@
             }
 
             // 生成文件名
-            const analysis = {{ stats.latest_analysis | tojson | safe }};
-            const date = analysis.analysis_date.replace(/-/g, '');
-            const fileName = `健康分析报告_${date}.pdf`;
+            const _date = _latestFullAnalysis ? _latestFullAnalysis.analysis_date.replace(/-/g, '') : new Date().toISOString().slice(0,10).replace(/-/g, '');
+            const fileName = `健康分析报告_${_date}.pdf`;
 
             // 保存 PDF
             pdf.save(fileName);
