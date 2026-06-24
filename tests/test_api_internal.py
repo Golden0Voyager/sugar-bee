@@ -86,6 +86,57 @@ class TestInternalGarminSync:
         assert resp.status_code == 503
         assert resp.json['error_type'] == 'garmin_auth'
 
+    def test_missing_token_file_restores_from_gcs(self, client, internal_token, monkeypatch, tmp_path):
+        monkeypatch.setenv('GARMIN_EMAIL', 'test@example.com')
+        monkeypatch.setenv('GARMIN_USER_ID', '1')
+        monkeypatch.setenv('GARMIN_TOKEN_DIR', str(tmp_path))
+        restored = []
+
+        def fake_sync(gcs_path, local_path):
+            restored.append(gcs_path)
+            # Simulate successful GCS restore by creating the token file
+            with open(local_path, 'w') as f:
+                f.write('{}')
+
+        from routes import api_internal
+        monkeypatch.setattr(api_internal, 'sync_file_from_gcs', fake_sync)
+
+        from services import garmin_service
+        monkeypatch.setattr(
+            garmin_service,
+            'sync_activities',
+            lambda user_id, days: {'added': 2},
+        )
+
+        resp = client.post(
+            '/internal/garmin-sync',
+            headers={'Authorization': f'Bearer {internal_token}'},
+        )
+        assert resp.status_code == 200
+        assert resp.json['data']['synced'] is True
+        assert restored
+
+    def test_transient_error_returns_503_with_retry_after(self, client, internal_token, monkeypatch, tmp_path):
+        monkeypatch.setenv('GARMIN_EMAIL', 'test@example.com')
+        monkeypatch.setenv('GARMIN_USER_ID', '1')
+        monkeypatch.setenv('GARMIN_TOKEN_DIR', str(tmp_path))
+        token_file = tmp_path / 'garmin_tokens.json'
+        token_file.write_text('{}')
+
+        def raise_transient(*args, **kwargs):
+            raise RuntimeError("Garmin 连接超时：network timeout")
+
+        from services import garmin_service
+        monkeypatch.setattr(garmin_service, 'sync_activities', raise_transient)
+
+        resp = client.post(
+            '/internal/garmin-sync',
+            headers={'Authorization': f'Bearer {internal_token}'},
+        )
+        assert resp.status_code == 503
+        assert resp.json['error_type'] == 'garmin_transient'
+        assert resp.json['details'].get('retry_after') is not None
+
     def test_success(self, client, internal_token, monkeypatch, tmp_path):
         monkeypatch.setenv('GARMIN_EMAIL', 'test@example.com')
         monkeypatch.setenv('GARMIN_USER_ID', '1')

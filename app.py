@@ -232,7 +232,12 @@ def auto_garmin_sync():
             _app_dir = os.path.dirname(os.path.abspath(__file__))
             token_dir = os.environ.get('GARMIN_TOKEN_DIR', os.path.join(_app_dir, '.garmin_tokens'))
             token_file = os.path.join(token_dir, 'garmin_tokens.json')
-            # 首次没有 token 时跳过自动同步，避免撞 Garmin IP 限流；需用户手动触发一次完成首登
+            if not os.path.isfile(token_file):
+                # Cloud Run 实例重启后本地 token 可能丢失，先尝试从 GCS 恢复
+                try:
+                    sync_file_from_gcs('garmin_tokens/garmin_tokens.json', token_file)
+                except Exception as e:
+                    print(f'[Garmin] 自动同步时 GCS token 恢复失败: {e}')
             if not os.path.isfile(token_file):
                 print('[Garmin] 未找到持久化 token，跳过自动同步；请先手动触发一次以完成首次登录')
             else:
