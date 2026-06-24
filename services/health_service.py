@@ -100,7 +100,7 @@ def generate_health_analysis(db, user_id=1, is_auto=False, days=7):
             FROM medication_logs ml
             JOIN medication_plans mp ON ml.plan_id = mp.id
             WHERE ml.user_id = ? AND ml.log_date > {} AND ml.taken = 1
-            GROUP BY ml.plan_id
+            GROUP BY ml.plan_id, mp.medication_name
         """.format(interval_sql(days)), (user_id,))
         adherence_records = c.fetchall()  # noqa: F841
         # 6. 体重数据
