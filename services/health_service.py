@@ -118,14 +118,100 @@ def generate_health_analysis(db, user_id=1, is_auto=False, days=7):
 
         bp_summary = ""
         if bp_records:
-            sys = [r[0] for r in bp_records]
-            dia = [r[1] for r in bp_records]
-            bp_summary = f"平均血压: {sum(sys)/len(sys):.0f}/{sum(dia)/len(dia):.0f} mmHg"
+            sys_vals = [r[0] for r in bp_records if r[0]]
+            dia_vals = [r[1] for r in bp_records if r[1]]
+            spo2_vals = [r[4] for r in bp_records if r[4]]
+            parts = []
+            if sys_vals and dia_vals:
+                parts.append(f"平均血压: {sum(sys_vals)/len(sys_vals):.0f}/{sum(dia_vals)/len(dia_vals):.0f} mmHg")
+            if spo2_vals:
+                parts.append(f"平均血氧: {sum(spo2_vals)/len(spo2_vals):.0f}%")
+            bp_summary = ", ".join(parts)
 
         exercise_summary = f"运动记录: {len(exercise_records)}次"
+        if exercise_records:
+            total_dist = sum((r[0] or 0) for r in exercise_records)
+            total_dur_min = 0
+            for r in exercise_records:
+                dur = r[1]
+                if dur and isinstance(dur, str):
+                    m = re.search(r'(\d+)', dur)
+                    if m:
+                        total_dur_min += int(m.group(1))
+            hr_vals = [r[2] for r in exercise_records if r[2]]
+            max_hr_vals = [r[3] for r in exercise_records if r[3]]
+            total_cal = sum((r[4] or 0) for r in exercise_records)
+            total_steps = sum((r[7] or 0) for r in exercise_records)
+            vo2_vals = [r[8] for r in exercise_records if r[8]]
+            parts = [f"共{len(exercise_records)}次"]
+            if total_dur_min:
+                parts.append(f"总时长{total_dur_min}分钟")
+            if total_dist:
+                parts.append(f"总距离{total_dist:.1f}km")
+            if total_steps:
+                parts.append(f"总步数{total_steps}")
+            if hr_vals:
+                parts.append(f"平均心率{sum(hr_vals)//len(hr_vals)}")
+            if max_hr_vals:
+                parts.append(f"最高心率{max(max_hr_vals)}")
+            if total_cal:
+                parts.append(f"总消耗{total_cal}kcal")
+            if vo2_vals:
+                parts.append(f"VO2max范围{min(vo2_vals):.1f}-{max(vo2_vals):.1f}")
+            exercise_summary = "运动: " + ", ".join(parts)
+
+        diet_summary = ""
+        if diet_records:
+            cal_vals = [r[0] for r in diet_records if r[0]]
+            carb_vals = [r[1] for r in diet_records if r[1]]
+            gi_vals = [r[2] for r in diet_records if r[2]]
+            parts = []
+            if cal_vals:
+                parts.append(f"日均摄入{sum(cal_vals)/len(cal_vals):.0f}kcal")
+            if carb_vals:
+                parts.append(f"日均碳水{sum(carb_vals)/len(carb_vals):.1f}g")
+            if gi_vals:
+                parts.append(f"GI范围{min(gi_vals):.0f}-{max(gi_vals):.0f}")
+            diet_summary = "饮食: " + ", ".join(parts)
+
+        weight_summary = ""
+        if weight_records:
+            latest_w = weight_records[0][0]
+            latest_bmi = weight_records[0][1]
+            parts = []
+            if latest_w:
+                parts.append(f"最新体重{latest_w:.1f}kg")
+            if latest_bmi:
+                parts.append(f"BMI {latest_bmi:.1f}")
+            weight_summary = "体重: " + ", ".join(parts)
+
         med_summary = f"当前用药: {len(medications)}项"
+        if medications:
+            med_lines = []
+            for m in medications:
+                name, dosage, dose_qty, dose_unit, times, timing, cat, start, mtype = m
+                line = f"{name}"
+                if dosage:
+                    line += f" {dosage}"
+                if dose_qty and dose_unit:
+                    line += f" ({dose_qty}{dose_unit})"
+                if times:
+                    line += f" 每日{times}次"
+                if timing:
+                    line += f" {timing}"
+                med_lines.append(line)
+            med_summary = "用药: " + "; ".join(med_lines)
+
+        adherence_summary = ""
+        if adherence_records and medications:
+            expected = sum((m[4] or 1) * days for m in medications)
+            total_taken = sum(r[2] for r in adherence_records)
+            if expected:
+                rate = min(100, int(total_taken / expected * 100))
+                adherence_summary = f"服药依从性: {rate}%"
 
         # AI 提示词构建 (这里使用简化的汇总以防 Token 过长，但保留结构)
+        # TODO: 睡眠数据目前未在数据库中存储，未来可新增 sleep_records 表或 records 睡眠列后接入
         prompt = f"""
 你是一位资深的糖尿病管理专家和全科医生。请根据以下用户近 {days} 天的健康数据摘要，提供一份综合健康分析报告。
 
@@ -135,8 +221,13 @@ def generate_health_analysis(db, user_id=1, is_auto=False, days=7):
 {bp_summary}
 ## 3. 运动
 {exercise_summary}
-## 4. 用药
+## 4. 饮食
+{diet_summary}
+## 5. 体重
+{weight_summary}
+## 6. 用药
 {med_summary}
+{adherence_summary}
 
 任务：
 1. **健康评估**：评价控制现状。

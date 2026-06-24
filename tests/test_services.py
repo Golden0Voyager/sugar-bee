@@ -497,19 +497,28 @@ class TestHealthAnalysis:
         mock_ai.return_value = "## 分析\n血糖控制良好。\n综合健康得分: 85"
         mock_c = MagicMock()
         mock_c.fetchone.side_effect = [None]
+        # fetchall order: glucose, bp, exercise, diet, medications, temp_med, adherence, weight
         mock_c.fetchall.side_effect = [
             [(6.5, '空腹', '2024-06-01 07:15:00', None, None)],
             [(120, 80, 72, '2024-06-01 08:00:00', 98)],
-            [],
+            [(5.0, '30min', 145, 175, 350, '5:00', 160, 5000, 42.0, '2024-06-01 07:00:00')],
             [(300, 45.0, 65, '', '', '早餐', '2024-06-01 09:00:00')],
             [('二甲双胍', '500mg', '1', '片', 2, '餐前', 'long_term', '2024-01-01', '')],
-            [], [], [],
+            [],
+            [(1, '二甲双胍', 14)],
+            [(70.0, 22.5, '2024-06-01 08:00:00')],
         ]
         mock_db = MagicMock()
         mock_db.cursor.return_value = mock_c
         result = generate_health_analysis(mock_db, user_id=1, is_auto=False)
         assert result['success'] is True
         assert result['score'] == 85
+        prompt = mock_ai.call_args[0][0]
+        assert '平均血氧' in prompt
+        assert '总距离' in prompt
+        assert '日均摄入' in prompt
+        assert '最新体重' in prompt
+        assert '服药依从性' in prompt
 
     @patch('services.health_service.AI_AVAILABLE', True)
     @patch('services.health_service.call_ai')
