@@ -143,6 +143,47 @@ class TestParseGlucoseInputTime:
         glucose_parser.parse_glucose_input("此时此刻体重72kg")
         assert "当前录入时间: 2026-06-25 13:53:25" in captured["prompt"]
 
+    def test_weight_fallback_runs_when_ai_returns_non_json(self, monkeypatch):
+        """AI 返回非 JSON 时，确定性体重兜底仍应生效"""
+        import utils.timezone as timezone
+
+        monkeypatch.setenv("SUGAR_BEE_TIMEZONE", "Asia/Shanghai")
+        monkeypatch.setattr(
+            timezone,
+            "utc_now",
+            lambda: datetime.datetime(2026, 6, 25, 5, 53, 25, tzinfo=datetime.UTC),
+        )
+        monkeypatch.setattr(glucose_parser, "call_ai", lambda *args, **kwargs: "未能识别")
+
+        result = glucose_parser.parse_glucose_input("此时此刻体重72kg")
+
+        assert len(result) == 1
+        assert result[0]["type"] == "体重记录"
+        assert result[0]["weight"] == 72.0
+        assert result[0]["datetime"] == "2026-06-25 13:53:25"
+
+    def test_weight_fallback_runs_when_ai_raises(self, monkeypatch):
+        """AI 调用异常时，确定性体重兜底仍应生效"""
+        import utils.timezone as timezone
+
+        def raise_ai_error(*args, **kwargs):
+            raise Exception("AI service down")
+
+        monkeypatch.setenv("SUGAR_BEE_TIMEZONE", "Asia/Shanghai")
+        monkeypatch.setattr(
+            timezone,
+            "utc_now",
+            lambda: datetime.datetime(2026, 6, 25, 5, 53, 25, tzinfo=datetime.UTC),
+        )
+        monkeypatch.setattr(glucose_parser, "call_ai", raise_ai_error)
+
+        result = glucose_parser.parse_glucose_input("此时此刻体重72kg")
+
+        assert len(result) == 1
+        assert result[0]["type"] == "体重记录"
+        assert result[0]["weight"] == 72.0
+        assert result[0]["datetime"] == "2026-06-25 13:53:25"
+
 
 class TestInferMealType:
     """餐食类型推断测试"""

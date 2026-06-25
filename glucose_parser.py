@@ -327,11 +327,11 @@ def parse_glucose_input(text, history_context=None, images_data=None, mime_type=
         if match:
             results = json.loads(match.group(1))
             return _postprocess_records(results, text)
-        return []
+        return _postprocess_records([], text)
 
     except Exception as e:
         print(f"Error parsing AI response: {e}")
-        return []
+        return _postprocess_records([], text)
 
 
 def _postprocess_records(records, original_text=None):
