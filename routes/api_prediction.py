@@ -1,5 +1,4 @@
 from flask import Blueprint, request, jsonify
-import datetime
 import re
 import traceback
 
@@ -9,7 +8,8 @@ from core.config import DB_NAME
 from utils.responses import api_success, api_error
 from utils.auth import login_required
 from utils.db import get_db
-from utils.sql_dialect import interval_sql, date_sql
+from utils.sql_dialect import interval_sql
+from utils.timezone import today_str as app_today_str
 from services import (
     predict_morning_fpg,
     predict_post_exercise_glucose,
@@ -38,7 +38,7 @@ def trigger_prediction():
         current_user_id = user_manager.get_current_user_id()
         data = request.json or {}
         prediction_type = data.get('type', 'all')
-        target_date = data.get('date', datetime.datetime.now().strftime('%Y-%m-%d'))
+        target_date = data.get('date', app_today_str())
         force_update = data.get('force_update', False)
 
         results = []
@@ -207,7 +207,7 @@ def prediction_status():
         db = get_db()
         c = db.cursor()
         current_user_id = user_manager.get_current_user_id()
-        today_str = datetime.datetime.now().strftime('%Y-%m-%d')
+        today_str = app_today_str()
 
         all_slots = [
             {'key': 'fasting', 'name': '空腹', 'time': '07:15', 'type_patterns': ['空腹', '早空腹']},

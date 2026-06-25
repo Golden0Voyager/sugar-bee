@@ -1,5 +1,4 @@
 from flask import Blueprint, request, jsonify, Response, stream_with_context, session
-import datetime
 import json
 import uuid
 
@@ -8,6 +7,7 @@ import settings
 from utils.auth import login_required
 from utils.db import get_db
 from utils.sql_dialect import interval_sql
+from utils.timezone import now as app_now
 
 bp_chat = Blueprint('chat', __name__, url_prefix='/api/chat')
 CHAT_HISTORY_LIMIT = 20
@@ -29,7 +29,7 @@ def get_current_user_id():
 def build_chat_context(db, user_id):
     """构建健康助手的 system prompt"""
     days = 7
-    now = datetime.datetime.now()
+    now = app_now()
     c = db.cursor()
     sections: list[str] = []
 
@@ -129,7 +129,7 @@ def chat_stream():
     messages.append({"role": "user", "content": message})
 
     # 保存用户消息
-    c.execute("INSERT INTO chat_messages (user_id, session_id, role, content) VALUES (?, ?, 'user', ?)", (user_id, session_id, message))
+    c.execute("INSERT INTO chat_messages (user_id, session_id, role, content) VALUES (?, ?, 'user', ?) ON CONFLICT DO NOTHING", (user_id, session_id, message))
     db.commit()
 
     def generate():
@@ -145,7 +145,7 @@ def chat_stream():
                 reply_text = "".join(full_reply)
                 try:
                     db = get_db()
-                    db.execute("INSERT INTO chat_messages (user_id, session_id, role, content) VALUES (?, ?, 'assistant', ?)", (user_id, session_id, reply_text))
+                    db.execute("INSERT INTO chat_messages (user_id, session_id, role, content) VALUES (?, ?, 'assistant', ?) ON CONFLICT DO NOTHING", (user_id, session_id, reply_text))
                     db.commit()
                 except Exception:
                     pass
@@ -163,7 +163,7 @@ def chat_history():
     c = db.cursor()
 
     if not session_id:
-        c.execute("SELECT DISTINCT session_id FROM chat_messages WHERE user_id = ? ORDER BY created_at DESC LIMIT 1", (user_id,))
+        c.execute("SELECT session_id FROM chat_messages WHERE user_id = ? ORDER BY created_at DESC LIMIT 1", (user_id,))
         row = c.fetchone()
         session_id = row[0] if row else ''
 

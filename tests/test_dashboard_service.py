@@ -4,10 +4,13 @@ from unittest.mock import patch, MagicMock
 
 from tests.helpers import (
     mock_dashboard_service_settings as _setup_mocks,
-    freeze_date as _freeze_date,
     make_minimal_cursor as _make_minimal_cursor,
     med as _med,
 )
+
+
+def _freeze_date(mock_app_now, date_value):
+    mock_app_now.return_value = datetime.datetime.combine(date_value, datetime.time(10, 0, 0))
 
 
 # ============================================================
@@ -45,7 +48,7 @@ class TestMedFrequencyDaily:
 class TestMedFrequencyEveryNDays:
     @patch('services.dashboard_service.UserManager')
     @patch('services.dashboard_service.settings')
-    @patch('services.dashboard_service.datetime')
+    @patch('services.dashboard_service.app_now')
     def test_every_n_days_day_zero_included(self, mock_dt, mock_settings, mock_um):
         today = datetime.date(2024, 6, 15)
         _freeze_date(mock_dt, today)
@@ -58,7 +61,7 @@ class TestMedFrequencyEveryNDays:
 
     @patch('services.dashboard_service.UserManager')
     @patch('services.dashboard_service.settings')
-    @patch('services.dashboard_service.datetime')
+    @patch('services.dashboard_service.app_now')
     def test_every_n_days_not_day(self, mock_dt, mock_settings, mock_um):
         today = datetime.date(2024, 6, 15)
         _freeze_date(mock_dt, today)
@@ -71,7 +74,7 @@ class TestMedFrequencyEveryNDays:
 
     @patch('services.dashboard_service.UserManager')
     @patch('services.dashboard_service.settings')
-    @patch('services.dashboard_service.datetime')
+    @patch('services.dashboard_service.app_now')
     def test_every_n_days_match_3_days(self, mock_dt, mock_settings, mock_um):
         today = datetime.date(2024, 6, 15)
         _freeze_date(mock_dt, today)
@@ -84,7 +87,7 @@ class TestMedFrequencyEveryNDays:
 
     @patch('services.dashboard_service.UserManager')
     @patch('services.dashboard_service.settings')
-    @patch('services.dashboard_service.datetime')
+    @patch('services.dashboard_service.app_now')
     def test_every_n_days_bad_detail_fallback(self, mock_dt, mock_settings, mock_um):
         today = datetime.date(2024, 6, 15)
         _freeze_date(mock_dt, today)
@@ -97,7 +100,7 @@ class TestMedFrequencyEveryNDays:
 
     @patch('services.dashboard_service.UserManager')
     @patch('services.dashboard_service.settings')
-    @patch('services.dashboard_service.datetime')
+    @patch('services.dashboard_service.app_now')
     def test_every_n_days_no_start_date(self, mock_dt, mock_settings, mock_um):
         today = datetime.date(2024, 6, 15)
         _freeze_date(mock_dt, today)
@@ -116,7 +119,7 @@ class TestMedFrequencyEveryNDays:
 class TestMedFrequencyWeekdays:
     @patch('services.dashboard_service.UserManager')
     @patch('services.dashboard_service.settings')
-    @patch('services.dashboard_service.datetime')
+    @patch('services.dashboard_service.app_now')
     def test_weekday_monday(self, mock_dt, mock_settings, mock_um):
         _freeze_date(mock_dt, datetime.date(2024, 6, 17))
         _setup_mocks(mock_settings, mock_um)
@@ -128,7 +131,7 @@ class TestMedFrequencyWeekdays:
 
     @patch('services.dashboard_service.UserManager')
     @patch('services.dashboard_service.settings')
-    @patch('services.dashboard_service.datetime')
+    @patch('services.dashboard_service.app_now')
     def test_weekend_saturday_excluded(self, mock_dt, mock_settings, mock_um):
         _freeze_date(mock_dt, datetime.date(2024, 6, 15))
         _setup_mocks(mock_settings, mock_um)
@@ -140,7 +143,7 @@ class TestMedFrequencyWeekdays:
 
     @patch('services.dashboard_service.UserManager')
     @patch('services.dashboard_service.settings')
-    @patch('services.dashboard_service.datetime')
+    @patch('services.dashboard_service.app_now')
     def test_weekend_sunday_excluded(self, mock_dt, mock_settings, mock_um):
         _freeze_date(mock_dt, datetime.date(2024, 6, 16))
         _setup_mocks(mock_settings, mock_um)
@@ -158,7 +161,7 @@ class TestMedFrequencyWeekdays:
 class TestMedFrequencyWeekly:
     @patch('services.dashboard_service.UserManager')
     @patch('services.dashboard_service.settings')
-    @patch('services.dashboard_service.datetime')
+    @patch('services.dashboard_service.app_now')
     def test_weekly_matches(self, mock_dt, mock_settings, mock_um):
         _freeze_date(mock_dt, datetime.date(2024, 6, 17))  # Monday
         _setup_mocks(mock_settings, mock_um)
@@ -170,7 +173,7 @@ class TestMedFrequencyWeekly:
 
     @patch('services.dashboard_service.UserManager')
     @patch('services.dashboard_service.settings')
-    @patch('services.dashboard_service.datetime')
+    @patch('services.dashboard_service.app_now')
     def test_weekly_not_today(self, mock_dt, mock_settings, mock_um):
         _freeze_date(mock_dt, datetime.date(2024, 6, 17))
         _setup_mocks(mock_settings, mock_um)
@@ -182,7 +185,7 @@ class TestMedFrequencyWeekly:
 
     @patch('services.dashboard_service.UserManager')
     @patch('services.dashboard_service.settings')
-    @patch('services.dashboard_service.datetime')
+    @patch('services.dashboard_service.app_now')
     def test_weekly_no_detail_defaults_monday(self, mock_dt, mock_settings, mock_um):
         _freeze_date(mock_dt, datetime.date(2024, 6, 17))
         _setup_mocks(mock_settings, mock_um)
@@ -200,7 +203,7 @@ class TestMedFrequencyWeekly:
 class TestMedFrequencyBiweekly:
     @patch('services.dashboard_service.UserManager')
     @patch('services.dashboard_service.settings')
-    @patch('services.dashboard_service.datetime')
+    @patch('services.dashboard_service.app_now')
     def test_biweekly_week0_included(self, mock_dt, mock_settings, mock_um):
         _freeze_date(mock_dt, datetime.date(2024, 6, 17))
         _setup_mocks(mock_settings, mock_um)
@@ -212,7 +215,7 @@ class TestMedFrequencyBiweekly:
 
     @patch('services.dashboard_service.UserManager')
     @patch('services.dashboard_service.settings')
-    @patch('services.dashboard_service.datetime')
+    @patch('services.dashboard_service.app_now')
     def test_biweekly_off_week_excluded(self, mock_dt, mock_settings, mock_um):
         _freeze_date(mock_dt, datetime.date(2024, 6, 17))
         _setup_mocks(mock_settings, mock_um)
@@ -224,7 +227,7 @@ class TestMedFrequencyBiweekly:
 
     @patch('services.dashboard_service.UserManager')
     @patch('services.dashboard_service.settings')
-    @patch('services.dashboard_service.datetime')
+    @patch('services.dashboard_service.app_now')
     def test_biweekly_week2_included(self, mock_dt, mock_settings, mock_um):
         _freeze_date(mock_dt, datetime.date(2024, 6, 17))
         _setup_mocks(mock_settings, mock_um)
@@ -236,7 +239,7 @@ class TestMedFrequencyBiweekly:
 
     @patch('services.dashboard_service.UserManager')
     @patch('services.dashboard_service.settings')
-    @patch('services.dashboard_service.datetime')
+    @patch('services.dashboard_service.app_now')
     def test_biweekly_wrong_day_excluded(self, mock_dt, mock_settings, mock_um):
         _freeze_date(mock_dt, datetime.date(2024, 6, 17))
         _setup_mocks(mock_settings, mock_um)
@@ -254,7 +257,7 @@ class TestMedFrequencyBiweekly:
 class TestMedFrequencyMonthly:
     @patch('services.dashboard_service.UserManager')
     @patch('services.dashboard_service.settings')
-    @patch('services.dashboard_service.datetime')
+    @patch('services.dashboard_service.app_now')
     def test_monthly_single_day_match(self, mock_dt, mock_settings, mock_um):
         _freeze_date(mock_dt, datetime.date(2024, 6, 15))
         _setup_mocks(mock_settings, mock_um)
@@ -266,7 +269,7 @@ class TestMedFrequencyMonthly:
 
     @patch('services.dashboard_service.UserManager')
     @patch('services.dashboard_service.settings')
-    @patch('services.dashboard_service.datetime')
+    @patch('services.dashboard_service.app_now')
     def test_monthly_no_match(self, mock_dt, mock_settings, mock_um):
         _freeze_date(mock_dt, datetime.date(2024, 6, 15))
         _setup_mocks(mock_settings, mock_um)
@@ -278,7 +281,7 @@ class TestMedFrequencyMonthly:
 
     @patch('services.dashboard_service.UserManager')
     @patch('services.dashboard_service.settings')
-    @patch('services.dashboard_service.datetime')
+    @patch('services.dashboard_service.app_now')
     def test_monthly_multi_day(self, mock_dt, mock_settings, mock_um):
         _freeze_date(mock_dt, datetime.date(2024, 6, 15))
         _setup_mocks(mock_settings, mock_um)
@@ -290,7 +293,7 @@ class TestMedFrequencyMonthly:
 
     @patch('services.dashboard_service.UserManager')
     @patch('services.dashboard_service.settings')
-    @patch('services.dashboard_service.datetime')
+    @patch('services.dashboard_service.app_now')
     def test_monthly_bad_detail_defaults_day1(self, mock_dt, mock_settings, mock_um):
         _freeze_date(mock_dt, datetime.date(2024, 6, 15))
         _setup_mocks(mock_settings, mock_um)

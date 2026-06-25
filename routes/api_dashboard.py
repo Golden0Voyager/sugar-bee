@@ -7,6 +7,7 @@ from user_manager import UserManager
 from core.config import DB_NAME
 from utils.auth import login_required
 from utils.db import get_db
+from utils.timezone import now as app_now, today_str as app_today_str
 from services import build_timeline
 
 user_manager = UserManager(DB_NAME)
@@ -42,7 +43,7 @@ def api_health_stats():
         current_user_id = user_manager.get_current_user_id()
         user_config = settings.load_config(current_user_id)
         if days:
-            cutoff = (datetime.datetime.now() - datetime.timedelta(days=days)).strftime('%Y-%m-%d %H:%M:%S')
+            cutoff = (app_now() - datetime.timedelta(days=days)).strftime('%Y-%m-%d %H:%M:%S')
         else:
             cutoff = '2000-01-01 00:00:00'
 
@@ -224,7 +225,7 @@ def api_health_stats():
 def api_day_overview():
     """返回指定日期的概览数据（血糖时间轴 + 运动/血压/体重/用药）"""
     try:
-        date_str = request.args.get('date', datetime.datetime.now().strftime('%Y-%m-%d'))
+        date_str = request.args.get('date', app_today_str())
         db = get_db()
         c = db.cursor()
         current_user_id = user_manager.get_current_user_id()

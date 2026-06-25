@@ -22,11 +22,13 @@ from services import (  # noqa: E402
 )
 from services.gcs_sync import (  # noqa: E402
     backup_db_to_gcs,
+    sync_file_from_gcs,
     sync_file_to_gcs,
 )
 from user_manager import UserManager  # noqa: E402
 from utils.auth import login_required  # noqa: E402
 from utils.db import close_db, get_db, get_raw_conn, init_db, put_raw_conn  # noqa: E402
+from utils.timezone import today as app_today  # noqa: E402
 
 # ========== 配置 ==========
 app = Flask(__name__)
@@ -162,7 +164,7 @@ def auto_backup():
         if not os.path.exists(DB_NAME):
             return
         os.makedirs(AUTO_BACKUP_DIR, exist_ok=True)
-        today = datetime.date.today().strftime('%Y%m%d')
+        today = app_today().strftime('%Y%m%d')
         backup_path = os.path.join(AUTO_BACKUP_DIR, f'glucose_auto_{today}.db')
         if not os.path.exists(backup_path):
             shutil.copy2(DB_NAME, backup_path)
@@ -171,7 +173,7 @@ def auto_backup():
         if os.environ.get('GCS_BUCKET_NAME'):
             backup_db_to_gcs()
 
-        cutoff = datetime.date.today() - datetime.timedelta(days=AUTO_BACKUP_KEEP_DAYS)
+        cutoff = app_today() - datetime.timedelta(days=AUTO_BACKUP_KEEP_DAYS)
         for f in glob_mod.glob(os.path.join(AUTO_BACKUP_DIR, 'glucose_auto_*.db')):
             try:
                 date_str = os.path.basename(f).replace('glucose_auto_', '').replace('.db', '')

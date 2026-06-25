@@ -6,7 +6,6 @@
 from __future__ import annotations
 
 import datetime
-import os
 import sqlite3
 from typing import Any
 
@@ -21,6 +20,7 @@ from utils.sql_dialect import (
     serial_pk_sql,
     timestamp_type,
 )
+from utils.timezone import app_timezone_name
 
 
 def get_db_type() -> str:
@@ -193,6 +193,7 @@ def _get_pool():
             keepalives_interval=10,
             keepalives_count=5,
             client_encoding='UTF8',
+            options=f'-c timezone={app_timezone_name()}',
         )
     return _connection_pool
 
@@ -269,10 +270,22 @@ def _convert_sqlite_to_pg(sql: str) -> str:
     # 1. DATE(column) → column::date
     sql = re.sub(r"(?i)\bDATE\(([\w.]+)\)", r'\1::date', sql)
 
-    # 2. datetime('now', '-N unit') → NOW() - INTERVAL 'N unit'
-    #    datetime('now', '+N unit') → NOW() + INTERVAL 'N unit'
+    # 2. datetime('now', ['localtime',] '-N unit') → NOW() - INTERVAL 'N unit'
+    #    datetime('now', ['localtime',] '+N unit') → NOW() + INTERVAL 'N unit'
     #    datetime(expr, '-N unit') → expr::timestamp - INTERVAL 'N unit'
     #    datetime(expr, '+N unit') → expr::timestamp + INTERVAL 'N unit'
+    def _replace_now_dt(m):
+        modifier = m.group(1).strip()
+        op = '+' if modifier.startswith('+') else '-'
+        number, unit = modifier[1:].strip().split(' ', 1)
+        return f"NOW() {op} INTERVAL '{number} {unit}'"
+
+    sql = re.sub(
+        r"(?i)datetime\(\s*'now'\s*,\s*(?:'localtime'\s*,\s*)?'([+-]\d+\s+\w+)'\s*\)",
+        _replace_now_dt,
+        sql,
+    )
+
     def _replace_dt(m):
         expr = m.group(1).strip()
         # Trim surrounding quotes if present on the expr (inline after ? → str literal)
@@ -292,8 +305,8 @@ def _convert_sqlite_to_pg(sql: str) -> str:
         sql,
     )
 
-    # 3. datetime('now') → NOW()
-    sql = re.sub(r"(?i)datetime\(\s*'now'\s*\)", 'NOW()', sql)
+    # 3. datetime('now') / datetime('now', 'localtime') → NOW()
+    sql = re.sub(r"(?i)datetime\(\s*'now'\s*(?:,\s*'localtime'\s*)?\)", 'NOW()', sql)
 
     return sql
 
@@ -454,7 +467,11 @@ def _init_db_postgres():
     """PostgreSQL schema 初始化（一次性创建完整表结构）。"""
     import psycopg2
 
-    conn = psycopg2.connect(_pg_dsn(), client_encoding='UTF8')
+    conn = psycopg2.connect(
+        _pg_dsn(),
+        client_encoding='UTF8',
+        options=f'-c timezone={app_timezone_name()}',
+    )
     try:
         c = conn.cursor()
 
@@ -626,6 +643,14 @@ def _init_db_postgres():
         c.execute('CREATE INDEX IF NOT EXISTS idx_records_bp ON records(user_id, systolic_pressure, timestamp DESC)')
         c.execute('CREATE INDEX IF NOT EXISTS idx_analyses_user ON health_analyses(user_id, created_at DESC)')
         c.execute('CREATE INDEX IF NOT EXISTS idx_medlogs_plan ON medication_logs(plan_id, log_date)')
+
+        # 同步所有 SERIAL 序列，防止迁移后序列落后于实际数据
+        for tbl in ('records', 'medication_plans', 'dosage_history', 'medication_logs',
+                    'health_analyses', 'chat_messages', 'app_users', 'user_auth_providers'):
+            try:
+                c.execute(f"SELECT setval('{tbl}_id_seq', COALESCE((SELECT MAX(id) FROM {tbl}), 1))")
+            except Exception:
+                pass
 
         conn.commit()
     except Exception as e:

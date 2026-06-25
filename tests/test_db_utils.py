@@ -128,6 +128,13 @@ class TestConvertSqliteToPg:
         result = _convert_sqlite_to_pg(sql)
         assert "NOW()" in result
 
+    def test_datetime_now_localtime_interval(self):
+        from utils.db import _convert_sqlite_to_pg
+
+        sql = "SELECT * FROM records WHERE timestamp > datetime('now', 'localtime', '-7 days')"
+        result = _convert_sqlite_to_pg(sql)
+        assert result == "SELECT * FROM records WHERE timestamp > NOW() - INTERVAL '7 days'"
+
     def test_sql_without_sqlite_functions_passthrough(self):
         from utils.db import _convert_sqlite_to_pg
 
@@ -247,7 +254,7 @@ class TestSqlDialect:
     def test_now_sql_sqlite(self, monkeypatch):
         self._set_db_type(monkeypatch, 'sqlite')
         from utils.sql_dialect import now_sql
-        assert now_sql() == "datetime('now')"
+        assert now_sql() == "datetime('now', 'localtime')"
 
     def test_now_sql_postgres(self, monkeypatch):
         self._set_db_type(monkeypatch, 'postgres')
@@ -257,7 +264,7 @@ class TestSqlDialect:
     def test_interval_sql_sqlite(self, monkeypatch):
         self._set_db_type(monkeypatch, 'sqlite')
         from utils.sql_dialect import interval_sql
-        assert interval_sql(7) == "datetime('now', '-7 days')"
+        assert interval_sql(7) == "datetime('now', 'localtime', '-7 days')"
 
     def test_interval_sql_postgres(self, monkeypatch):
         self._set_db_type(monkeypatch, 'postgres')
@@ -267,11 +274,8 @@ class TestSqlDialect:
     def test_interval_sql_raises_on_non_int(self, monkeypatch):
         self._set_db_type(monkeypatch, 'sqlite')
         from utils.sql_dialect import interval_sql
-        try:
+        with pytest.raises(TypeError):
             interval_sql("7")  # type: ignore
-            assert False, "Should raise TypeError"
-        except TypeError:
-            pass
 
     def test_date_format_sql_sqlite(self, monkeypatch):
         self._set_db_type(monkeypatch, 'sqlite')
@@ -282,6 +286,11 @@ class TestSqlDialect:
         self._set_db_type(monkeypatch, 'postgres')
         from utils.sql_dialect import date_format_sql
         assert date_format_sql('timestamp', '%Y-%m-%d') == "TO_CHAR(timestamp, 'YYYY-MM-DD')"
+
+    def test_date_format_sql_postgres_parameter_cast(self, monkeypatch):
+        self._set_db_type(monkeypatch, 'postgres')
+        from utils.sql_dialect import date_format_sql
+        assert date_format_sql('?', '%Y-%m-%d %H:%M') == "TO_CHAR(?::timestamp, 'YYYY-MM-DD HH24:MI')"
 
     def test_date_sql_sqlite(self, monkeypatch):
         self._set_db_type(monkeypatch, 'sqlite')
@@ -379,16 +388,13 @@ class TestSqlDialect:
 
     def test_pg_dsn_strips_plus_psycopg2(self):
         """_pg_dsn() 应去掉 sqlalchemy 风格的 +psycopg2"""
-        from utils.db import _pg_dsn  # noqa: needed for import
-        # 直接测试 DSN 转换逻辑
         import core.config as config
+        from utils.db import _pg_dsn
+
         original = config.DATABASE_URL
         try:
             config.DATABASE_URL = "postgresql+psycopg2://user:pass@host/db"
-            result = config.DATABASE_URL
-            if result.startswith("postgresql+psycopg2://"):
-                result = result.replace("postgresql+psycopg2://", "postgresql://", 1)
-            assert result == "postgresql://user:pass@host/db"
+            assert _pg_dsn() == "postgresql://user:pass@host/db"
         finally:
             config.DATABASE_URL = original
 
@@ -712,15 +718,15 @@ class TestPgPathsMocked:
             assert pool is mock_pool
             call_kwargs = mock_cls.call_args[1]
             assert call_kwargs.get('client_encoding') == 'UTF8'
+            assert call_kwargs.get('options') == '-c timezone=Asia/Shanghai'
 
     def test_get_pool_cached(self, monkeypatch):
         """_get_pool 重复调用返回缓存"""
         import core.config as config
-        from psycopg2.pool import ThreadedConnectionPool
 
         monkeypatch.setattr(config, 'DB_TYPE', 'postgres')
         import utils.db as db_mod
-        mock_pool = MagicMock(spec=ThreadedConnectionPool)
+        mock_pool = MagicMock()
         db_mod._connection_pool = mock_pool
         assert db_mod._get_pool() is mock_pool
 
@@ -933,9 +939,8 @@ class TestPgPathsMocked:
         import utils.db as db_mod
         mock_conn = MagicMock()
         mock_conn.cursor.side_effect = Exception("DDL error")
-        with patch('psycopg2.connect', return_value=mock_conn):
-            with patch('builtins.print'):
-                db_mod._init_db_postgres()
+        with patch('psycopg2.connect', return_value=mock_conn), patch('builtins.print'):
+            db_mod._init_db_postgres()
 
     def test_init_db_dispatches_to_postgres(self, monkeypatch):
         """init_db() 在 PG 模式下调用 _init_db_postgres()（line 448）"""

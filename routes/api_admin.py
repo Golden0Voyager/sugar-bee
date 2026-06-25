@@ -1,6 +1,5 @@
 from flask import Blueprint, request, send_file, after_this_request
 import os
-import datetime
 import shutil
 import sqlite3
 import traceback
@@ -11,6 +10,7 @@ from utils.responses import api_success, api_error
 from utils.auth import login_required
 from utils.db import get_db
 from utils.sql_dialect import date_format_sql, group_concat_sql
+from utils.timezone import now as app_now
 
 # 获取项目根目录 (app.py 所在目录)
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
@@ -27,7 +27,7 @@ def backup_database():
         if not os.path.exists(DB_NAME):
             return api_error("数据库文件不存在", status_code=404)
 
-        timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+        timestamp = app_now().strftime('%Y%m%d_%H%M%S')
         backup_filename = f'glucose_backup_{timestamp}.db'
         backup_path = os.path.join(BASE_DIR, backup_filename)
 

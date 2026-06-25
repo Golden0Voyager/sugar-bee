@@ -387,10 +387,11 @@ class TestTimelineMedicationPlans:
     def test_medication_plan_matched_and_today_bmr(self, mock_config, mock_bmr):
         """L88-91: medication_plan 加入 data; L95-96: 今日 BMR 按比例调整"""
         from services.timeline_service import build_timeline
+        from utils.timezone import now as app_now
         mock_bmr.return_value = 1600
         mock_config.return_value = {'default_meals': {}}
 
-        now = datetime.datetime.now()
+        now = app_now()
         today_str = now.strftime('%Y-%m-%d')
 
         mock_c = MagicMock()

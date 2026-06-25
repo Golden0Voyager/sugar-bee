@@ -16,7 +16,7 @@ def ph() -> str:
 
 def now_sql() -> str:
     """返回当前时间的 SQL 表达式。"""
-    return "NOW()" if config.DB_TYPE == "postgres" else "datetime('now')"
+    return "NOW()" if config.DB_TYPE == "postgres" else "datetime('now', 'localtime')"
 
 
 def interval_sql(days: int) -> str:
@@ -25,7 +25,7 @@ def interval_sql(days: int) -> str:
         raise TypeError("interval_sql only accepts int")
     if config.DB_TYPE == "postgres":
         return f"NOW() - INTERVAL '{days} days'"
-    return f"datetime('now', '-{days} days')"
+    return f"datetime('now', 'localtime', '-{days} days')"
 
 
 # Python strftime 格式 → PostgreSQL TO_CHAR 格式 的常用映射
@@ -50,6 +50,8 @@ def date_format_sql(column: str, fmt: str) -> str:
         pg_fmt = _FMT_MAP.get(fmt)
         if pg_fmt is None:
             raise NotImplementedError(f"Unsupported date format for PostgreSQL: {fmt}")
+        if column.strip() == "?":
+            column = "?::timestamp"
         return f"TO_CHAR({column}, '{pg_fmt}')"
     return f"strftime('{fmt}', {column})"
 

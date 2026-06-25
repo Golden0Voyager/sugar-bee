@@ -3,13 +3,14 @@ import json
 import settings
 from core.config import DB_NAME
 from user_manager import UserManager
+from utils.timezone import now as app_now
 
 
 def get_dashboard_stats(db, user_id):
     """获取仪表盘所需的所有统计数据"""
     c = db.cursor()
-    seven_days_ago = (datetime.datetime.now() - datetime.timedelta(days=7)).strftime('%Y-%m-%d %H:%M:%S')
-    today = datetime.datetime.now()
+    today = app_now()
+    seven_days_ago = (today - datetime.timedelta(days=7)).strftime('%Y-%m-%d %H:%M:%S')
     today_str = today.strftime('%Y-%m-%d')
     today_start = today_str + ' 00:00:00'
     today_end = today_str + ' 23:59:59'

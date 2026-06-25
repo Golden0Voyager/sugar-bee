@@ -1,8 +1,8 @@
-import datetime
 import traceback
 import re
 from ai_client import call_ai, AI_AVAILABLE
 from utils.sql_dialect import interval_sql
+from utils.timezone import now as app_now
 
 def generate_health_analysis(db, user_id=1, is_auto=False, days=7):
     """
@@ -14,7 +14,7 @@ def generate_health_analysis(db, user_id=1, is_auto=False, days=7):
         return {"success": False, "error": "未配置 AI API Key", "error_type": "ai_unavailable"}
 
     try:
-        now = datetime.datetime.now()
+        now = app_now()
         today_str = now.strftime('%Y-%m-%d')
 
         if is_auto:
@@ -245,7 +245,7 @@ def generate_health_analysis(db, user_id=1, is_auto=False, days=7):
         ai_response = re.sub(r'\n?```\s*$', '', ai_response)
 
         # 解析得分
-        score_match = re.search(r'综合健康得分:\s*(\d+)', ai_response)
+        score_match = re.search(r'综合健康得分[：:]\s*(\d+)', ai_response)
         score = int(score_match.group(1)) if score_match else 80
 
         # 保存记录

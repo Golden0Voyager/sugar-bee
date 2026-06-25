@@ -35,13 +35,13 @@ import argparse
 import os
 import re
 import sqlite3
-from datetime import datetime
 from typing import Optional
 
 import httpx
 from mcp.server.fastmcp import FastMCP
 from utils.db import get_raw_conn
 from utils.sql_dialect import date_format_sql
+from utils.timezone import now as app_now, timestamp_str as app_timestamp_str
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DB_PATH = os.environ.get("DB_PATH", os.path.join(PROJECT_ROOT, "glucose.db"))
@@ -56,16 +56,16 @@ mcp = FastMCP("sugar-bee")
 def _normalize_timestamp(ts: Optional[str] = None) -> str:
     """校验并补全时间戳，确保格式为 YYYY-MM-DD HH:MM:SS。"""
     if not ts:
-        return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        return app_timestamp_str()
     # 已经是完整格式
     if re.match(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}", ts):
         return ts
     # 缺少年份：-MM-DD HH:MM 或 MM-DD HH:MM → 补当年
     m = re.match(r"^-?(\d{2}-\d{2} \d{2}:\d{2}.*)$", ts)
     if m:
-        return f"{datetime.now().year}-{m.group(1)}"
+        return f"{app_now().year}-{m.group(1)}"
     # 其他无法识别的格式，回退到当前时间
-    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    return app_timestamp_str()
 
 
 def _api_headers(user_id: int) -> dict:
@@ -179,7 +179,7 @@ def _check_duplicate(conn: sqlite3.Connection, user_id: int, record: dict) -> st
     c = conn.cursor()
     ts = record.get("datetime") or record.get("timestamp", "")
     if not ts:
-        ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        ts = app_timestamp_str()
 
     systolic = record.get("systolic_pressure")
     diastolic = record.get("diastolic_pressure")
@@ -258,7 +258,7 @@ def _insert_record(conn: sqlite3.Connection, record: dict) -> int:
     notes = record.get("notes", "")
     timestamp = record.get("datetime") or record.get("timestamp", "")
     if not timestamp:
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        timestamp = app_timestamp_str()
     if "T" in timestamp:
         timestamp = timestamp.replace("T", " ")
         if len(timestamp) == 16:
@@ -321,7 +321,7 @@ def _try_regex_parse(text: str) -> list[dict] | None:
         # 没有 emoji → 检查是否纯结构化数字（无 emoji 的 fallback 不支持）
         return None
 
-    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    now_str = app_timestamp_str()
     results: list[dict] = []
 
     for m in matches:
@@ -415,7 +415,7 @@ def _inline_batch_insert(
         rtype = r.get("type", "")
         timestamp = r.get("datetime") or r.get("timestamp", "")
         if not timestamp:
-            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            timestamp = app_timestamp_str()
 
         # 1. 数据范围校验（收集警告，不阻止写入）
         warnings = _validate_record_data(r)
