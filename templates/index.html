@@ -2400,11 +2400,17 @@
         const newDate = localDateString(d);
         if (newDate > todayStr) return;
 
+        await refreshOverview(newDate);
+    }
+
+    async function refreshOverview(dateStr = overviewDate) {
         try {
-            const res = await fetch(`/api/day_overview?date=${newDate}`);
+            const res = await fetch(`/api/day_overview?date=${dateStr}`);
             const data = await res.json();
-            if (data.error) return;
-            overviewDate = newDate;
+            if (!res.ok || data.error) {
+                throw new Error(data.error || '概览刷新失败');
+            }
+            overviewDate = data.date || dateStr;
             renderOverview(data);
         } catch(e) { console.error(e); }
     }
@@ -2887,7 +2893,8 @@
                 const modal = bootstrap.Modal.getInstance(document.getElementById('glucoseInputModal'));
                 modal.hide();
                 showToast(`${typeMap[slotKey]} ${value.toFixed(1)} mmol/L 已保存`, 'success');
-                setTimeout(() => window.location.reload(), 500);
+                slotPredictions[slotKey] = value;
+                await refreshOverview(overviewDate);
             } else {
                 showToast('保存失败，请重试', 'danger');
                 btn.disabled = false;

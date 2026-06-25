@@ -173,6 +173,28 @@ class TestRealDBDashboardFlow:
             assert overview['bedtime']['status'] == 'measured'
             assert overview['post_lunch']['status'] == 'pending'
 
+    def test_day_overview_measured_overrides_prediction_same_bedtime_slot(self, client_authenticated, app):
+        """睡前预测存在时，长按录入的实测值应覆盖概览槽位"""
+        with app.app_context():
+            pred = client_authenticated.post('/add', json={
+                'value': 9.5, 'type': '睡前', 'timestamp': '2024-06-01 22:00:00',
+                'is_predicted': 1, 'user_id': 1
+            })
+            assert pred.status_code == 200
+
+            measured = client_authenticated.post('/add', json={
+                'value': 8.3, 'type': '睡前', 'timestamp': '2024-06-01 22:00:00',
+                'user_id': 1
+            })
+            assert measured.status_code == 200
+
+            result = client_authenticated.get('/api/day_overview?date=2024-06-01')
+            assert result.status_code == 200
+            overview = {s['key']: s for s in result.json['overview']}
+            assert overview['bedtime']['value'] == 8.3
+            assert overview['bedtime']['status'] == 'measured'
+            assert overview['bedtime']['compliance'] is not None
+
     def test_day_overview_shows_exercises(self, client_authenticated, app):
         """运动记录 → day_overview 显示"""
         with app.app_context():
