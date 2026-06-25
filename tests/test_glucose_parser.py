@@ -8,6 +8,21 @@ import glucose_parser
 class TestPreprocessRelativeDates:
     """相对日期预处理测试"""
 
+    def test_relative_dates_use_app_timezone(self, monkeypatch):
+        """相对日期应基于应用时区，而不是服务器 UTC 日期"""
+        import utils.timezone as timezone
+
+        monkeypatch.setenv("SUGAR_BEE_TIMEZONE", "Asia/Shanghai")
+        monkeypatch.setattr(
+            timezone,
+            "utc_now",
+            lambda: datetime.datetime(2026, 12, 31, 18, 30, 0, tzinfo=datetime.UTC),
+        )
+
+        result = glucose_parser._preprocess_relative_dates("昨天空腹6.5")
+
+        assert "2026年12月31日" in result
+
     def test_replace_days_ago(self):
         datetime.datetime.now()
         result = glucose_parser._preprocess_relative_dates("60天前测的")
@@ -102,6 +117,31 @@ class TestSplitByEmoji:
         results = glucose_parser.split_by_emoji("🍎空腹6.0")
         assert len(results) == 1
         assert results[0]['user_id'] is None
+
+
+class TestParseGlucoseInputTime:
+    """parse_glucose_input 时间上下文测试"""
+
+    def test_prompt_current_time_uses_app_timezone(self, monkeypatch):
+        """AI 提示词里的当前录入时间应使用应用时区"""
+        import utils.timezone as timezone
+
+        captured = {}
+
+        def fake_call_ai(prompt, images_data=None, mime_type=None):
+            captured["prompt"] = prompt
+            return "[]"
+
+        monkeypatch.setenv("SUGAR_BEE_TIMEZONE", "Asia/Shanghai")
+        monkeypatch.setattr(
+            timezone,
+            "utc_now",
+            lambda: datetime.datetime(2026, 6, 25, 5, 53, 25, tzinfo=datetime.UTC),
+        )
+        monkeypatch.setattr(glucose_parser, "call_ai", fake_call_ai)
+
+        glucose_parser.parse_glucose_input("此时此刻体重72kg")
+        assert "当前录入时间: 2026-06-25 13:53:25" in captured["prompt"]
 
 
 class TestInferMealType:
@@ -264,6 +304,24 @@ class TestEnsureWeightCaptured:
         result = glucose_parser._ensure_weight_captured(records, "称了74.5")
         assert len(result) == 2
         assert result[1]['weight'] == 74.5
+
+    def test_weight_fallback_datetime_uses_app_timezone(self, monkeypatch):
+        """体重兜底记录没有可复用时间时，应使用应用时区当前时间"""
+        import utils.timezone as timezone
+
+        monkeypatch.setenv("SUGAR_BEE_TIMEZONE", "Asia/Shanghai")
+        monkeypatch.setattr(
+            timezone,
+            "utc_now",
+            lambda: datetime.datetime(2026, 6, 25, 5, 53, 25, tzinfo=datetime.UTC),
+        )
+
+        result = glucose_parser._ensure_weight_captured(
+            [{'type': '空腹', 'value': 7.1}],
+            "此时此刻体重72kg",
+        )
+
+        assert result[1]['datetime'] == "2026-06-25 13:53:25"
 
     def test_weight_with_kg_suffix(self):
         """带 kg 后缀"""

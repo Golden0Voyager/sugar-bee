@@ -3,11 +3,13 @@ import datetime
 import re
 import settings
 from ai_client import call_ai
+from utils.timezone import now as app_now
+from utils.timezone import timestamp_str as app_timestamp_str
 
 
 def _preprocess_relative_dates(text):
     """将相对日期（如"60天前"、"昨天"）预计算为绝对日期，避免小模型算术错误"""
-    now = datetime.datetime.now()
+    now = app_now()
 
     # "X天前" → 绝对日期
     def replace_days_ago(match):
@@ -61,7 +63,7 @@ def split_by_emoji(text: str, emoji_map: dict[str, int] | None = None) -> list[d
 
 
 def parse_glucose_input(text, history_context=None, images_data=None, mime_type=None, user_id: int | None = None):
-    current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    current_time = app_timestamp_str()
 
     # 预处理：将相对日期转为绝对日期
     if text:
@@ -424,7 +426,7 @@ def _ensure_weight_captured(records, text):
 
     if weight_val and 30 <= weight_val <= 200:
         # 复用已有记录的时间，没有则用当前时间
-        dt = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        dt = app_timestamp_str()
         for r in records:
             if r.get('datetime'):
                 dt = r['datetime']

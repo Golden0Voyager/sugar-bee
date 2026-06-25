@@ -4,7 +4,6 @@
 """
 import json
 import sqlite3
-import datetime
 from contextlib import contextmanager
 from flask import session
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -12,6 +11,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from core import config
 from utils.db import ConnectionWrapper, get_raw_conn, put_raw_conn
 from utils.sql_dialect import insert_or_ignore_sql
+from utils.timezone import today as app_today
 
 
 @contextmanager
@@ -249,10 +249,10 @@ class UserManager:
         try:
             from datetime import date
             birth_date = date(birth_year, birth_month, birth_day)
-            today = date.today()
+            today = app_today()
             age = today.year - birth_date.year - ((today.month, today.day) < (birth_date.month, birth_date.day))
         except (ValueError, ImportError):
-            age = datetime.datetime.now().year - birth_year
+            age = app_today().year - birth_year
 
         return {
             'name': user.get('name') or user.get('display_name') or '用户',
@@ -285,7 +285,7 @@ class UserManager:
             'birth_year': 1964,
             'birth_month': 1,
             'birth_day': 1,
-            'age': datetime.datetime.now().year - 1964,
+            'age': app_today().year - 1964,
             'height': 170,
             'weight': 75,
             'target_weight': None,

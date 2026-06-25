@@ -58,6 +58,31 @@ class TestGetUserConfigExtended:
             config = um.get_user_config(1)
             assert config['age'] == current_year - 2000
 
+    def test_get_user_config_age_uses_app_timezone_date(self, monkeypatch):
+        """年龄计算应按应用时区日期，而不是服务器 UTC 日期"""
+        import datetime
+        import utils.timezone as timezone
+        from user_manager import UserManager
+
+        monkeypatch.setenv("SUGAR_BEE_TIMEZONE", "Asia/Shanghai")
+        monkeypatch.setattr(
+            timezone,
+            "utc_now",
+            lambda: datetime.datetime(2026, 12, 31, 18, 30, 0, tzinfo=datetime.UTC),
+        )
+
+        um = UserManager(':memory:')
+        mock_user = {
+            'id': 1, 'name': 'Test', 'display_name': 'Test',
+            'birth_year': 2000, 'birth_month': 1, 'birth_day': 1,
+            'height': 170, 'weight': 70, 'gender': 'male',
+            'default_meals': {}, 'target_ranges': None, 'avatar': None,
+        }
+        with patch.object(um, 'get_user', return_value=mock_user):
+            config = um.get_user_config(1)
+
+        assert config['age'] == 27
+
 
 class TestUpdateUserProfilePartial:
     """update_user_profile_partial() 部分更新测试"""
