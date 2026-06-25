@@ -5,6 +5,7 @@ import traceback
 from ai_client import call_ai, AI_AVAILABLE
 import settings
 from utils.sql_dialect import epoch_sql, date_sql
+from utils.timezone import now as app_now, today_str as app_today_str
 
 
 def link_prediction_to_real_record(db, real_record_id, user_id, record_date, record_type, real_value, record_timestamp=None):
@@ -96,7 +97,7 @@ def predict_morning_fpg(db, user_id=1):
     if not AI_AVAILABLE:
         return None
     try:
-        now = datetime.datetime.now()
+        now = app_now()
         today_str = now.strftime('%Y-%m-%d')
         c = db.cursor()
 
@@ -170,7 +171,7 @@ def predict_morning_fpg(db, user_id=1):
         net_calories = cal_in - (user_bmr + cal_out_exercise)
 
         # 4. 近7天空腹血糖趋势（排除血压）
-        seven_days_ago = (datetime.datetime.now() - datetime.timedelta(days=7)).strftime('%Y-%m-%d %H:%M:%S')
+        seven_days_ago = (now - datetime.timedelta(days=7)).strftime('%Y-%m-%d %H:%M:%S')
         c.execute("""SELECT value, timestamp FROM records
             WHERE user_id = ? AND (type IN ('空腹', '早空腹') OR (type LIKE '%空腹%' AND type NOT LIKE '%血压%'))
             AND value > 0 AND is_predicted = 0 AND systolic_pressure IS NULL
@@ -179,7 +180,7 @@ def predict_morning_fpg(db, user_id=1):
         recent_fpg = c.fetchall()
 
         # 5. 历史预测反馈
-        fourteen_days_ago = (datetime.datetime.now() - datetime.timedelta(days=14)).strftime('%Y-%m-%d %H:%M:%S')
+        fourteen_days_ago = (now - datetime.timedelta(days=14)).strftime('%Y-%m-%d %H:%M:%S')
         c.execute("""
             SELECT p.value AS predicted, r.value AS actual, p.prediction_error, r.timestamp AS actual_time
             FROM records p JOIN records r ON p.verified_by_real_id = r.id
@@ -309,7 +310,7 @@ def predict_post_exercise_glucose(db, user_id=1, target_date=None, force_update=
     if not AI_AVAILABLE:
         return None
     if target_date is None:
-        target_date = datetime.datetime.now().strftime('%Y-%m-%d')
+        target_date = app_today_str()
     try:
         c = db.cursor()
         c.execute("SELECT id, is_predicted FROM records WHERE user_id = ? AND DATE(timestamp) = ? AND type = '运动后' AND value > 0", (user_id, target_date))
@@ -354,7 +355,7 @@ def backfill_post_exercise_predictions(db, user_id=1, days=30):
     """批量回溯补全过去 N 天的运动后血糖预测"""
     results = {'success': 0, 'skipped': 0, 'error': 0}
     try:
-        now = datetime.datetime.now()
+        now = app_now()
         for i in range(days):
             target_date = (now - datetime.timedelta(days=i)).strftime('%Y-%m-%d')
             try:
@@ -376,7 +377,7 @@ def predict_remaining_glucose_slots(db, user_id=1, target_date=None, force_updat
     if not AI_AVAILABLE:
         return []
     if target_date is None:
-        target_date = datetime.datetime.now().strftime('%Y-%m-%d')
+        target_date = app_today_str()
     try:
         c = db.cursor()
         # 查找今日已有实测数据
@@ -468,7 +469,7 @@ def predict_remaining_glucose_slots(db, user_id=1, target_date=None, force_updat
 
 def check_daily_data_complete(db, user_id=1, target_date=None):
     if target_date is None:
-        target_date = datetime.datetime.now().strftime('%Y-%m-%d')
+        target_date = app_today_str()
     try:
         c = db.cursor()
         c.execute("SELECT COUNT(*) FROM records WHERE user_id = ? AND DATE(timestamp) = ? AND value > 0 AND type NOT IN ('跑步', '运动') AND type NOT LIKE '%血压%' AND systolic_pressure IS NULL", (user_id, target_date))

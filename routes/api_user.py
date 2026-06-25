@@ -2,7 +2,6 @@ from flask import Blueprint, request, jsonify, session, current_app
 import re
 import traceback
 import os
-import datetime
 
 import settings
 from user_manager import UserManager
@@ -10,6 +9,7 @@ from core.config import DB_NAME
 from utils.responses import api_success, api_error
 from utils.auth import login_required
 from utils.db import get_db
+from utils.timezone import now as app_now
 
 user_manager = UserManager(DB_NAME)
 bp_user = Blueprint('user', __name__)
@@ -136,7 +136,7 @@ def upload_avatar():
         if not file or file.filename == '' or not allowed_file(file.filename):
             return api_error("Invalid file", status_code=400)
 
-        filename = f"avatar_{int(datetime.datetime.now().timestamp())}.png"
+        filename = f"avatar_{int(app_now().timestamp())}.png"
         filepath = os.path.join(current_app.config['UPLOAD_FOLDER'], filename)
         file.save(filepath)
 

@@ -22,6 +22,8 @@ spec:
           env:
             - name: FLASK_ENV
               value: production
+            - name: TZ
+              value: Asia/Shanghai
             - name: SUGAR_BEE_DATABASE_URL
               valueFrom:
                 secretKeyRef:
@@ -36,6 +38,8 @@ spec:
               value: sugar-bee-data
             - name: GUNICORN_WORKERS
               value: '1'
+            - name: GUNICORN_TIMEOUT
+              value: '240'
             - name: INTERNAL_API_TOKEN
               valueFrom:
                 secretKeyRef:

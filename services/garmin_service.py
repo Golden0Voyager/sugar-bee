@@ -10,7 +10,7 @@ import contextlib
 import os
 import time
 import traceback
-from datetime import date, timedelta
+from datetime import timedelta
 
 from garminconnect import (
     Garmin,
@@ -21,6 +21,7 @@ from garminconnect import (
 
 from services.gcs_sync import sync_file_from_gcs
 from utils.db import get_raw_conn, put_raw_conn
+from utils.timezone import today as app_today
 
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TOKEN_DIR = os.environ.get('GARMIN_TOKEN_DIR', os.path.join(_PROJECT_ROOT, '.garmin_tokens'))
@@ -193,8 +194,9 @@ def sync_activities(user_id, days=30):
     """
     with _no_proxy():
         client = _get_client()
-        end = date.today().isoformat()
-        start = (date.today() - timedelta(days=days)).isoformat()
+        end_date = app_today()
+        end = end_date.isoformat()
+        start = (end_date - timedelta(days=days)).isoformat()
 
         try:
             activities = _get_activities_with_retry(client, start, end)

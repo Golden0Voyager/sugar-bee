@@ -1986,7 +1986,7 @@
     async function ensureTimelineData(days) {
         if (!days || days <= 0) days = 3650;  // "全部" 用大数
         const cutoff = new Date(Date.now() - days * 86400000);
-        const cutoffStr = cutoff.toISOString().split('T')[0];
+        const cutoffStr = localDateString(cutoff);
         if (timelineLoaded.minDate && timelineLoaded.minDate <= cutoffStr) {
             return;  // 已有数据覆盖所需范围
         }
@@ -2055,6 +2055,19 @@
         return ids.size > 1;
     }
 
+    /** 本地日期/时间字符串，避免 toISOString() 在东八区早晨返回 UTC 前一天 */
+    function localDateString(date = new Date()) {
+        const d = new Date(date);
+        d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+        return d.toISOString().slice(0, 10);
+    }
+
+    function localDateTimeInputValue(date = new Date()) {
+        const d = new Date(date);
+        d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+        return d.toISOString().slice(0, 16);
+    }
+
     /**
      * 统一的 API 调用辅助函数
      * 处理标准化的响应格式，自动处理错误和 loading 状态
@@ -2078,13 +2091,12 @@
 
             const res = await fetch(url, { ...defaultOptions, ...options });
 
-            // 尝试解析 JSON 响应
+            // 先读取文本，再尝试解析 JSON（避免 body stream 重复读取）
+            const text = await res.text();
             let data;
             try {
-                data = await res.json();
+                data = JSON.parse(text);
             } catch (jsonError) {
-                // 非 JSON 响应（如 500 错误页面）
-                const text = await res.text();
                 throw new Error(`HTTP ${res.status}: ${text.substring(0, 200)}`);
             }
 
@@ -2385,7 +2397,7 @@
     async function overviewNav(delta) {
         const d = new Date(overviewDate);
         d.setDate(d.getDate() + delta);
-        const newDate = d.toISOString().slice(0, 10);
+        const newDate = localDateString(d);
         if (newDate > todayStr) return;
 
         try {
@@ -3619,7 +3631,7 @@
         window.calendarSetView = function(viewType) {
             if (viewType === 'timeGridDay' && window.innerWidth <= 480) {
                 // 手机端“日”视图直接打开当日详情弹窗，避免时间轴太窄
-                const today = new Date().toISOString().split('T')[0];
+                const today = localDateString();
                 renderDayDetails(today);
                 ['calViewDay', 'calViewWeek', 'calViewMonth'].forEach(id => {
                     const btn = document.getElementById(id);
@@ -5673,7 +5685,7 @@
 
     // 手机端默认进入单日视图，并绑定前后翻页
     if (window.innerWidth <= 480) {
-        const today = new Date().toISOString().split('T')[0];
+        const today = localDateString();
         showMobileDayView(today);
         const prevBtn = document.getElementById('mobileDayPrev');
         const nextBtn = document.getElementById('mobileDayNext');
@@ -5689,7 +5701,7 @@
         if (!currentDayDateStr) return;
         const d = new Date(currentDayDateStr + 'T00:00:00');
         d.setDate(d.getDate() + dir);
-        const next = d.toISOString().split('T')[0];
+        const next = localDateString(d);
         if (isMobileCard) {
             showMobileDayView(next);
         } else {
@@ -5700,10 +5712,8 @@
 
 
     // Set default time for manual input
-    const now = new Date();
-    now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
     const manualTimestampEl = document.getElementById('manual_timestamp');
-    if (manualTimestampEl) manualTimestampEl.value = now.toISOString().slice(0, 16);
+    if (manualTimestampEl) manualTimestampEl.value = localDateTimeInputValue();
 
     // 切换手动录入字段
     function toggleRecordFields() {
@@ -5731,7 +5741,7 @@
         } else if (type === 'medication') {
             document.getElementById('medicationFields').classList.remove('d-none');
             // Set default date
-            const today = new Date().toISOString().split('T')[0];
+            const today = localDateString();
             document.getElementById('med_start_manual').value = today;
         }
     }
@@ -6294,7 +6304,7 @@
             dosage: med.medication_dosage || '',
             times_per_day: timesPerDay,
             timing_notes: med.medication_timing || '',
-            start_date: new Date().toISOString().split('T')[0],
+            start_date: localDateString(),
             end_date: null,
             notes: med.notes || 'AI自动识别创建'
         };
@@ -7583,7 +7593,7 @@
     document.addEventListener('DOMContentLoaded', function() {
         const planStart = document.getElementById('plan_start');
         if (planStart) {
-            const today = new Date().toISOString().split('T')[0];
+            const today = localDateString();
             planStart.value = today;
         }
 
@@ -8095,7 +8105,7 @@
         document.getElementById('plan_dose_unit').value = '片';
         document.getElementById('plan_dose_quantity_custom').style.display = 'none';
         document.getElementById('plan_dose_quantity_custom').value = '';
-        const today = new Date().toISOString().split('T')[0];
+        const today = localDateString();
         document.getElementById('plan_start').value = today;
         const isSupplement = medTab === 'supplement';
         document.getElementById('medFormTitle').innerHTML = isSupplement
@@ -8515,7 +8525,7 @@
             }
 
             // 生成文件名
-            const _date = _latestFullAnalysis ? _latestFullAnalysis.analysis_date.replace(/-/g, '') : new Date().toISOString().slice(0,10).replace(/-/g, '');
+            const _date = _latestFullAnalysis ? _latestFullAnalysis.analysis_date.replace(/-/g, '') : localDateString().replace(/-/g, '');
             const fileName = `健康分析报告_${_date}.pdf`;
 
             // 保存 PDF

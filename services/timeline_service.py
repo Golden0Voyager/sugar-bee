@@ -1,7 +1,7 @@
-import datetime
 from collections import defaultdict
 import settings
 from utils.sql_dialect import interval_sql
+from utils.timezone import now as app_now
 
 def build_timeline(cursor, user_id, days=90):
     """
@@ -76,7 +76,7 @@ def build_timeline(cursor, user_id, days=90):
     cursor.execute("SELECT * FROM medication_plans WHERE user_id = ? AND is_active = 1", (user_id,))
     medication_plans = [dict(row) for row in cursor.fetchall()]
 
-    now = datetime.datetime.now()
+    now = app_now()
     today_str = now.strftime('%Y-%m-%d')
     user_config = settings.load_config(user_id)
     _default_meals = user_config.get('default_meals', {})

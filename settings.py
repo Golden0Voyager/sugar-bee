@@ -1,5 +1,6 @@
-import datetime
 import json
+
+from utils.timezone import now as app_now
 
 CONFIG_FILE = "user_config.json"
 
@@ -350,7 +351,7 @@ def save_config(config):
 def calculate_bmr(user_id: int) -> int:
     """根据用户档案计算基础代谢率(BMR,kcal/日)。user_id 必填。"""
     config = load_config(user_id)
-    current_year = datetime.datetime.now().year
+    current_year = app_now().year
     age = current_year - (config.get("birth_year") or DEFAULT_PROFILE["birth_year"])
     gender = config.get("gender") or DEFAULT_PROFILE["gender"]
     weight = config.get("weight") or DEFAULT_PROFILE["weight"]
@@ -410,7 +411,7 @@ def get_ai_system_prompt(user_id: int | None = None) -> str:
     birth_year = config.get('birth_year') or DEFAULT_PROFILE['birth_year']
     return f"""
     【用户健康档案】
-    - 身份：二型糖尿病患者（{gender}, {datetime.datetime.now().year - birth_year}岁）
+    - 身份：二型糖尿病患者（{gender}, {app_now().year - birth_year}岁）
     - 控糖状态：血糖控制良好
     - 血糖特点：
       - 空腹通常在 {glucose_pattern['fasting_range']}，餐后通常在 {glucose_pattern['postmeal_range']}
@@ -419,4 +420,4 @@ def get_ai_system_prompt(user_id: int | None = None) -> str:
 DAILY_ROUTINE = """
     【血糖测量时间点】
     - 07:15 空腹 | 08:45 运动后 | 11:00 早餐后2小时 | 14:30 午餐后2小时 | 17:30 晚饭前 | 20:00 晚餐后2小时 | 22:00 睡前
-""" 
+"""

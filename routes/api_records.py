@@ -1,5 +1,4 @@
 from flask import Blueprint, request, jsonify, redirect, url_for, send_file
-import datetime
 import io
 import traceback
 import pandas as pd
@@ -12,6 +11,7 @@ from utils.responses import api_success, api_error
 from utils.auth import login_required, login_or_token_required
 from utils.db import get_db
 from utils.sql_dialect import interval_sql, date_format_sql
+from utils.timezone import timestamp_str as app_timestamp_str, today as app_today
 from glucose_parser import parse_glucose_input, split_by_emoji
 from services import (
     link_prediction_to_real_record
@@ -201,7 +201,7 @@ def add_record():
 
         # Handle empty timestamp (default to now)
         if not timestamp:
-            timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            timestamp = app_timestamp_str()
 
         if 'T' in timestamp:
             timestamp = timestamp.replace('T', ' ')
@@ -549,7 +549,7 @@ def export():
         buffer = io.BytesIO()
         df.to_csv(buffer, index=False, encoding='utf-8-sig')
         buffer.seek(0)
-        return send_file(buffer, as_attachment=True, download_name=f"glucose_records_{datetime.datetime.now().strftime('%Y%m%d')}.csv", mimetype='text/csv')
+        return send_file(buffer, as_attachment=True, download_name=f"glucose_records_{app_today().strftime('%Y%m%d')}.csv", mimetype='text/csv')
     except Exception as e:
         return f"Error: {e}", 500
 
