@@ -21,6 +21,13 @@ user_manager = UserManager(DB_NAME)
 bp_records = Blueprint('records', __name__)
 
 
+def _is_truthy(value) -> bool:
+    """Interpret common API truthy values without changing existing payload shape."""
+    if isinstance(value, str):
+        return value.strip().lower() in {'1', 'true', 'yes', 'on'}
+    return bool(value)
+
+
 def _validate_record_data(r: dict) -> list[str]:
     """校验单条记录的数据范围，返回警告信息列表（空列表表示无警告）。"""
     warnings: list[str] = []
@@ -127,6 +134,7 @@ def add_record():
             calories = data.get('calories', 0)
             diet_analysis = data.get('diet_analysis', '')
             is_predicted = data.get('is_predicted', 0)
+            upsert = data.get('upsert', False)
             distance = data.get('distance')
             duration = data.get('duration')
             heart_rate = data.get('heart_rate')
@@ -159,6 +167,7 @@ def add_record():
             calories = request.form.get('calories', 0)
             diet_analysis = request.form.get('diet_analysis', '')
             is_predicted = request.form.get('is_predicted', 0)
+            upsert = request.form.get('upsert', False)
             distance = request.form.get('distance')
             duration = request.form.get('duration')
             heart_rate = request.form.get('heart_rate')
@@ -240,7 +249,7 @@ def add_record():
                         f"3 分钟内已有相同体重记录 (ID: {dup['id']}, 时间: {dup['timestamp']})",
                         status_code=409, error_type="duplicate",
                     )
-            elif value and float(value) > 0 and not is_predicted:
+            elif value and float(value) > 0 and not _is_truthy(is_predicted):
                 # 血糖：同用户、同类型、同一天
                 c.execute("""SELECT id, timestamp, value
                     FROM records WHERE user_id = ? AND type = ? AND date(timestamp) = date(?)
@@ -249,6 +258,49 @@ def add_record():
                     (current_user_id, r_type, timestamp))
                 dup = c.fetchone()
                 if dup:
+                    if _is_truthy(upsert):
+                        payload_dict = {
+                            'type': r_type, 'value': value, 'systolic_pressure': systolic_pressure,
+                            'diastolic_pressure': diastolic_pressure, 'pulse_rate': pulse_rate,
+                            'spo2': spo2, 'weight': weight, 'heart_rate': heart_rate,
+                        }
+                        warnings = _validate_record_data(payload_dict)
+
+                        c.execute("""
+                            UPDATE records
+                            SET value = ?, unit = ?, type = ?, notes = ?, timestamp = ?,
+                                calories = ?, diet_analysis = ?, is_predicted = 0,
+                                carbs_grams = ?, gi_value = ?
+                            WHERE id = ?
+                        """, (
+                            value, unit, r_type, notes, timestamp,
+                            calories, diet_analysis, carbs_grams, gi_value,
+                            dup['id'],
+                        ))
+
+                        try:
+                            numeric_value = float(value) if value else 0
+                            if numeric_value > 0 and r_type:
+                                timestamp_str = str(timestamp) if timestamp else ""
+                                record_date = timestamp_str[:10]
+                                link_prediction_to_real_record(
+                                    db, dup['id'], current_user_id,
+                                    record_date, r_type, numeric_value, timestamp,
+                                )
+                                c.execute("""
+                                    UPDATE records
+                                    SET prediction_error = ? - value
+                                    WHERE user_id = ? AND verified_by_real_id = ? AND is_predicted = 1
+                                """, (numeric_value, current_user_id, dup['id']))
+                        except (ValueError, TypeError) as e:
+                            print(f"Warning: Could not link prediction for record {dup['id']}: {e}")
+
+                        db.commit()
+                        resp_data = {"id": dup['id'], "updated": True}
+                        if warnings:
+                            resp_data["warnings"] = warnings
+                        return api_success(data=resp_data, message="Record updated successfully")
+
                     return api_error(
                         f"今日已有「{r_type}」记录 (ID: {dup['id']}, 值: {dup['value']}, 时间: {dup['timestamp']})",
                         status_code=409, error_type="duplicate",

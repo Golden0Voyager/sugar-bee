@@ -81,6 +81,41 @@ class TestRealDBRecordLifecycle:
             })
             assert r3.status_code == 200
 
+    def test_add_upsert_updates_existing_glucose_slot(self, client_authenticated, app):
+        """槽位保存重复血糖 → 更新已有实测，而不是新增或 409"""
+        with app.app_context():
+            first = client_authenticated.post('/add', json={
+                'value': 6.8, 'type': '睡前', 'timestamp': '2024-06-01 22:00:00', 'user_id': 1
+            })
+            assert first.status_code == 200
+            record_id = first.json['data']['id']
+
+            second = client_authenticated.post('/add', json={
+                'value': 7.4, 'type': '睡前', 'timestamp': '2024-06-01 22:00:00',
+                'user_id': 1, 'upsert': True
+            })
+            assert second.status_code == 200
+            assert second.json['data']['id'] == record_id
+            assert second.json['data']['updated'] is True
+
+            from utils.db import get_db
+            db = get_db()
+            c = db.cursor()
+            c.execute("""
+                SELECT COUNT(*) AS cnt, MAX(value) AS value
+                FROM records
+                WHERE user_id = 1 AND type = '睡前' AND date(timestamp) = '2024-06-01'
+            """)
+            row = c.fetchone()
+            assert row['cnt'] == 1
+            assert row['value'] == 7.4
+
+            overview_resp = client_authenticated.get('/api/day_overview?date=2024-06-01')
+            assert overview_resp.status_code == 200
+            overview = {s['key']: s for s in overview_resp.json['overview']}
+            assert overview['bedtime']['status'] == 'measured'
+            assert overview['bedtime']['value'] == 7.4
+
     def test_add_multiple_types(self, client_authenticated, app):
         """多种类型记录 → 全部存在"""
         with app.app_context():

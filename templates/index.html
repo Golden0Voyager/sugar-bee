@@ -2400,19 +2400,23 @@
         const newDate = localDateString(d);
         if (newDate > todayStr) return;
 
-        await refreshOverview(newDate);
+        try {
+            await refreshOverview(newDate);
+        } catch(e) {
+            console.error(e);
+            showToast('概览刷新失败，请稍后重试', 'danger');
+        }
     }
 
     async function refreshOverview(dateStr = overviewDate) {
-        try {
-            const res = await fetch(`/api/day_overview?date=${dateStr}`);
-            const data = await res.json();
-            if (!res.ok || data.error) {
-                throw new Error(data.error || '概览刷新失败');
-            }
-            overviewDate = data.date || dateStr;
-            renderOverview(data);
-        } catch(e) { console.error(e); }
+        const res = await fetch(`/api/day_overview?date=${dateStr}`);
+        const data = await res.json();
+        if (!res.ok || data.error || data.status === 'error') {
+            throw new Error(data.error || data.message || '概览刷新失败');
+        }
+        overviewDate = data.date || dateStr;
+        renderOverview(data);
+        return data;
     }
 
     // === 概览卡片多条记录切换 ===
@@ -2857,7 +2861,7 @@
         // 每个槽位的目标时间（与后端 today_schedule 一致）
         const slotTimeMap = {
             'fasting': '07:15', 'post_exercise': '08:45', 'post_breakfast': '11:00',
-            'post_lunch': '14:00', 'pre_dinner': '17:30', 'post_dinner': '20:00', 'bedtime': '22:00'
+            'post_lunch': '14:30', 'pre_dinner': '17:30', 'post_dinner': '20:00', 'bedtime': '22:00'
         };
         const input = document.getElementById('glucoseInputValue');
         const value = parseFloat(input.value);
@@ -2885,6 +2889,7 @@
                     type: typeMap[slotKey] || '',
                     timestamp: timestamp,
                     notes: '',
+                    upsert: true,
                     user_id: currentUserId
                 })
             });
@@ -2894,9 +2899,19 @@
                 modal.hide();
                 showToast(`${typeMap[slotKey]} ${value.toFixed(1)} mmol/L 已保存`, 'success');
                 slotPredictions[slotKey] = value;
-                await refreshOverview(overviewDate);
+                try {
+                    await refreshOverview(overviewDate);
+                } catch (e) {
+                    console.error(e);
+                    showToast('已保存，但概览刷新失败，请手动刷新页面', 'warning');
+                }
             } else {
-                showToast('保存失败，请重试', 'danger');
+                let msg = '保存失败，请重试';
+                try {
+                    const data = await res.json();
+                    msg = data.message || msg;
+                } catch (_) {}
+                showToast(msg, 'danger');
                 btn.disabled = false;
                 btn.innerHTML = '<i class="bi bi-check-lg me-1"></i>保存';
             }
