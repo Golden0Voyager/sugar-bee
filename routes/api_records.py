@@ -12,7 +12,7 @@ from utils.auth import login_required, login_or_token_required
 from utils.db import get_db
 from utils.sql_dialect import interval_sql, date_format_sql
 from utils.timezone import timestamp_str as app_timestamp_str, today as app_today
-from glucose_parser import parse_glucose_input, split_by_emoji
+from glucose_parser import apply_deterministic_fallbacks, parse_glucose_input, split_by_emoji
 from services import (
     link_prediction_to_real_record
 )
@@ -327,6 +327,7 @@ def parse_ai():
                 seg_results = parse_glucose_input(
                     seg['text'], history_context, images_data, mime_type, user_id=uid
                 )
+                seg_results = apply_deterministic_fallbacks(seg_results, seg['text'])
                 for r in seg_results:
                     r['user_id'] = uid
                 results.extend(seg_results)
@@ -334,6 +335,7 @@ def parse_ai():
             # 单用户模式（向后兼容）
             history_context = get_user_stats(db, current_user_id)
             results = parse_glucose_input(text, history_context, images_data, mime_type, user_id=current_user_id)
+            results = apply_deterministic_fallbacks(results, text)
 
         try:
             c = db.cursor()

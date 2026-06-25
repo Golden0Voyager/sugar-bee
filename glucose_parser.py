@@ -392,10 +392,13 @@ def _postprocess_records(records, original_text=None):
                     r['type'] = '餐后血压'
                     print("[parser] 修正血压类型: '血压测量' → '餐后血压'")
 
-    # 兜底：从原始文本中检测 AI 遗漏的体重数据
+    return apply_deterministic_fallbacks(records, original_text)
+
+
+def apply_deterministic_fallbacks(records, original_text=None):
+    """对 AI 解析结果应用确定性兜底规则。"""
     if original_text:
         records = _ensure_weight_captured(records, original_text)
-
     return records
 
 
