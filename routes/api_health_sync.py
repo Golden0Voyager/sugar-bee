@@ -4,12 +4,14 @@
 """
 import datetime
 import hmac
+import io
 import secrets
 import traceback
 import uuid
 
-from flask import Blueprint, request
+from flask import Blueprint, request, send_file
 
+from services.shortcut_generator import generate_binding_shortcut
 from user_manager import UserManager
 from core import config as core_config
 from utils.responses import api_success, api_error
@@ -276,6 +278,27 @@ def sync_health_data():
     except Exception as e:
         traceback.print_exc()
         return api_error("数据同步失败", status_code=500)
+
+
+@bp_health_sync.route('/download-shortcut', methods=['GET'])
+@login_required
+def download_shortcut():
+    """下载 iOS 捷径文件(.shortcut)用于 Apple Health 绑定。
+
+    返回一个未签名的 binary plist,可被 iOS「快捷指令」App 导入。
+    """
+    try:
+        base_url = request.host_url.rstrip('/')
+        plist_bytes = generate_binding_shortcut(base_url)
+        return send_file(
+            io.BytesIO(plist_bytes),
+            mimetype='application/octet-stream',
+            as_attachment=True,
+            download_name='SugarBee.sync.shortcut',
+        )
+    except Exception:
+        traceback.print_exc()
+        return api_error("捷径文件生成失败", status_code=500)
 
 
 @bp_health_sync.route('/unbind', methods=['POST'])
