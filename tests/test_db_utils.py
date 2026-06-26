@@ -322,7 +322,7 @@ class TestSqlDialect:
         self._set_db_type(monkeypatch, 'postgres')
         from utils.sql_dialect import insert_or_ignore_sql
         result = insert_or_ignore_sql('records', ['id', 'val'], 'id')
-        assert result == "INSERT INTO records (id, val) VALUES (%s, %s) ON CONFLICT (id) DO NOTHING"
+        assert result == "INSERT INTO records (id, val) VALUES (?, ?) ON CONFLICT (id) DO NOTHING"
 
     def test_bool_type_sqlite(self, monkeypatch):
         self._set_db_type(monkeypatch, 'sqlite')

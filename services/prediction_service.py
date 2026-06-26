@@ -54,7 +54,7 @@ def link_prediction_to_real_record(db, real_record_id, user_id, record_date, rec
         elif '睡前' in record_type:
             type_condition = "type LIKE '%睡前%'"
         else:
-            type_condition = f"type LIKE '%{record_type}%' AND type NOT LIKE '%血压%'"
+            type_condition = "type LIKE ? AND type NOT LIKE '%血压%'"
 
         if record_timestamp:
             try:
@@ -64,7 +64,9 @@ def link_prediction_to_real_record(db, real_record_id, user_id, record_date, rec
                     AND is_predicted = 1 AND verified_by_real_id IS NULL AND value > 0 AND systolic_pressure IS NULL
                     ORDER BY ABS({} - {})
                     LIMIT 1
-                """.format(date_sql('timestamp'), type_condition, epoch_sql('timestamp'), epoch_sql('?')), (user_id, record_date, record_timestamp))
+                """.format(date_sql('timestamp'), type_condition, epoch_sql('timestamp'), epoch_sql('?')),
+                    (user_id, record_date) + (f'%{record_type}%', record_timestamp) if '?' in type_condition
+                    else (user_id, record_date, record_timestamp))
             except Exception:
                 return None
         else:
@@ -75,7 +77,8 @@ def link_prediction_to_real_record(db, real_record_id, user_id, record_date, rec
                     AND is_predicted = 1 AND verified_by_real_id IS NULL AND value > 0 AND systolic_pressure IS NULL
                     ORDER BY timestamp ASC
                     LIMIT 1
-                """, (user_id, record_date))
+                """, (user_id, record_date, f'%{record_type}%') if '?' in type_condition
+                    else (user_id, record_date))
             except Exception:
                 return None
         prediction = c.fetchone()

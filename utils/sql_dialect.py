@@ -66,7 +66,7 @@ def date_sql(column: str) -> str:
 def epoch_sql(column: str) -> str:
     """返回时间戳 epoch 秒数的 SQL 表达式。"""
     if config.DB_TYPE == "postgres":
-        col = '?::timestamp' if column.strip() == '?' else column
+        col = '?::timestamp' if column.strip() in ('?', '%s') else column
         return f"EXTRACT(EPOCH FROM {col})"
     return f"strftime('%s', {column})"
 
@@ -74,13 +74,11 @@ def epoch_sql(column: str) -> str:
 def insert_or_ignore_sql(table: str, columns: list[str], conflict_col: str | None = None) -> str:
     """返回 INSERT OR IGNORE 风格的 SQL（PostgreSQL 使用 ON CONFLICT DO NOTHING）。
 
-    Args:
-        table: 目标表名。
-        columns: 要插入的列名列表。
-        conflict_col: PostgreSQL 下冲突目标列；未提供时不指定列（不推荐）。
+    统一使用 ? 占位符，由 _normalize_sql / _inline_params 在对应模式下转换，
+    避免 insert_or_ignore_sql 用 ph() 返回 %s 而 _inline_params 按 ? 分割时 IndexError。
     """
     cols = ", ".join(columns)
-    placeholders = ", ".join([ph() for _ in columns])
+    placeholders = ", ".join(["?" for _ in columns])
     if config.DB_TYPE == "postgres":
         conflict = f" ({conflict_col})" if conflict_col else ""
         return f"INSERT INTO {table} ({cols}) VALUES ({placeholders}) ON CONFLICT{conflict} DO NOTHING"

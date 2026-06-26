@@ -277,8 +277,6 @@ def add_record():
                         dup['id'],
                     ))
 
-                    db.commit()
-
                     try:
                         numeric_value = float(value) if value else 0
                         if numeric_value > 0 and r_type:
@@ -293,9 +291,10 @@ def add_record():
                                 SET prediction_error = ? - value
                                 WHERE user_id = ? AND verified_by_real_id = ? AND is_predicted = 1
                             """, (numeric_value, current_user_id, dup['id']))
-                            db.commit()
                     except (ValueError, TypeError) as e:
                         print(f"Warning: Could not link prediction for record {dup['id']}: {e}")
+
+                    db.commit()
                     resp_data = {"id": dup['id'], "updated": True}
                     if warnings:
                         resp_data["warnings"] = warnings
@@ -620,15 +619,22 @@ def import_csv():
         c = db.cursor()
         current_user_id = user_manager.get_current_user_id()
         # Simplified import logic for brevity, keeping core functionality
+        imported = 0
+        skipped = 0
         for _, row in df.iterrows():
             row_dict = {k: v for k, v in row.items() if not pd.isna(v)}
             warnings = _validate_record_data(row_dict)
             if warnings:
+                skipped += 1
                 continue
             c.execute("INSERT INTO records (user_id, value, type, timestamp) VALUES (?, ?, ?, ?)",
                      (current_user_id, row.get('value'), row.get('type'), row.get('timestamp')))
+            imported += 1
         db.commit()
-        return api_success(message="Imported")
+        msg = f"导入 {imported} 条"
+        if skipped:
+            msg += f"，跳过 {skipped} 条无效数据"
+        return api_success(data={"imported": imported, "skipped": skipped}, message=msg)
     except Exception as e:
         return api_error(str(e), status_code=500)
 

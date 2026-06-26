@@ -51,9 +51,13 @@ Monolithic Flask app (`app.py`) with Blueprint modules for routing. Single-page 
 
 ### Database
 
-SQLite (`glucose.db`, configurable via `SUGAR_BEE_DB_PATH` env var). Core `records` table stores all health data types (glucose/bp/exercise/diet/weight/medication) via a `type` column. All queries filter by `user_id`.
+- **本地 (SQLite)**: `glucose.db`（默认，可 `SUGAR_BEE_DB_PATH` 覆盖）
+- **生产 (Cloud Run)**: PostgreSQL 17 via Cloud SQL（`SUGAR_BEE_DATABASE_URL` 环境变量触发切换）
 
-Migrations run in `init_db()` using `ALTER TABLE ... ADD COLUMN` + `try/except` (idempotent). Alembic available for structured migrations in `migrations/`.
+`DB_TYPE` 由 `core/config.py` 自动判断：有 `SUGAR_BEE_DATABASE_URL` 则为 `postgres`，否则 `sqlite`。
+`utils/sql_dialect.py` 提供统一 SQL 片段（`date_sql`、`epoch_sql` 等），业务代码无需写 `if DB_TYPE`。
+
+Core `records` table stores all health data types (glucose/bp/exercise/diet/weight/medication) via a `type` column. All queries filter by `user_id`。
 
 ### Background Threads
 
@@ -64,7 +68,7 @@ Migrations run in `init_db()` using `ALTER TABLE ... ADD COLUMN` + `try/except` 
 
 ### AI Provider Chain
 
-Modelscope (text) → Volc Engine (text) → Gemini direct API (text) → Gemini fallback → all-failed raise
+Modelscope (text/vision) → SenseNova (text only, no vision)
 
 ## Linting
 
@@ -141,3 +145,16 @@ ignore = ["E501", "E402", "E702"]  # E402/E702 for test files
 - `.env` stores API keys, `user_config.json` stores user profiles — both gitignored
 - SQLite `date('now')` uses UTC — use `date('now', 'localtime')` when comparing against local timestamps
 - Coverage pragma `# pragma: no cover` is used on code paths that cannot be traced by coverage.py (subprocess isolation in `app.py`, `google.genai` namespace package in `ai_client.py`)
+
+## 环境差异（⚠️ 重要）
+
+| 场景 | 数据库 | 触发条件 |
+|------|--------|---------|
+| 本地开发 | SQLite (`glucose.db`) | 无 `SUGAR_BEE_DATABASE_URL` |
+| 生产 (Cloud Run) | PostgreSQL 17 | 有 `SUGAR_BEE_DATABASE_URL` |
+
+**常见陷阱：**
+- `_inline_params()` 只会在 PostgreSQL 模式下被调用（`_CompatCursor.execute`），SQLite 不走此路径
+- `epoch_sql('?')` 在两种模式下都产生占位符（SQLite: `strftime('%s', ?)`，PG: `EXTRACT(EPOCH FROM ?::timestamp)`）
+- `date_sql('timestamp')` 返回列表达式而非占位符（SQLite: `DATE(timestamp)`，PG: `timestamp::date`）
+- 大多数 `utils/sql_dialect.py` 函数在生产模式和本地测试中行为不同；写新 SQL 片段务必双端验证
