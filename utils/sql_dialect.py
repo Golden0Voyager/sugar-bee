@@ -66,7 +66,8 @@ def date_sql(column: str) -> str:
 def epoch_sql(column: str) -> str:
     """返回时间戳 epoch 秒数的 SQL 表达式。"""
     if config.DB_TYPE == "postgres":
-        return f"EXTRACT(EPOCH FROM {column})"
+        col = '?::timestamp' if column.strip() == '?' else column
+        return f"EXTRACT(EPOCH FROM {col})"
     return f"strftime('%s', {column})"
 
 

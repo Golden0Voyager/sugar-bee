@@ -22,7 +22,7 @@ def _preprocess_relative_dates(text):
     text = re.sub(r'前天', (now - datetime.timedelta(days=2)).strftime('%Y年%m月%d日'), text)
     text = re.sub(r'大前天', (now - datetime.timedelta(days=3)).strftime('%Y年%m月%d日'), text)
     text = re.sub(r'上周', (now - datetime.timedelta(days=7)).strftime('%Y年%m月%d日'), text)
-    text = re.sub(r'上个月', (now - datetime.timedelta(days=30)).strftime('%Y年%m月%d日'), text)
+    text = re.sub(r'上个月', (now.replace(day=1) - datetime.timedelta(days=1)).strftime('%Y年%m月%d日'), text)
     return text
 
 
@@ -322,11 +322,21 @@ def parse_glucose_input(text, history_context=None, images_data=None, mime_type=
     try:
         raw_text = call_ai(prompt, images_data=images_data, mime_type=mime_type)
 
-        # More robust extraction
+        # 优先尝试全文解析，失败后再用正则提取
+        try:
+            results = json.loads(raw_text)
+            if isinstance(results, list):
+                return _postprocess_records(results, text)
+        except (json.JSONDecodeError, TypeError):
+            pass
+
         match = re.search(r'(\[[\s\S]*\])', raw_text)
         if match:
-            results = json.loads(match.group(1))
-            return _postprocess_records(results, text)
+            try:
+                results = json.loads(match.group(1))
+                return _postprocess_records(results, text)
+            except (json.JSONDecodeError, TypeError):
+                pass
         return _postprocess_records([], text)
 
     except Exception as e:
@@ -391,58 +401,6 @@ def _postprocess_records(records, original_text=None):
                 elif any(k in text_lower for k in ('餐后', '饭后', '午餐后', '晚餐后')):
                     r['type'] = '餐后血压'
                     print("[parser] 修正血压类型: '血压测量' → '餐后血压'")
-
-    return apply_deterministic_fallbacks(records, original_text)
-
-
-def apply_deterministic_fallbacks(records, original_text=None):
-    """对 AI 解析结果应用确定性兜底规则。"""
-    if original_text:
-        records = _ensure_weight_captured(records, original_text)
-    return records
-
-
-def _ensure_weight_captured(records, text):
-    """兜底检测：如果原始文本含体重数据但 AI 未生成体重记录，自动补上"""
-    # 已有体重记录则跳过
-    if any(r.get('weight') or r.get('type') == '体重记录' for r in records):
-        return records
-
-    # 模式1：显式关键词 "体重68.85" / "称了74.5" / "75.2kg"
-    weight_val = None
-    m = re.search(r'(?:体重|称了?)\s*(\d{2,3}(?:\.\d{1,2})?)', text)
-    if m:
-        weight_val = float(m.group(1))
-    else:
-        # 模式2：末尾的 "XXkg" / "XX公斤"
-        m = re.search(r'(\d{2,3}(?:\.\d{1,2})?)\s*(?:kg|公斤|千克)', text, re.IGNORECASE)
-        if m:
-            weight_val = float(m.group(1))
-    if weight_val is None:
-        # 模式3：顿号/逗号后的体重数值（如 "🐯104/60、64，54.50"）
-        # 匹配顿号、逗号后紧跟的 40-150 范围内的数值（可带小数）
-        m = re.search(r'[，,、]\s*(\d{2,3}(?:\.\d{1,2})?)\s*(?:[,，、]|$)', text)
-        if m:
-            candidate = float(m.group(1))
-            if 40 <= candidate <= 150:
-                weight_val = candidate
-
-    if weight_val and 30 <= weight_val <= 200:
-        # 复用已有记录的时间，没有则用当前时间
-        dt = app_timestamp_str()
-        for r in records:
-            if r.get('datetime'):
-                dt = r['datetime']
-                break
-        records.append({
-            'value': 0,
-            'type': '体重记录',
-            'weight': weight_val,
-            'datetime': dt,
-            'notes': '',
-            'is_predicted': False
-        })
-        print(f"[parser] 兜底补漏: 从文本检测到体重 {weight_val}kg，AI 未生成，已自动补充")
 
     return records
 

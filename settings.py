@@ -5,15 +5,15 @@ from utils.timezone import now as app_now
 CONFIG_FILE = "user_config.json"
 
 # ========== AI 模型配置 ==========
-# 降级链：ModelScope → SenseNova (text/report) → 火山引擎 → Gemini（保底）
-# 图片识别 (vision) 不走 SenseNova
+# 降级链：ModelScope → SenseNova (text/report)
+# vision 不走 SenseNova
 # 应用内置 API Key，用户无需自行配置
 
 # ModelScope 模型配置（国内可用，免费2000次/天，单模型500次/天，OpenAI 兼容接口）
 # 三类任务使用不同模型，有效容量翻3倍（每模型独立500次/天）
 MODELSCOPE_MODELS = {
     'text': ['deepseek-ai/DeepSeek-V4-Pro'],          # JSON解析/预测
-    'vision': ['Qwen/Qwen3-VL-235B-A22B-Instruct', 'Qwen/Qwen3-VL-8B-Thinking', 'Qwen/Qwen3.5-397B-A17B'],   # 截图识别，兜底用 397B
+    'vision': ['Qwen/Qwen3-VL-235B-A22B-Instruct', 'Qwen/Qwen3.5-397B-A17B', 'Qwen/Qwen3.5-122B-A10B', 'Qwen/Qwen3-VL-8B-Thinking'],  # 截图识别，能力优先降级
     'report': ['Qwen/Qwen3.5-397B-A17B'],      # 报告分析
     'chat': ['deepseek-ai/DeepSeek-V4-Pro'],   # 健康助手 fallback（ModelScope 可用）
     'extra_body': {'enable_thinking': False},        # 仅对 text 任务生效（Qwen3 标准模型需关闭思考模式）
@@ -27,17 +27,6 @@ SENSENOVA_MODELS = {
     'report': ['deepseek-v4-flash'],
 }
 SENSENOVA_BASE_URL = 'https://token.sensenova.cn/v1'
-
-# 火山引擎/豆包 模型配置（国内可用，免费50万tokens/模型，OpenAI 兼容接口）
-VOLC_MODELS = {
-    'text': ['doubao-seed-1-8-251228'],
-    'vision': [],   # 图片识别不走火山引擎
-    'report': ['doubao-seed-1-8-251228'],
-}
-VOLC_BASE_URL = 'https://ark.cn-beijing.volces.com/api/v3'
-
-# Gemini 直连（保底，海外可用）
-GEMINI_MODELS = ['gemini-3.5-flash', 'gemini-2.5-flash']
 
 # ========== 血糖值验证范围常量 ==========
 # 用于数据验证和预测值范围检查，单位：mmol/L
@@ -330,23 +319,6 @@ def load_config(user_id: int | None = None) -> dict:
         "glucose_pattern": dict(DEFAULT_GLUCOSE_PATTERN),
         "default_meals": dict(DEFAULT_MEALS),
     }
-
-
-def save_config(config):
-    """[DEPRECATED] 写入全局 user_config.json 文件 — 该文件会跨用户污染数据。
-    新代码应使用 UserManager.update_user_profile_partial(user_id, ...)。
-    保留此函数仅为兼容旧迁移脚本。
-    """
-    import warnings
-    warnings.warn(
-        "settings.save_config() writes to a global config file and pollutes data across users. "
-        "Use UserManager.update_user_profile_partial(user_id, ...) instead.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
-        json.dump(config, f, indent=4, ensure_ascii=False)
-
 
 def calculate_bmr(user_id: int) -> int:
     """根据用户档案计算基础代谢率(BMR,kcal/日)。user_id 必填。"""

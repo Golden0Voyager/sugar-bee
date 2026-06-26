@@ -281,15 +281,6 @@ class TestConfigConstants:
         assert 'text' in settings.MODELSCOPE_MODELS
         assert 'vision' in settings.MODELSCOPE_MODELS
         assert 'report' in settings.MODELSCOPE_MODELS
-        assert len(settings.GEMINI_MODELS) > 0
-
-
-class TestSaveConfig:
-    """save_config 测试（已废弃）"""
-
-    def test_save_config_deprecation_warning(self):
-        with pytest.warns(DeprecationWarning):
-            settings.save_config({"test": True})
 
 
 class TestGetAISystemPrompt:

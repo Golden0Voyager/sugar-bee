@@ -24,7 +24,7 @@ def _safe_float(val):
 
 
 def get_current_user_id():
-    return session.get('current_user_id', 1)
+    return session.get('current_user_id')
 
 def build_chat_context(db, user_id):
     """构建健康助手的 system prompt"""
@@ -129,7 +129,7 @@ def chat_stream():
     messages.append({"role": "user", "content": message})
 
     # 保存用户消息
-    c.execute("INSERT INTO chat_messages (user_id, session_id, role, content) VALUES (?, ?, 'user', ?) ON CONFLICT DO NOTHING", (user_id, session_id, message))
+    c.execute("INSERT INTO chat_messages (user_id, session_id, role, content) VALUES (?, ?, 'user', ?)", (user_id, session_id, message))
     db.commit()
 
     def generate():
@@ -144,8 +144,7 @@ def chat_stream():
             if full_reply:
                 reply_text = "".join(full_reply)
                 try:
-                    db = get_db()
-                    db.execute("INSERT INTO chat_messages (user_id, session_id, role, content) VALUES (?, ?, 'assistant', ?) ON CONFLICT DO NOTHING", (user_id, session_id, reply_text))
+                    db.execute("INSERT INTO chat_messages (user_id, session_id, role, content) VALUES (?, ?, 'assistant', ?)", (user_id, session_id, reply_text))
                     db.commit()
                 except Exception:
                     pass

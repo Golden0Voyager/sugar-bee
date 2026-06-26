@@ -3,6 +3,7 @@
 支持多用户数据隔离和模块化配置
 """
 import json
+import re
 import sqlite3
 from contextlib import contextmanager
 from flask import session
@@ -45,57 +46,45 @@ class UserManager:
         # PostgreSQL 生产环境下通过 utils.db 连接池获取连接，db_path 被忽略。
         self.db_path = db_path
 
+    _USER_QUERY = """
+        SELECT u.id, u.username, u.display_name, u.avatar, u.is_active,
+               u.phone, u.email,
+               p.name, p.birth_year, p.birth_month, p.birth_day, p.height, p.weight, p.gender, p.target_weight,
+               p.default_meals, p.target_ranges, p.enabled_modules
+        FROM app_users u
+        LEFT JOIN user_profiles p ON u.id = p.user_id
+    """
+
+    @staticmethod
+    def _parse_user_row(row):
+        """将 SQL 查询行解析为用户字典（JSON 字段反序列化）"""
+        user = dict(row)
+        for field, default in [('enabled_modules', []), ('default_meals', {}), ('target_ranges', {})]:
+            if user.get(field):
+                try:
+                    user[field] = json.loads(user[field])
+                except Exception:
+                    user[field] = default
+            else:
+                user[field] = default
+        return user
+
     def get_all_users(self):
         """获取所有活跃用户"""
         with _db_conn(self.db_path) as conn:
             c = conn.cursor()
-            c.execute("""
-                SELECT u.id, u.username, u.display_name, u.avatar, u.is_active,
-                       u.phone, u.email,
-                       p.name, p.birth_year, p.birth_month, p.birth_day, p.height, p.weight, p.gender, p.target_weight,
-                       p.default_meals, p.target_ranges, p.enabled_modules
-                FROM app_users u
-                LEFT JOIN user_profiles p ON u.id = p.user_id
-                WHERE u.is_active = 1
-                ORDER BY u.id
-            """)
-            users = [dict(row) for row in c.fetchall()]
-
-        # 解析 JSON 字段
-        for user in users:
-            if user.get('enabled_modules'):
-                try:
-                    user['enabled_modules'] = json.loads(user['enabled_modules'])
-                except Exception:
-                    user['enabled_modules'] = []
-            else:
-                user['enabled_modules'] = []
-
-            if user.get('default_meals'):
-                try:
-                    user['default_meals'] = json.loads(user['default_meals'])
-                except Exception:
-                    user['default_meals'] = {}
-            else:
-                user['default_meals'] = {}
-
-            if user.get('target_ranges'):
-                try:
-                    user['target_ranges'] = json.loads(user['target_ranges'])
-                except Exception:
-                    user['target_ranges'] = {}
-            else:
-                user['target_ranges'] = {}
-
-        return users
+            c.execute(self._USER_QUERY + " WHERE u.is_active = 1 ORDER BY u.id")
+            return [self._parse_user_row(row) for row in c.fetchall()]
 
     def get_user(self, user_id):
-        """获取指定用户"""
-        users = self.get_all_users()
-        for user in users:
-            if user['id'] == user_id:
-                return user
-        return None
+        """获取指定用户（直接按 ID 查询，无需遍历全部用户）"""
+        with _db_conn(self.db_path) as conn:
+            c = conn.cursor()
+            c.execute(self._USER_QUERY + " WHERE u.id = ?", (user_id,))
+            row = c.fetchone()
+            if row is None:
+                return None
+            return self._parse_user_row(row)
 
     def get_current_user_id(self):
         """从 g（token 路径）或 session 获取当前用户 ID"""
@@ -205,6 +194,8 @@ class UserManager:
         values = []
         for key, value in partial_data.items():
             col = ALIASES.get(key, key)
+            if not re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', col):
+                continue
             if col in SCALAR_FIELDS:
                 set_clauses.append(f"{col} = ?")
                 values.append(value)
@@ -363,6 +354,8 @@ class UserManager:
 
     def bind_provider(self, user_id, provider, provider_uid):
         """绑定手机号/邮箱/第三方账号"""
+        if provider not in ('phone', 'email'):
+            raise ValueError(f"不支持的绑定类型: {provider}")
         with _db_conn(self.db_path) as conn:
             c = conn.cursor()
             # 检查是否已被其他用户绑定
@@ -387,6 +380,8 @@ class UserManager:
 
     def unbind_provider(self, user_id, provider):
         """解绑手机号/邮箱/第三方账号"""
+        if provider not in ('phone', 'email'):
+            raise ValueError(f"不支持的解绑类型: {provider}")
         with _db_conn(self.db_path) as conn:
             c = conn.cursor()
             c.execute("DELETE FROM user_auth_providers WHERE user_id = ? AND provider = ?",

@@ -12,7 +12,7 @@ from utils.auth import login_required, login_or_token_required
 from utils.db import get_db
 from utils.sql_dialect import interval_sql, date_format_sql
 from utils.timezone import timestamp_str as app_timestamp_str, today as app_today
-from glucose_parser import apply_deterministic_fallbacks, parse_glucose_input, split_by_emoji
+from glucose_parser import parse_glucose_input, split_by_emoji
 from services import (
     link_prediction_to_real_record
 )
@@ -221,90 +221,90 @@ def add_record():
         c = db.cursor()
 
         # === 重复记录检测 ===
-        if request.is_json:
-            dup = None
-            if systolic_pressure and diastolic_pressure:
-                # 血压：同用户、同数值、3 分钟内
-                c.execute("""SELECT id, timestamp, systolic_pressure, diastolic_pressure, pulse_rate
-                    FROM records WHERE user_id = ? AND systolic_pressure = ? AND diastolic_pressure = ?
-                    AND timestamp BETWEEN datetime(?, '-3 minutes') AND datetime(?, '+3 minutes')
-                    LIMIT 1""",
-                    (current_user_id, systolic_pressure, diastolic_pressure, timestamp, timestamp))
-                dup = c.fetchone()
-                if dup:
-                    return api_error(
-                        f"3 分钟内已有相同血压记录 (ID: {dup['id']}, 时间: {dup['timestamp']})",
-                        status_code=409, error_type="duplicate",
-                    )
-            elif weight:
-                # 体重：同用户、同数值、3 分钟内
-                c.execute("""SELECT id, timestamp, weight
-                    FROM records WHERE user_id = ? AND weight = ?
-                    AND timestamp BETWEEN datetime(?, '-3 minutes') AND datetime(?, '+3 minutes')
-                    LIMIT 1""",
-                    (current_user_id, weight, timestamp, timestamp))
-                dup = c.fetchone()
-                if dup:
-                    return api_error(
-                        f"3 分钟内已有相同体重记录 (ID: {dup['id']}, 时间: {dup['timestamp']})",
-                        status_code=409, error_type="duplicate",
-                    )
-            elif value and float(value) > 0 and not _is_truthy(is_predicted):
-                # 血糖：同用户、同类型、同一天
-                c.execute("""SELECT id, timestamp, value
-                    FROM records WHERE user_id = ? AND type = ? AND date(timestamp) = date(?)
-                    AND is_predicted = 0 AND value > 0 AND systolic_pressure IS NULL AND weight IS NULL
-                    LIMIT 1""",
-                    (current_user_id, r_type, timestamp))
-                dup = c.fetchone()
-                if dup:
-                    if _is_truthy(upsert):
-                        payload_dict = {
-                            'type': r_type, 'value': value, 'systolic_pressure': systolic_pressure,
-                            'diastolic_pressure': diastolic_pressure, 'pulse_rate': pulse_rate,
-                            'spo2': spo2, 'weight': weight, 'heart_rate': heart_rate,
-                        }
-                        warnings = _validate_record_data(payload_dict)
+        dup = None
+        if systolic_pressure and diastolic_pressure:
+            # 血压：同用户、同数值、3 分钟内
+            c.execute("""SELECT id, timestamp, systolic_pressure, diastolic_pressure, pulse_rate
+                FROM records WHERE user_id = ? AND systolic_pressure = ? AND diastolic_pressure = ?
+                AND timestamp BETWEEN datetime(?, '-3 minutes') AND datetime(?, '+3 minutes')
+                LIMIT 1""",
+                (current_user_id, systolic_pressure, diastolic_pressure, timestamp, timestamp))
+            dup = c.fetchone()
+            if dup:
+                return api_error(
+                    f"3 分钟内已有相同血压记录 (ID: {dup['id']}, 时间: {dup['timestamp']})",
+                    status_code=409, error_type="duplicate",
+                )
+        elif weight:
+            # 体重：同用户、同数值、3 分钟内
+            c.execute("""SELECT id, timestamp, weight
+                FROM records WHERE user_id = ? AND weight = ?
+                AND timestamp BETWEEN datetime(?, '-3 minutes') AND datetime(?, '+3 minutes')
+                LIMIT 1""",
+                (current_user_id, weight, timestamp, timestamp))
+            dup = c.fetchone()
+            if dup:
+                return api_error(
+                    f"3 分钟内已有相同体重记录 (ID: {dup['id']}, 时间: {dup['timestamp']})",
+                    status_code=409, error_type="duplicate",
+                )
+        elif value and float(value) > 0 and not _is_truthy(is_predicted):
+            # 血糖：同用户、同类型、同一天
+            c.execute("""SELECT id, timestamp, value
+                FROM records WHERE user_id = ? AND type = ? AND date(timestamp) = date(?)
+                AND is_predicted = 0 AND value > 0 AND systolic_pressure IS NULL AND weight IS NULL
+                LIMIT 1""",
+                (current_user_id, r_type, timestamp))
+            dup = c.fetchone()
+            if dup:
+                if _is_truthy(upsert):
+                    payload_dict = {
+                        'type': r_type, 'value': value, 'systolic_pressure': systolic_pressure,
+                        'diastolic_pressure': diastolic_pressure, 'pulse_rate': pulse_rate,
+                        'spo2': spo2, 'weight': weight, 'heart_rate': heart_rate,
+                    }
+                    warnings = _validate_record_data(payload_dict)
 
-                        c.execute("""
-                            UPDATE records
-                            SET value = ?, unit = ?, type = ?, notes = ?, timestamp = ?,
-                                calories = ?, diet_analysis = ?, is_predicted = 0,
-                                carbs_grams = ?, gi_value = ?
-                            WHERE id = ?
-                        """, (
-                            value, unit, r_type, notes, timestamp,
-                            calories, diet_analysis, carbs_grams, gi_value,
-                            dup['id'],
-                        ))
+                    c.execute("""
+                        UPDATE records
+                        SET value = ?, unit = ?, type = ?, notes = ?, timestamp = ?,
+                            calories = ?, diet_analysis = ?, is_predicted = 0,
+                            carbs_grams = ?, gi_value = ?
+                        WHERE id = ?
+                    """, (
+                        value, unit, r_type, notes, timestamp,
+                        calories, diet_analysis, carbs_grams, gi_value,
+                        dup['id'],
+                    ))
 
-                        try:
-                            numeric_value = float(value) if value else 0
-                            if numeric_value > 0 and r_type:
-                                timestamp_str = str(timestamp) if timestamp else ""
-                                record_date = timestamp_str[:10]
-                                link_prediction_to_real_record(
-                                    db, dup['id'], current_user_id,
-                                    record_date, r_type, numeric_value, timestamp,
-                                )
-                                c.execute("""
-                                    UPDATE records
-                                    SET prediction_error = ? - value
-                                    WHERE user_id = ? AND verified_by_real_id = ? AND is_predicted = 1
-                                """, (numeric_value, current_user_id, dup['id']))
-                        except (ValueError, TypeError) as e:
-                            print(f"Warning: Could not link prediction for record {dup['id']}: {e}")
+                    db.commit()
 
-                        db.commit()
-                        resp_data = {"id": dup['id'], "updated": True}
-                        if warnings:
-                            resp_data["warnings"] = warnings
-                        return api_success(data=resp_data, message="Record updated successfully")
+                    try:
+                        numeric_value = float(value) if value else 0
+                        if numeric_value > 0 and r_type:
+                            timestamp_str = str(timestamp) if timestamp else ""
+                            record_date = timestamp_str[:10]
+                            link_prediction_to_real_record(
+                                db, dup['id'], current_user_id,
+                                record_date, r_type, numeric_value, timestamp,
+                            )
+                            c.execute("""
+                                UPDATE records
+                                SET prediction_error = ? - value
+                                WHERE user_id = ? AND verified_by_real_id = ? AND is_predicted = 1
+                            """, (numeric_value, current_user_id, dup['id']))
+                            db.commit()
+                    except (ValueError, TypeError) as e:
+                        print(f"Warning: Could not link prediction for record {dup['id']}: {e}")
+                    resp_data = {"id": dup['id'], "updated": True}
+                    if warnings:
+                        resp_data["warnings"] = warnings
+                    return api_success(data=resp_data, message="Record updated successfully")
 
-                    return api_error(
-                        f"今日已有「{r_type}」记录 (ID: {dup['id']}, 值: {dup['value']}, 时间: {dup['timestamp']})",
-                        status_code=409, error_type="duplicate",
-                    )
+                return api_error(
+                    f"今日已有「{r_type}」记录 (ID: {dup['id']}, 值: {dup['value']}, 时间: {dup['timestamp']})",
+                    status_code=409, error_type="duplicate",
+                )
 
         # 数据范围校验（允许写入，但收集警告）
         payload_dict = {
@@ -327,16 +327,19 @@ def add_record():
                    pace, max_pace, cadence))
 
         real_record_id = c.lastrowid
+
+        db.commit()
+
+        # 在 commit 之后链接预测记录，避免 SQL 错误导致事务回滚
         try:
             numeric_value = float(value) if value else 0
             if not is_predicted and numeric_value > 0 and r_type:
                 timestamp_str = str(timestamp) if timestamp else ""
-                record_date = timestamp_str[:10]  # Take YYYY-MM-DD
+                record_date = timestamp_str[:10]
                 link_prediction_to_real_record(db, real_record_id, current_user_id, record_date, r_type, numeric_value, timestamp)
         except (ValueError, TypeError) as e:
             print(f"Warning: Could not link prediction for record {real_record_id}: {e}")
 
-        db.commit()
         if request.is_json:
             resp_data = {"id": real_record_id}
             if warnings:
@@ -379,7 +382,6 @@ def parse_ai():
                 seg_results = parse_glucose_input(
                     seg['text'], history_context, images_data, mime_type, user_id=uid
                 )
-                seg_results = apply_deterministic_fallbacks(seg_results, seg['text'])
                 for r in seg_results:
                     r['user_id'] = uid
                 results.extend(seg_results)
@@ -387,7 +389,6 @@ def parse_ai():
             # 单用户模式（向后兼容）
             history_context = get_user_stats(db, current_user_id)
             results = parse_glucose_input(text, history_context, images_data, mime_type, user_id=current_user_id)
-            results = apply_deterministic_fallbacks(results, text)
 
         try:
             c = db.cursor()
@@ -620,6 +621,10 @@ def import_csv():
         current_user_id = user_manager.get_current_user_id()
         # Simplified import logic for brevity, keeping core functionality
         for _, row in df.iterrows():
+            row_dict = {k: v for k, v in row.items() if not pd.isna(v)}
+            warnings = _validate_record_data(row_dict)
+            if warnings:
+                continue
             c.execute("INSERT INTO records (user_id, value, type, timestamp) VALUES (?, ?, ?, ?)",
                      (current_user_id, row.get('value'), row.get('type'), row.get('timestamp')))
         db.commit()

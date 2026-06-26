@@ -224,26 +224,6 @@ class TestPostprocessRecordsEdge:
         assert result[0]['pulse_rate'] == 75
         assert result[0].get('spo2') is None
 
-    def test_weight_captured_no_datetime(self):
-        """Weight has no datetime -> current time used"""
-        from glucose_parser import _ensure_weight_captured
-        records = [{'type': '空腹', 'value': 6.5}]
-        result = _ensure_weight_captured(records, "体重68.85")
-        wr = [r for r in result if r.get('weight')]
-        assert len(wr) == 1
-        assert wr[0]['weight'] == 68.85
-        assert 'datetime' in wr[0]
-
-    def test_weight_pattern_separator_first_match(self):
-        """re.search finds separator value, 64 from '、64'"""
-        from glucose_parser import _ensure_weight_captured
-        records = [{'type': '血压测量', 'systolic_pressure': 104, 'diastolic_pressure': 60, 'datetime': '2026-06-11 06:30'}]
-        result = _ensure_weight_captured(records, "104/60、64，54.50")
-        wr = [r for r in result if r.get('weight')]
-        assert len(wr) >= 1
-        # Regex matches "、64" first (64 in 40-150 range)
-        assert wr[0]['weight'] == 64.0
-
 
 # ============================================================
 # generate_report.py (97% -> ~98%)

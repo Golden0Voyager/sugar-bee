@@ -38,15 +38,15 @@ _is_prod = os.environ.get('FLASK_ENV') == 'production'
 
 # SECRET_KEY：生产环境必须显式配置；开发环境使用临时 key（安全提示）
 _secret_key = os.environ.get('SECRET_KEY')
-if not _secret_key:
-    if _is_prod:  # pragma: no cover (子进程隔离)
+if not _secret_key:  # pragma: no cover (子进程隔离)
+    if _is_prod:
         raise RuntimeError(
             "SECRET_KEY 环境变量未设置。"
             "请执行：export SECRET_KEY=$(python3 -c 'import secrets; print(secrets.token_hex(32))')"
-        )  # pragma: no cover
-    import secrets as _secrets  # pragma: no cover（SECRET_KEY 在测试/生产环境始终有值）
-    _secret_key = _secrets.token_hex(16)  # pragma: no cover
-    print("[WARN] 使用随机生成的临时 SECRET_KEY（开发模式）。生产环境请务必显式设置。")  # pragma: no cover
+        )
+    import secrets as _secrets
+    _secret_key = _secrets.token_hex(16)
+    print("[WARN] 使用随机生成的临时 SECRET_KEY（开发模式）。生产环境请务必显式设置。")
 app.secret_key = _secret_key
 
 app.config['UPLOAD_FOLDER'] = AVATAR_FOLDER
@@ -92,6 +92,8 @@ def teardown_db(exception):
 # ========== 全局变量 ==========
 _prediction_lock = threading.Lock()
 _prediction_running = set()
+_prediction_last_run = {}  # user_id -> timestamp
+_PREDICTION_COOLDOWN = 1800  # 30 秒冷却，防止 429 等情况下反复触发
 
 # ========== 核心路由 ==========
 
@@ -118,12 +120,16 @@ def index():
                 with _prediction_lock:
                     _prediction_running.discard(user_id)
 
-        already_running = False
+        import time as _time
         with _prediction_lock:
-            if current_user_id not in _prediction_running:
-                _prediction_running.add(current_user_id)
-            else:
-                already_running = True
+            already_running = current_user_id in _prediction_running
+            if not already_running:
+                last_run = _prediction_last_run.get(current_user_id, 0)
+                if _time.time() - last_run < _PREDICTION_COOLDOWN:
+                    already_running = True
+                else:
+                    _prediction_running.add(current_user_id)
+                    _prediction_last_run[current_user_id] = _time.time()
 
         if not already_running:
             threading.Thread(target=_run_predictions, args=(current_user_id,), daemon=True).start()

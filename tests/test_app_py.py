@@ -443,6 +443,7 @@ class TestIndexPredictionRunning:
         mock_running.__contains__.return_value = True
 
         with patch('app._prediction_running', mock_running), \
+             patch('app._prediction_last_run', {}), \
              patch('app._prediction_lock'), \
              patch('app.get_db') as mock_get_db, \
              patch('app.build_timeline', return_value=([], [])), \
@@ -489,6 +490,7 @@ class TestPredictionThreadException:
             mock_running.__contains__.return_value = False
 
             with patch('app._prediction_running', mock_running), \
+                 patch('app._prediction_last_run', {}), \
                  patch('app._prediction_lock'):
                 resp = client_authenticated.get('/')
                 assert resp.status_code == 200
@@ -916,9 +918,10 @@ class TestAiPredictionError:
 
     def test_prediction_thread_error(self, monkeypatch, app):
         """预测函数抛异常时被闭包 except 捕获"""
-        from app import _prediction_running
+        from app import _prediction_running, _prediction_last_run
 
         _prediction_running.clear()
+        _prediction_last_run.clear()
         mock_conn = MagicMock()
         monkeypatch.setattr('app.get_raw_conn', lambda: mock_conn)
         monkeypatch.setattr('app.put_raw_conn', lambda c: None)
