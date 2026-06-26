@@ -93,7 +93,10 @@ def teardown_db(exception):
 _prediction_lock = threading.Lock()
 _prediction_running = set()
 _prediction_last_run = {}  # user_id -> timestamp
-_PREDICTION_COOLDOWN = 1800  # 30 秒冷却，防止 429 等情况下反复触发
+_prediction_fail_count = {}  # user_id -> consecutive failures
+_PREDICTION_COOLDOWN_SUCCESS = 120  # 成功后 2 分钟冷却
+_PREDICTION_COOLDOWN_FAIL_BASE = 60  # 失败后首次 60 秒
+_PREDICTION_COOLDOWN_FAIL_MAX = 1800  # 最大 30 分钟
 
 # ========== 核心路由 ==========
 
@@ -108,28 +111,42 @@ def index():
         # 1. 自动触发分析与预测 (后台运行)
         def _run_predictions(user_id):
             pred_db = None
+            failed = False
             try:
                 pred_db = get_raw_conn()
                 predict_morning_fpg(pred_db, user_id)
                 predict_post_exercise_glucose(pred_db, user_id)
             except Exception as e:
                 print(f"[AI] 后台预测出错: {e}")
+                failed = True
             finally:
                 if pred_db:
                     put_raw_conn(pred_db)
                 with _prediction_lock:
                     _prediction_running.discard(user_id)
+                    _prediction_last_run[user_id] = _time.time()
+                    if failed:
+                        n = _prediction_fail_count.get(user_id, 0) + 1
+                        _prediction_fail_count[user_id] = n
+                    else:
+                        _prediction_fail_count.pop(user_id, None)
 
         import time as _time
         with _prediction_lock:
             already_running = current_user_id in _prediction_running
             if not already_running:
                 last_run = _prediction_last_run.get(current_user_id, 0)
-                if _time.time() - last_run < _PREDICTION_COOLDOWN:
+                fail_n = _prediction_fail_count.get(current_user_id, 0)
+                cooldown = _PREDICTION_COOLDOWN_SUCCESS if fail_n == 0 else min(
+                    _PREDICTION_COOLDOWN_FAIL_BASE * (2 ** (fail_n - 1)),
+                    _PREDICTION_COOLDOWN_FAIL_MAX,
+                )
+                if _time.time() - last_run < cooldown:
                     already_running = True
                 else:
                     _prediction_running.add(current_user_id)
                     _prediction_last_run[current_user_id] = _time.time()
+                    _prediction_fail_count.pop(current_user_id, None)
 
         if not already_running:
             threading.Thread(target=_run_predictions, args=(current_user_id,), daemon=True).start()
