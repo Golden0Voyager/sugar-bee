@@ -596,14 +596,14 @@ def export():
         c.execute("SELECT * FROM records WHERE user_id = ? ORDER BY timestamp DESC", (current_user_id,))
         columns = [desc[0] for desc in c.description]
         rows = c.fetchall()
-        import pandas as pd
         df = pd.DataFrame(rows, columns=columns)
         buffer = io.BytesIO()
         df.to_csv(buffer, index=False, encoding='utf-8-sig')
         buffer.seek(0)
         return send_file(buffer, as_attachment=True, download_name=f"glucose_records_{app_today().strftime('%Y%m%d')}.csv", mimetype='text/csv')
     except Exception as e:
-        return f"Error: {e}", 500
+        print(f"Export error: {e}")
+        return "导出失败，请稍后再试", 500
 
 @bp_records.route('/import', methods=['POST'])
 @login_required

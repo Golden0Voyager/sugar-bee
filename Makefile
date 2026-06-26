@@ -29,5 +29,8 @@ clean-images: ## List old images
 test: ## Run tests
 	uv run python -m pytest tests/ -q
 
-lint: ## Run ruff
+lint: ## Run ruff check
 	uv run ruff check .
+
+fmt: ## Auto-fix lint + format
+	uv run ruff check . --fix && uv run ruff format .
