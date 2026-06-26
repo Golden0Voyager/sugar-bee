@@ -3,7 +3,6 @@
 import datetime
 from unittest.mock import MagicMock
 
-
 # ── settings mock ──
 
 def mock_health_settings(mock_settings, target_weight=None):

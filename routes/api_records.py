@@ -1,21 +1,22 @@
-from flask import Blueprint, request, jsonify, redirect, url_for, send_file
+import base64
+import contextlib
 import io
 import traceback
+
 import pandas as pd
-import base64
+from flask import Blueprint, jsonify, redirect, request, send_file, url_for
 
 import settings
-from user_manager import UserManager
 from core.config import DB_NAME
-from utils.responses import api_success, api_error
-from utils.auth import login_required, login_or_token_required
-from utils.db import get_db
-from utils.sql_dialect import interval_sql, date_format_sql
-from utils.timezone import timestamp_str as app_timestamp_str, today as app_today
 from glucose_parser import parse_glucose_input, split_by_emoji
-from services import (
-    link_prediction_to_real_record
-)
+from services import link_prediction_to_real_record
+from user_manager import UserManager
+from utils.auth import login_or_token_required, login_required
+from utils.db import get_db
+from utils.responses import api_error, api_success
+from utils.sql_dialect import date_format_sql, interval_sql
+from utils.timezone import timestamp_str as app_timestamp_str
+from utils.timezone import today as app_today
 
 user_manager = UserManager(DB_NAME)
 bp_records = Blueprint('records', __name__)
@@ -56,15 +57,13 @@ def _validate_record_data(r: dict) -> list[str]:
 
     # 血糖校验（仅血糖记录）
     value = r.get('value')
-    if value and value > 0 and not systolic and not r.get('weight'):
-        if value < 1.0 or value > 33.3:
-            warnings.append(f"血糖值 {value} 超出正常范围（1.0-33.3 mmol/L）")
+    if value and value > 0 and not systolic and not r.get('weight') and (value < 1.0 or value > 33.3):
+        warnings.append(f"血糖值 {value} 超出正常范围（1.0-33.3 mmol/L）")
 
     # 体重校验
     weight = r.get('weight')
-    if weight and weight > 0:
-        if weight < 20.0 or weight > 300.0:
-            warnings.append(f"体重 {weight} 超出正常范围（20-300 kg）")
+    if weight and weight > 0 and (weight < 20.0 or weight > 300.0):
+        warnings.append(f"体重 {weight} 超出正常范围（20-300 kg）")
 
     return warnings
 
@@ -75,28 +74,28 @@ def get_user_stats(db, user_id=None):
     try:
         c = db.cursor()
         # 1. Avg Fasting (Last 30 days)
-        c.execute("""
+        c.execute(f"""
             SELECT AVG(value) FROM records
             WHERE user_id = ?
             AND type LIKE '%空腹%'
             AND type NOT LIKE '%血压%'
             AND systolic_pressure IS NULL
             AND is_predicted = 0
-            AND timestamp > {}
-        """.format(interval_sql(30)), (user_id,))
+            AND timestamp > {interval_sql(30)}
+        """, (user_id,))
         row = c.fetchone()
         stats['avg_fasting'] = round(row[0], 1) if row and row[0] else '未知'
 
         # 2. Avg Post-meal (Last 30 days)
-        c.execute("""
+        c.execute(f"""
             SELECT AVG(value) FROM records
             WHERE user_id = ?
             AND type LIKE '%餐后%'
             AND type NOT LIKE '%血压%'
             AND systolic_pressure IS NULL
             AND is_predicted = 0
-            AND timestamp > {}
-        """.format(interval_sql(30)), (user_id,))
+            AND timestamp > {interval_sql(30)}
+        """, (user_id,))
         row = c.fetchone()
         stats['avg_postmeal'] = round(row[0], 1) if row and row[0] else '未知'
 
@@ -194,19 +193,15 @@ def add_record():
             return redirect(url_for('auth.login'))
 
         if weight and not bmi:
-            try:
+            with contextlib.suppress(ValueError, TypeError):
                 bmi = settings.calculate_bmi(float(weight), user_id=current_user_id)
-            except (ValueError, TypeError):
-                pass
 
         # If weight record, update user profile weight (per-user, not global)
         if weight:
-            try:
+            with contextlib.suppress(ValueError, TypeError):
                 user_manager.update_user_profile_partial(
                     current_user_id, {'weight': float(weight)}
                 )
-            except (ValueError, TypeError):
-                pass
 
         # Handle empty timestamp (default to now)
         if not timestamp:
@@ -509,10 +504,8 @@ def batch_add():
             weight = r.get('weight')
             bmi = r.get('bmi')
             if weight and not bmi:
-                try:
+                with contextlib.suppress(Exception):
                     bmi = settings.calculate_bmi(float(weight), user_id=record_uid)
-                except Exception:
-                    pass
 
             c.execute("""INSERT INTO records (user_id, value, unit, type, notes, timestamp, calories, diet_analysis, is_predicted,
                                             distance, duration, heart_rate, max_heart_rate, systolic_pressure, diastolic_pressure,
@@ -599,7 +592,12 @@ def export():
     try:
         db = get_db()
         current_user_id = user_manager.get_current_user_id()
-        df = pd.read_sql_query("SELECT * FROM records WHERE user_id = ? ORDER BY timestamp DESC", db, params=(current_user_id,))
+        c = db.cursor()
+        c.execute("SELECT * FROM records WHERE user_id = ? ORDER BY timestamp DESC", (current_user_id,))
+        columns = [desc[0] for desc in c.description]
+        rows = c.fetchall()
+        import pandas as pd
+        df = pd.DataFrame(rows, columns=columns)
         buffer = io.BytesIO()
         df.to_csv(buffer, index=False, encoding='utf-8-sig')
         buffer.seek(0)

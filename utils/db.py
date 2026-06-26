@@ -5,6 +5,7 @@
 """
 from __future__ import annotations
 
+import contextlib
 import datetime
 import sqlite3
 from typing import Any
@@ -93,7 +94,7 @@ class CursorWrapper:
             except Exception:
                 row = None
             if row is not None:
-                if hasattr(row, 'keys') and 'id' in row.keys():
+                if hasattr(row, 'keys') and 'id' in row:
                     self._lastrowid = row['id']
                 elif hasattr(row, '__getitem__'):
                     self._lastrowid = row[0]
@@ -292,10 +293,7 @@ def _convert_sqlite_to_pg(sql: str) -> str:
         if expr.startswith("'") and expr.endswith("'"):
             expr = expr[1:-1]  # pragma: no cover (dead code — regex 已剥离引号)
         modifier = m.group(2).strip()
-        if modifier.startswith('+'):
-            op = '+'
-        else:
-            op = '-'
+        op = '+' if modifier.startswith('+') else '-'
         number, unit = modifier[1:].strip().split(' ', 1)
         return f"'{expr}'::timestamp {op} INTERVAL '{number} {unit}'"
 
@@ -647,10 +645,8 @@ def _init_db_postgres():
         # 同步所有 SERIAL 序列，防止迁移后序列落后于实际数据
         for tbl in ('records', 'medication_plans', 'dosage_history', 'medication_logs',
                     'health_analyses', 'chat_messages', 'app_users', 'user_auth_providers'):
-            try:
+            with contextlib.suppress(Exception):
                 c.execute(f"SELECT setval('{tbl}_id_seq', COALESCE((SELECT MAX(id) FROM {tbl}), 1))")
-            except Exception:
-                pass
 
         conn.commit()
     except Exception as e:
@@ -707,10 +703,8 @@ def _init_db_sqlite():
         ]
 
         for col_name, col_type in mig_cols:
-            try:
+            with contextlib.suppress(sqlite3.OperationalError):
                 c.execute(f"ALTER TABLE records ADD COLUMN {col_name} {col_type}")
-            except sqlite3.OperationalError:
-                pass
 
         # 用药方案表
         c.execute('''CREATE TABLE IF NOT EXISTS medication_plans
@@ -736,10 +730,8 @@ def _init_db_sqlite():
             ("med_type", "TEXT DEFAULT ''")
         ]
         for col_name, col_type in plan_cols:
-            try:
+            with contextlib.suppress(sqlite3.OperationalError):
                 c.execute(f"ALTER TABLE medication_plans ADD COLUMN {col_name} {col_type}")
-            except sqlite3.OperationalError:
-                pass
 
         # 剂量记录表
         c.execute('''CREATE TABLE IF NOT EXISTS dosage_history
@@ -802,29 +794,21 @@ def _init_db_sqlite():
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)''')
 
         # 用户档案表迁移：目标体重（按用户存储，避免全局污染）
-        try:
+        with contextlib.suppress(sqlite3.OperationalError):
             c.execute("ALTER TABLE user_profiles ADD COLUMN target_weight REAL")
-        except sqlite3.OperationalError:
-            pass
 
         # 用户档案表迁移：出生年月日
         for col_name, col_type in [("birth_month", "INTEGER"), ("birth_day", "INTEGER")]:
-            try:
+            with contextlib.suppress(sqlite3.OperationalError):
                 c.execute(f"ALTER TABLE user_profiles ADD COLUMN {col_name} {col_type}")
-            except sqlite3.OperationalError:
-                pass
 
         # 用户表迁移
-        try:
+        with contextlib.suppress(sqlite3.OperationalError):
             c.execute("ALTER TABLE app_users ADD COLUMN password_hash TEXT")
-        except sqlite3.OperationalError:
-            pass
 
         for col in ['phone TEXT', 'email TEXT']:
-            try:
+            with contextlib.suppress(sqlite3.OperationalError):
                 c.execute(f"ALTER TABLE app_users ADD COLUMN {col}")
-            except sqlite3.OperationalError:
-                pass
 
         # 聊天记录表
         c.execute('''CREATE TABLE IF NOT EXISTS chat_messages (

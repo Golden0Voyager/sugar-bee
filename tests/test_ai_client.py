@@ -1,6 +1,7 @@
 """ai_client.py 测试 — mock OpenAI 测试降级链、_try_provider、call_ai"""
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock
 
 
 class TestAiClientConfig:
@@ -9,14 +10,14 @@ class TestAiClientConfig:
     def test_ai_available_detection(self):
         from ai_client import AI_AVAILABLE, MODELSCOPE_API_KEY, SENSENOVA_API_KEY
         expected = bool(MODELSCOPE_API_KEY or SENSENOVA_API_KEY)
-        assert AI_AVAILABLE == expected
+        assert expected == AI_AVAILABLE
 
     def test_chat_available(self):
         from ai_client import CHAT_AVAILABLE, SENSENOVA_API_KEY
-        assert CHAT_AVAILABLE == bool(SENSENOVA_API_KEY)
+        assert bool(SENSENOVA_API_KEY) == CHAT_AVAILABLE
 
     def test_chat_model_configured(self):
-        from ai_client import SENSENOVA_CHAT_MODEL, SENSENOVA_CHAT_BASE_URL
+        from ai_client import SENSENOVA_CHAT_BASE_URL, SENSENOVA_CHAT_MODEL
         assert SENSENOVA_CHAT_MODEL == "deepseek-v4-flash"
         assert "sensenova.cn" in SENSENOVA_CHAT_BASE_URL
 
@@ -155,10 +156,8 @@ class TestCallAi:
         """没有 SenseNova 时 ModelScope 失败直接 raise"""
         from ai_client import call_ai
         mock_try.return_value = (None, Exception("fail"))
-        with pytest.raises(Exception):
+        with pytest.raises(Exception):  # noqa: B017
             call_ai('test prompt')
-
-    @patch('ai_client.AI_AVAILABLE', True)
     @patch('ai_client.MODELSCOPE_API_KEY', 'fake-key')
     @patch('ai_client._try_provider')
     def test_has_images_forces_vision(self, mock_try):
@@ -271,7 +270,7 @@ class TestCallChatStream:
         from ai_client import call_chat_stream
         mock_openai_cls.side_effect = Exception("all down")
 
-        with pytest.raises(Exception):
+        with pytest.raises(Exception):  # noqa: B017
             list(call_chat_stream([{"role": "user", "content": "hi"}]))
 
 
@@ -455,7 +454,7 @@ class TestStreamChatSenseNovaFail:
         mock_openai_cls.return_value = mock_client
         mock_client.chat.completions.create.side_effect = Exception("SenseNova down")
 
-        with pytest.raises(Exception):
+        with pytest.raises(Exception):  # noqa: B017
             list(call_chat_stream([{"role": "user", "content": "hi"}]))
 
 

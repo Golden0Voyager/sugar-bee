@@ -1,8 +1,10 @@
 """
 认证装饰器测试
 """
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
 from flask import g
+
 import utils.auth
 
 
@@ -156,9 +158,8 @@ class TestLoginRequiredFallback:
         def fake_view():
             return "ok"
 
-        with app.test_request_context():
-            # 必须 patch utils.auth.url_for（局部导入引用），而非 flask.url_for
-            with patch('utils.auth.url_for', side_effect=[Exception("no blueprint"), '/login']):
+        with app.test_request_context(), \
+             patch('utils.auth.url_for', side_effect=[Exception("no blueprint"), '/login']):
                 resp = fake_view()
                 assert resp.status_code == 302
                 assert '/login' in resp.location

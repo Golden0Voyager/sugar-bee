@@ -21,6 +21,21 @@ uv run python -m pytest tests/ --cov --cov-report=term-missing
 uv run python -m pytest tests/test_settings.py -v
 ```
 
+## Makefile（Cloud Run 部署）
+
+```bash
+make help           # 显示所有命令
+make lint           # ruff 检查
+make test           # 运行测试
+make build          # 构建推送 + 自动更新 cloud-run.yaml digest
+make deploy         # gcloud run services replace
+make deploy-quick   # make deploy-quick DIGEST=sha256:xxx（跳过 YAML 更新）
+make logs           # 查看 Cloud Run 实时日志
+make clean-images   # 列出 Artifact Registry 历史镜像
+```
+
+**注意**：`make build` 自动获取新镜像 digest 并写入 `deploy/cloud-run.yaml`，使用 digest 而非 `:latest` 确保部署可重复。
+
 ## Environment Constraints (Enforced)
 
 - **Package manager**: `uv pip install <pkg>` — NEVER use `pip` or `python -m pip`

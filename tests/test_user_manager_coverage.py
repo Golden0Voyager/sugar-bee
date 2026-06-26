@@ -9,16 +9,17 @@ user_manager.py 最后覆盖冲刺 (91% -> ~97%)
   L196  — update_user_profile_partial updated_at = CURRENT_TIMESTAMP
   L239-240 — get_user_config age calculation except (ValueError/ImportError)
 """
-import pytest
+import os
 import sqlite3
 import tempfile
-import os
+
+import pytest
 
 
 @pytest.fixture
 def real_um():
     """创建使用临时文件数据库的 UserManager 实例。
-    
+
     使用 tempfile 而非 :memory:，因为 UserManager 内部多次调用
     sqlite3.connect(self.db_path)，每个 :memory: 连接互不共享。
     """

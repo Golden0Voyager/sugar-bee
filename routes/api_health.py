@@ -1,13 +1,15 @@
-from flask import Blueprint, request, jsonify
-import traceback
+import contextlib
 import json
+import traceback
 
-from user_manager import UserManager
+from flask import Blueprint, jsonify, request
+
 from core.config import DB_NAME
-from utils.responses import api_success, api_error
+from services import generate_health_analysis
+from user_manager import UserManager
 from utils.auth import login_required
 from utils.db import get_db
-from services import generate_health_analysis
+from utils.responses import api_error, api_success
 
 user_manager = UserManager(DB_NAME)
 bp_health = Blueprint('health', __name__)
@@ -55,10 +57,8 @@ def get_latest_analysis():
         if row:
             analysis = dict(row)
             if analysis.get('recommendations'):
-                try:
+                with contextlib.suppress(Exception):
                     analysis['recommendations'] = json.loads(analysis['recommendations'])
-                except Exception:
-                    pass
             return jsonify(analysis)
         return jsonify({"message": "暂无分析记录"}), 404
     except Exception as e:

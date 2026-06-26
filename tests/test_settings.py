@@ -1,8 +1,8 @@
 """
 settings.py 配置和工具函数测试
 """
-import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
 import settings
 
 

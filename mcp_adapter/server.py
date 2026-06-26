@@ -35,13 +35,14 @@ import argparse
 import os
 import re
 import sqlite3
-from typing import Optional
 
 import httpx
 from mcp.server.fastmcp import FastMCP
+
 from utils.db import get_raw_conn
 from utils.sql_dialect import date_format_sql
-from utils.timezone import now as app_now, timestamp_str as app_timestamp_str
+from utils.timezone import now as app_now
+from utils.timezone import timestamp_str as app_timestamp_str
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DB_PATH = os.environ.get("DB_PATH", os.path.join(PROJECT_ROOT, "glucose.db"))
@@ -53,7 +54,7 @@ DEFAULT_USER_ID = int(os.environ.get("DEFAULT_USER_ID", "1"))
 mcp = FastMCP("sugar-bee")
 
 
-def _normalize_timestamp(ts: Optional[str] = None) -> str:
+def _normalize_timestamp(ts: str | None = None) -> str:
     """校验并补全时间戳，确保格式为 YYYY-MM-DD HH:MM:SS。"""
     if not ts:
         return app_timestamp_str()
@@ -161,14 +162,12 @@ def _validate_record_data(r: dict) -> list[str]:
         warnings.append(f"脉搏 {pulse} 超出正常范围（30-220）")
 
     value = r.get("value")
-    if value and value > 0 and not systolic and not r.get("weight"):
-        if value < 1.0 or value > 33.3:
-            warnings.append(f"血糖值 {value} 超出正常范围（1.0-33.3 mmol/L）")
+    if value and value > 0 and not systolic and not r.get("weight") and (value < 1.0 or value > 33.3):
+        warnings.append(f"血糖值 {value} 超出正常范围（1.0-33.3 mmol/L）")
 
     weight = r.get("weight")
-    if weight and weight > 0:
-        if weight < 20.0 or weight > 300.0:
-            warnings.append(f"体重 {weight} 超出正常范围（20-300 kg）")
+    if weight and weight > 0 and (weight < 20.0 or weight > 300.0):
+        warnings.append(f"体重 {weight} 超出正常范围（20-300 kg）")
 
     return warnings
 
@@ -529,9 +528,9 @@ async def record_blood_pressure(
     user_id: int,
     systolic: int,
     diastolic: int,
-    pulse_rate: Optional[int] = None,
-    timestamp: Optional[str] = None,
-    notes: Optional[str] = None,
+    pulse_rate: int | None = None,
+    timestamp: str | None = None,
+    notes: str | None = None,
 ) -> str:
     """记录一次血压测量。调用前，请向用户展示所有参数并请求确认；仅在用户明确同意后再执行。"""
     err = _validate_bp(systolic, diastolic)
@@ -573,8 +572,8 @@ async def record_blood_pressure(
 async def record_weight(
     user_id: int,
     weight: float,
-    timestamp: Optional[str] = None,
-    notes: Optional[str] = None,
+    timestamp: str | None = None,
+    notes: str | None = None,
 ) -> str:
     """记录一次体重。会自动计算并更新 BMI。调用前，请向用户展示所有参数并请求确认；仅在用户明确同意后再执行。"""
     err = _validate_weight(weight)
@@ -608,8 +607,8 @@ async def record_glucose(
     user_id: int,
     value: float,
     record_type: str,
-    timestamp: Optional[str] = None,
-    notes: Optional[str] = None,
+    timestamp: str | None = None,
+    notes: str | None = None,
 ) -> str:
     """记录一次血糖。record_type 示例：空腹、早餐后2小时、午餐后2小时、晚餐后2小时、睡前。调用前，请向用户展示所有参数并请求确认；仅在用户明确同意后再执行。"""
     err = _validate_glucose(value)
@@ -645,13 +644,13 @@ async def record_exercise(
     user_id: int,
     exercise_type: str,
     distance: float,
-    duration: Optional[str] = None,
-    pace: Optional[str] = None,
-    heart_rate: Optional[int] = None,
-    steps: Optional[int] = None,
-    calories: Optional[int] = None,
-    notes: Optional[str] = None,
-    timestamp: Optional[str] = None,
+    duration: str | None = None,
+    pace: str | None = None,
+    heart_rate: int | None = None,
+    steps: int | None = None,
+    calories: int | None = None,
+    notes: str | None = None,
+    timestamp: str | None = None,
 ) -> str:
     """记录一次运动/锻炼。exercise_type 示例：跑步、走路、骑行、游泳、健身。distance 单位为公里。调用前，请向用户展示所有参数并请求确认；仅在用户明确同意后再执行。"""
     if heart_rate is not None:
@@ -712,9 +711,7 @@ def _has_numeric_data(text: str) -> bool:
     if re.search(r'\d+\.?\d*\s*(mmol/L|mg/dL|kg|公斤|kcal|km)', text):
         return True
     # 纯数字序列（如 🐯103/69、64，54.20）
-    if re.search(r'\d{2,3}\s*[，,、]\s*\d{2,3}', text):
-        return True
-    return False
+    return bool(re.search(r'\d{2,3}\s*[，,、]\s*\d{2,3}', text))
 
 
 def _format_parsed_preview(records: list[dict]) -> list[str]:

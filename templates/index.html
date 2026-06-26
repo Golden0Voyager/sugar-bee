@@ -8245,7 +8245,7 @@
         const scoreLabel = getScoreLabel(score);
         const days = analysis.days || 7;
         const daysLabel = `近${days}天`;
-        const date = analysis.analysis_date || '';
+        const generatedAt = analysis.created_at || analysis.analysis_date || '';
         const glucoseSummary = analysis.glucose_summary || '';
         const bpSummary = analysis.blood_pressure_summary || '';
         const exSummary = analysis.exercise_summary || '';
@@ -8274,7 +8274,7 @@
                                         <h6 class="mb-0">综合健康分析</h6>
                                         <span class="badge rounded-pill" style="background: rgba(255,255,255,0.2); font-size: 0.75rem;">${daysLabel}</span>
                                     </div>
-                                    <small style="opacity: 0.75; font-size: 0.75rem;">${date} 生成</small>
+                                    <small style="opacity: 0.75; font-size: 0.75rem;">${generatedAt} 生成</small>
                                     <div class="small mt-1" style="opacity: 0.95; line-height: 1.4;">${escapeHtml(glucoseSummary)}</div>
                                 </div>
                             </div>
@@ -8453,7 +8453,7 @@
                             </div>
                             <div class="col-md-8">
                                 <div class="mb-3">
-                                    <strong>分析日期：</strong>${analysis.analysis_date}
+                                    <strong>生成时间：</strong>${analysis.created_at || analysis.analysis_date}
                                 </div>
                                 <div class="mb-3">
                                     <strong>生成方式：</strong>

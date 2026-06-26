@@ -1,7 +1,8 @@
 import hmac
 import os
 from functools import wraps
-from flask import session, request, jsonify, redirect, url_for, g
+
+from flask import g, jsonify, redirect, request, session, url_for
 
 from utils.responses import api_error
 
@@ -57,8 +58,8 @@ def login_or_token_required(f):
             except (ValueError, TypeError):
                 return api_error("X-User-Id header missing or invalid",
                                  status_code=400, error_type="agent_auth")
-            from user_manager import UserManager
             from core.config import DB_NAME
+            from user_manager import UserManager
             if not UserManager(DB_NAME).get_user(uid):
                 return api_error(f"Unknown user_id: {uid}",
                                  status_code=404, error_type="agent_auth")

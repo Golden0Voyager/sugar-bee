@@ -1,7 +1,9 @@
 from collections import defaultdict
+
 import settings
 from utils.sql_dialect import interval_sql
 from utils.timezone import now as app_now
+
 
 def build_timeline(cursor, user_id, days=90):
     """
@@ -15,12 +17,12 @@ def build_timeline(cursor, user_id, days=90):
                     WHERE user_id = ?
                     ORDER BY timestamp ASC""", (user_id,))
     else:
-        cursor.execute("""SELECT *,
+        cursor.execute(f"""SELECT *,
                     CASE WHEN is_predicted = 1 AND verified_by_real_id IS NOT NULL THEN 1 ELSE 0 END as is_verified
                     FROM records
                     WHERE user_id = ?
-                    AND timestamp > {}
-                    ORDER BY timestamp ASC""".format(interval_sql(int(days))), (user_id,))
+                    AND timestamp > {interval_sql(int(days))}
+                    ORDER BY timestamp ASC""", (user_id,))
     rows = cursor.fetchall()
     records = [dict(row) for row in rows]
 
@@ -59,7 +61,7 @@ def build_timeline(cursor, user_id, days=90):
         date_str = r['timestamp'].split(' ')[0]
         day_group = grouped_records[date_str]
         day_group['entries'].append(r)
-        
+
         calories = r.get('calories') or 0
         if calories > 0:
             if r['type'] in ['跑步', '运动', '走路', '骑行', '游泳', '健身'] or (r.get('distance') and r.get('distance') > 0):
@@ -90,7 +92,7 @@ def build_timeline(cursor, user_id, days=90):
             end = plan['end_date'] or '9999-12-31'
             if start <= date_str <= end:
                 data['medication_plans'].append(plan)
-        
+
         # BMR Adjustment for today
         if date_str == today_str:
             current_minutes = now.hour * 60 + now.minute
@@ -99,10 +101,10 @@ def build_timeline(cursor, user_id, days=90):
         # Default meals logic ... (omitted for brevity here, but should be included)
         # 补全缺失餐饮的热量
         # ... (implementation from app.py)
-        
+
         if data['stats']['glucose_count'] > 0:
             data['stats']['avg_glucose'] = round(data['stats']['avg_glucose'] / data['stats']['glucose_count'], 1)
-        
+
         net = data['stats']['cal_in'] - (data['stats']['cal_out_bmr'] + data['stats']['cal_out_exercise'])
         data['stats']['net_calories'] = int(net)
         data['stats']['is_deficit'] = net < 0

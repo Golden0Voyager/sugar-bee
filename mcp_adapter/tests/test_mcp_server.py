@@ -12,10 +12,9 @@ import datetime
 import os
 import re
 import tempfile
-from unittest.mock import MagicMock, patch, AsyncMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 
 # ============================================================
 # Fixtures
@@ -68,7 +67,7 @@ def mcp_db():
 @pytest.fixture
 def patch_db(mcp_db):
     """monkeypatch mcp_adapter.server.DB_PATH 指向临时数据库路径，返回连接供直接操作。
-    
+
     _db() 每次调用创建新连接，避免 _user_label 关闭连接后影响后续调用。
     """
     path, conn = mcp_db
@@ -341,7 +340,7 @@ class TestFormatParsedPreview:
             "diastolic_pressure": 80, "datetime": "2026-05-02 06:30:00"
         }]
         lines = _format_parsed_preview(records)
-        assert any("⚠️" in l for l in lines)
+        assert any("⚠️" in line for line in lines)
 
     def test_multiple_records(self):
         from mcp_adapter.server import _format_parsed_preview
@@ -449,7 +448,7 @@ class TestInsertRecord:
         assert row["value"] == 5.5
         assert row["type"] == "空腹"
 
-    def test_insert_with_T_timestamp(self, patch_db):
+    def test_insert_with_t_timestamp(self, patch_db):
         from mcp_adapter.server import _insert_record
         conn = patch_db
         rid = _insert_record(conn, {

@@ -1,7 +1,7 @@
 """扩展路由测试 — 覆盖 api_meds, api_admin, api_auth, api_user, api_chat, api_prediction"""
-import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
+import pytest
 
 # ============================================================
 # api_meds 测试 (58% → 85%)
@@ -113,8 +113,9 @@ class TestAuthRoutes:
     """认证路由测试"""
 
     def test_login_page_get(self):
-        from routes.api_auth import login
         from flask import Flask
+
+        from routes.api_auth import login
         app = Flask(__name__)
 
         with app.test_request_context('/login', method='GET'), \
@@ -125,28 +126,30 @@ class TestAuthRoutes:
             assert result == 'login page'
 
     def test_login_post_empty_username(self):
-        from routes.api_auth import login
         from flask import Flask
+
+        from routes.api_auth import login
         app = Flask(__name__)
 
         with app.test_request_context('/login', method='POST',
-                                       data={'username': '', 'password': '123'}):
-            with patch('routes.api_auth.render_template') as mock_render:
+                                       data={'username': '', 'password': '123'}), \
+             patch('routes.api_auth.render_template') as mock_render:
                 mock_render.return_value = 'error'
                 login()
                 assert 'error' in str(mock_render.call_args[1])
 
     def test_login_post_wrong_password(self):
-        from routes.api_auth import login
         from flask import Flask
         from werkzeug.security import generate_password_hash
+
+        from routes.api_auth import login
         app = Flask(__name__)
 
         pw_hash = generate_password_hash('correct123')
         with patch('routes.api_auth.user_manager.get_user_by_username') as mock_gubu:
             mock_gubu.return_value = {'id': 1, 'username': 'test', 'password_hash': pw_hash}
 
-            with app.test_request_context('/login', method='POST',
+            with app.test_request_context('/login', method='POST',  # noqa: SIM117
                                            data={'username': 'test', 'password': 'wrong'}):
                 with patch('routes.api_auth.render_template') as mock_render:
                     mock_render.return_value = 'error page'
@@ -154,14 +157,15 @@ class TestAuthRoutes:
                     assert mock_render.call_args[1].get('error') == '密码错误'
 
     def test_login_no_password_set(self):
-        from routes.api_auth import login
         from flask import Flask
+
+        from routes.api_auth import login
         app = Flask(__name__)
 
         with patch('routes.api_auth.user_manager.get_user_by_username') as mock_gubu:
             mock_gubu.return_value = {'id': 1, 'username': 'test', 'password_hash': None}
 
-            with app.test_request_context('/login', method='POST',
+            with app.test_request_context('/login', method='POST',  # noqa: SIM117
                                            data={'username': 'test', 'password': 'any'}):
                 with patch('routes.api_auth.render_template') as mock_render:
                     mock_render.return_value = 'set password'
@@ -169,15 +173,16 @@ class TestAuthRoutes:
                     assert mock_render.call_args[1].get('set_password_mode') is True
 
     def test_login_phone_lookup(self):
-        from routes.api_auth import login
         from flask import Flask
+
+        from routes.api_auth import login
         app = Flask(__name__)
 
         with app.test_request_context('/login', method='POST',
-                                       data={'username': '13800138000', 'password': '123'}):
-            with patch('routes.api_auth.user_manager.find_user_by_provider') as mock_find, \
-                 patch('routes.api_auth.user_manager.get_user_by_username_or_id') as mock_get, \
-                 patch('routes.api_auth.render_template') as mock_render:
+                                       data={'username': '13800138000', 'password': '123'}), \
+            patch('routes.api_auth.user_manager.find_user_by_provider') as mock_find, \
+            patch('routes.api_auth.user_manager.get_user_by_username_or_id') as mock_get, \
+            patch('routes.api_auth.render_template') as mock_render:
                 mock_find.return_value = 1
                 mock_get.return_value = None
                 mock_render.return_value = 'not found'
@@ -186,18 +191,19 @@ class TestAuthRoutes:
 
     @pytest.mark.skip(reason="logout redirects to url_for('auth.login'), needs full app context")
     def test_logout_clears_session(self):
-        from routes.api_auth import logout
         from flask import Flask
+
+        from routes.api_auth import logout
         app = Flask(__name__)
 
-        with app.test_request_context('/logout'):
-            with patch('routes.api_auth.session') as mock_sess:
-                logout()
-                mock_sess.clear.assert_called_once()
+        with app.test_request_context('/logout'), patch('routes.api_auth.session') as mock_sess:
+            logout()
+            mock_sess.clear.assert_called_once()
 
     def test_set_password(self):
-        from routes.api_auth import set_password
         from flask import Flask
+
+        from routes.api_auth import set_password
         app = Flask(__name__)
 
         with patch('routes.api_auth.user_manager.get_user_by_username') as mock_gubu, \
@@ -206,7 +212,7 @@ class TestAuthRoutes:
             mock_conn = MagicMock()
             mock_get_db.return_value = mock_conn
 
-            with app.test_request_context('/set_password', method='POST',
+            with app.test_request_context('/set_password', method='POST',  # noqa: SIM117
                                            data={'username': 'test', 'password': 'newpass123'}):
                 with patch('routes.api_auth.render_template') as mock_render:
                     mock_render.return_value = 'success'

@@ -13,6 +13,7 @@
 """
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import sqlite3
@@ -56,7 +57,7 @@ def _normalize_value(value: Any) -> Any:
 def load_state() -> dict[str, Any]:
     """加载同步状态。"""
     if STATE_FILE.exists():
-        with open(STATE_FILE, "r", encoding="utf-8") as f:
+        with open(STATE_FILE, encoding="utf-8") as f:
             return json.load(f)
     return {}
 
@@ -160,10 +161,8 @@ def sync_table(
         )
         inserted += 1
         if cursor_col and row[cursor_col] is not None:
-            try:
+            with contextlib.suppress(TypeError, ValueError):
                 new_last_cursor = max(new_last_cursor, int(row[cursor_col]))
-            except (TypeError, ValueError):
-                pass
 
     if cursor_col:
         state[table] = new_last_cursor

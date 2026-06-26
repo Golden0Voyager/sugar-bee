@@ -1,14 +1,15 @@
-from flask import Blueprint, request, jsonify, session, current_app
+import os
 import re
 import traceback
-import os
+
+from flask import Blueprint, current_app, jsonify, request, session
 
 import settings
-from user_manager import UserManager
 from core.config import DB_NAME
-from utils.responses import api_success, api_error
+from user_manager import UserManager
 from utils.auth import login_required
 from utils.db import get_db
+from utils.responses import api_error, api_success
 from utils.timezone import now as app_now
 
 user_manager = UserManager(DB_NAME)
@@ -74,7 +75,7 @@ def create_user():
         password = data.get('password', '')
         if not username or not display_name or not password:
             return api_error("Username, display name and password are required", status_code=400)
-        
+
         user_id = user_manager.create_user(username, display_name, {}, password=password)
         return api_success(data={"id": user_id}, message="User created")
     except Exception as e:

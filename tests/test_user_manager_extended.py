@@ -1,5 +1,5 @@
 """user_manager.py 扩展测试 — get_user_config, provider 绑定, 密码管理, update_user_profile_partial"""
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 
 class TestGetUserConfigExtended:
@@ -61,6 +61,7 @@ class TestGetUserConfigExtended:
     def test_get_user_config_age_uses_app_timezone_date(self, monkeypatch):
         """年龄计算应按应用时区日期，而不是服务器 UTC 日期"""
         import datetime
+
         import utils.timezone as timezone
         from user_manager import UserManager
 
@@ -301,8 +302,9 @@ class TestPasswordManagement:
             assert um.has_password(1) is False
 
     def test_authenticate_success(self):
-        from user_manager import UserManager
         from werkzeug.security import generate_password_hash
+
+        from user_manager import UserManager
         um = UserManager(':memory:')
         pw_hash = generate_password_hash('correct')
 
@@ -317,8 +319,9 @@ class TestPasswordManagement:
             assert result == 1
 
     def test_authenticate_wrong_password(self):
-        from user_manager import UserManager
         from werkzeug.security import generate_password_hash
+
+        from user_manager import UserManager
         um = UserManager(':memory:')
         pw_hash = generate_password_hash('correct')
 

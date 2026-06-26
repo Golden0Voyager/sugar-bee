@@ -10,10 +10,7 @@ services/ —— 遗漏分支补全测试
   - timeline_service.py: L88-91 (medication_plans), L95-96 (today BMR adj)
   - garmin_service.py: L168-170 (_map_activity except/continue)
 """
-import datetime
 from unittest.mock import MagicMock, patch
-
-
 
 # ============================================================
 # dashboard_service.py — 剩余 9 行

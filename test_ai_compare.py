@@ -2,10 +2,11 @@
 Gemini vs ZhipuAI 对比测试
 测试内容：血糖录入解析的响应质量、速度、JSON格式合规性
 """
-import os
-import time
 import json
+import os
 import re
+import time
+
 from dotenv import load_dotenv
 
 load_dotenv(override=True)

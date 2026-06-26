@@ -1,11 +1,15 @@
 """冲刺 dashboard_service 覆盖率 (56% → 85%): 用药频率判断 + CGM 匹配 + 边界"""
 import datetime
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 from tests.helpers import (
-    mock_dashboard_service_settings as _setup_mocks,
     make_minimal_cursor as _make_minimal_cursor,
+)
+from tests.helpers import (
     med as _med,
+)
+from tests.helpers import (
+    mock_dashboard_service_settings as _setup_mocks,
 )
 
 

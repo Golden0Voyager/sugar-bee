@@ -1,5 +1,5 @@
 """generate_report.py 测试 — 覆盖 PDF 生成的纯逻辑部分"""
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 
 class TestColors:
@@ -7,8 +7,16 @@ class TestColors:
 
     def test_color_constants_exist(self):
         from generate_report import (
-            C_PRIMARY, C_ACCENT, C_GREEN, C_RED, C_GRAY,
-            C_LIGHT_BG, C_BLUE_BG, C_ORANGE_BG, C_GREEN_BG, C_RED_BG
+            C_ACCENT,
+            C_BLUE_BG,
+            C_GRAY,
+            C_GREEN,
+            C_GREEN_BG,
+            C_LIGHT_BG,
+            C_ORANGE_BG,
+            C_PRIMARY,
+            C_RED,
+            C_RED_BG,
         )
         assert C_PRIMARY is not None
         assert C_ACCENT is not None
@@ -44,12 +52,12 @@ class TestMakeStyles:
         assert s['body'].leading == 18
 
     def test_good_style_color(self):
-        from generate_report import make_styles, C_GREEN
+        from generate_report import C_GREEN, make_styles
         s = make_styles()
         assert s['good'].textColor == C_GREEN
 
     def test_warn_style_color(self):
-        from generate_report import make_styles, C_RED
+        from generate_report import C_RED, make_styles
         s = make_styles()
         assert s['warn'].textColor == C_RED
 
@@ -58,7 +66,7 @@ class TestMakeTable:
     """make_table() 函数测试"""
 
     def test_creates_table_with_correct_structure(self):
-        from generate_report import make_table, make_styles
+        from generate_report import make_styles, make_table
         st = make_styles()
         headers = ['Col1', 'Col2']
         rows = [['A', 'B'], ['C', 'D']]
@@ -71,7 +79,7 @@ class TestMakeTable:
         assert len(table._cellvalues[0]) == 2  # 2 cols
 
     def test_first_cell_left_aligned(self):
-        from generate_report import make_table, make_styles
+        from generate_report import make_styles, make_table
         st = make_styles()
         table = make_table(['H1', 'H2'], [['A', 'B']], [100, 100], st)
         # 第一列使用 table_cell_left, 其余用 table_cell
@@ -145,7 +153,6 @@ glucose_parser.py + generate_report.py 最后覆盖冲刺
   generate_report.py:40-41 — font registration main font except
 """
 from unittest.mock import patch
-
 
 # ============================================================
 # glucose_parser.py (98% -> 100%)

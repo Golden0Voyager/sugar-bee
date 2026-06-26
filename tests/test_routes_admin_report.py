@@ -1,6 +1,5 @@
 """冲刺 85% 覆盖率: api_prediction (51%→70%), api_meds (64%→80%), api_admin (50%→75%)"""
-from unittest.mock import patch, MagicMock
-
+from unittest.mock import MagicMock, patch
 
 # ============================================================
 # api_prediction: trigger_prediction 类型分支 + CGM/verified 状态
@@ -525,6 +524,7 @@ class TestReportFontRegistration:
         with patch('generate_report.os.path.exists', return_value=False):
             # Reimport to trigger font registration
             import importlib
+
             import generate_report as gr
             importlib.reload(gr)
             assert gr.CN_FONT == 'Helvetica'
@@ -537,6 +537,7 @@ class TestReportFontRegistration:
         mock_exists.side_effect = lambda p: p == "/System/Library/Fonts/STHeiti Medium.ttc"
         mock_ttfont.return_value = MagicMock()  # 避免 TTFont 实际打开文件
         import importlib
+
         import generate_report as gr
         importlib.reload(gr)
         # Should register STHeiti

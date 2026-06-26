@@ -1,18 +1,16 @@
 #!/usr/bin/env python3
 """为愚群生成血糖分析 PDF 报告"""
 
+import os
+
+from reportlab.lib.colors import HexColor
+from reportlab.lib.enums import TA_CENTER
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import mm
-from reportlab.lib.colors import HexColor
-from reportlab.lib.enums import TA_CENTER
-from reportlab.platypus import (
-    SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
-    HRFlowable, KeepTogether
-)
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
-import os
+from reportlab.platypus import HRFlowable, KeepTogether, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 # ── 注册中文字体 ──
 font_search = [
@@ -115,7 +113,7 @@ def build_pdf(output_path):
                             leftMargin=18*mm, rightMargin=18*mm)
     st = make_styles()
     story = []
-    W = doc.width  # usable width
+    w = doc.width  # usable width
 
     # ════════ 封面区 ════════
     story.append(Spacer(1, 15*mm))
@@ -146,7 +144,7 @@ def build_pdf(output_path):
         ["2月22日至今", "感染升高", "晚饭前9.4", "乙流感染+停药\n身体应激反应"],
     ]
     t = make_table(["时间段", "整体表现", "血糖数值", "原因分析"],
-                    stage_data, [W*0.22, W*0.17, W*0.30, W*0.31], st)
+                    stage_data, [w*0.22, w*0.17, w*0.30, w*0.31], st)
     story.append(t)
     story.append(Spacer(1, 3*mm))
 
@@ -175,7 +173,7 @@ def build_pdf(output_path):
          "中等用量\n是最经典的降糖老药"],
     ]
     t = make_table(["药物名称", "您的用量", "通俗原理", "用量说明"],
-                    med_data, [W*0.22, W*0.17, W*0.30, W*0.31], st)
+                    med_data, [w*0.22, w*0.17, w*0.30, w*0.31], st)
     story.append(t)
     story.append(Spacer(1, 3*mm))
     story.append(Paragraph(
@@ -248,7 +246,7 @@ def build_pdf(output_path):
         ["司美格鲁肽", "0.25毫克/周不变", "不用加量", "维持现状即可"],
     ]
     t = make_table(["药物", "调整方案", "要点", "备注"],
-                    summary_data, [W*0.22, W*0.28, W*0.25, W*0.25], st)
+                    summary_data, [w*0.22, w*0.28, w*0.25, w*0.25], st)
     story.append(KeepTogether([
         Paragraph("调整方案一览表", st["h2"]),
         t,

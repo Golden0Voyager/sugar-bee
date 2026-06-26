@@ -11,7 +11,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-
 # ============================================================
 # garmin_service.py
 # ============================================================
@@ -353,8 +352,8 @@ class TestGarminSyncActivities:
     @patch('services.garmin_service.get_raw_conn')
     def test_too_many_requests(self, mock_get_raw_conn, mock_get_client):
         from services.garmin_service import (
-            sync_activities,
             GarminConnectTooManyRequestsError,
+            sync_activities,
         )
         mock_get_raw_conn.return_value = MagicMock()
         mock_client = MagicMock()
@@ -370,8 +369,8 @@ class TestGarminSyncActivities:
     @patch('services.garmin_service.get_raw_conn')
     def test_connection_error(self, mock_get_raw_conn, mock_get_client):
         from services.garmin_service import (
-            sync_activities,
             GarminConnectConnectionError,
+            sync_activities,
         )
         mock_get_raw_conn.return_value = MagicMock()
         mock_client = MagicMock()
@@ -389,8 +388,8 @@ class TestGarminSyncActivities:
     def test_connection_error_retries_then_succeeds(self, mock_sleep, mock_get_raw_conn, mock_get_client):
         """网络瞬态错误应重试 3 次后成功"""
         from services.garmin_service import (
-            sync_activities,
             GarminConnectConnectionError,
+            sync_activities,
         )
         mock_get_raw_conn.return_value = MagicMock()
         mock_client = MagicMock()
@@ -412,8 +411,8 @@ class TestGarminSyncActivities:
     def test_connection_error_retries_exhausted(self, mock_sleep, mock_get_raw_conn, mock_get_client):
         """网络瞬态错误重试耗尽后抛出 RuntimeError"""
         from services.garmin_service import (
-            sync_activities,
             GarminConnectConnectionError,
+            sync_activities,
         )
         mock_get_raw_conn.return_value = MagicMock()
         mock_client = MagicMock()
@@ -430,7 +429,7 @@ class TestGarminSyncActivities:
     @patch('services.garmin_service.Garmin')
     def test_get_client_restores_token_from_gcs(self, mock_garmin_cls, mock_sync_gcs, mock_isfile):
         """本地 token 缺失时应尝试从 GCS 恢复"""
-        from services.garmin_service import _get_client, TOKEN_DIR
+        from services.garmin_service import TOKEN_DIR, _get_client
         token_file = os.path.join(TOKEN_DIR, 'garmin_tokens.json')
 
         calls = []
@@ -902,12 +901,13 @@ class TestDashboardStatsBranches:
     def test_score_average_70_range(self, mock_settings, mock_um):
         """Cover '一般' score label (score 70-79)"""
         from services.dashboard_service import get_dashboard_stats
-        from tests.helpers import mock_dashboard_service_settings as _setup, make_minimal_cursor as _make
+        from tests.helpers import make_minimal_cursor as _make
+        from tests.helpers import mock_dashboard_service_settings as _setup
         _setup(mock_settings, mock_um)
 
         health_mock = MagicMock()
         health_mock.keys.return_value = ['id', 'health_score', 'recommendations', 'days', 'created_at']
-        health_mock.__getitem__ = lambda s, k: {'id': 1, 'health_score': 75, 'recommendations': None, 'days': 7, 'created_at': '2024-06-01'}.get(k, None)
+        health_mock.__getitem__ = lambda s, k: {'id': 1, 'health_score': 75, 'recommendations': None, 'days': 7, 'created_at': '2024-06-01'}.get(k)
 
         mock_c = _make(health_analyses=health_mock)
         mock_db = MagicMock()
@@ -921,12 +921,13 @@ class TestDashboardStatsBranches:
     def test_score_improve_60_range(self, mock_settings, mock_um):
         """Cover '需改善' score label (score 60-69)"""
         from services.dashboard_service import get_dashboard_stats
-        from tests.helpers import mock_dashboard_service_settings as _setup, make_minimal_cursor as _make
+        from tests.helpers import make_minimal_cursor as _make
+        from tests.helpers import mock_dashboard_service_settings as _setup
         _setup(mock_settings, mock_um)
 
         health_mock = MagicMock()
         health_mock.keys.return_value = ['id', 'health_score', 'recommendations', 'days', 'created_at']
-        health_mock.__getitem__ = lambda s, k: {'id': 1, 'health_score': 65, 'recommendations': None, 'days': 7, 'created_at': '2024-06-01'}.get(k, None)
+        health_mock.__getitem__ = lambda s, k: {'id': 1, 'health_score': 65, 'recommendations': None, 'days': 7, 'created_at': '2024-06-01'}.get(k)
 
         mock_c = _make(health_analyses=health_mock)
         mock_db = MagicMock()

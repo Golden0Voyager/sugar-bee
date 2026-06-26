@@ -1,9 +1,10 @@
-from flask import Blueprint, request, jsonify, Response, stream_with_context, session
 import json
 import uuid
 
-from ai_client import call_chat_stream, CHAT_AVAILABLE
+from flask import Blueprint, Response, jsonify, request, session, stream_with_context
+
 import settings
+from ai_client import CHAT_AVAILABLE, call_chat_stream
 from utils.auth import login_required
 from utils.db import get_db
 from utils.sql_dialect import interval_sql
@@ -45,13 +46,13 @@ def build_chat_context(db, user_id):
         ORDER BY timestamp ASC
     """, (user_id, today_date))
     today_records = c.fetchall()
-    
+
     if today_records:
         today_details: list[str] = []
         for r in today_records:
             t_type, t_val, t_sys, t_dia, t_dist, t_cal, t_notes, t_time, t_weight, t_med = r
             time_str = t_time.split(' ')[1][:5] if t_time and ' ' in t_time else (t_time or '')
-            
+
             detail_str = f"- {time_str} {t_type or '记录'}: "
             parts: list[str] = []
             f_val = _safe_float(t_val)
@@ -74,7 +75,7 @@ def build_chat_context(db, user_id):
                 parts.append(f"用药 {t_med}")
             if t_notes:
                 parts.append(f"备注: {t_notes}")
-            
+
             if parts:
                 detail_str += "，".join(parts)
                 today_details.append(detail_str)
@@ -82,15 +83,15 @@ def build_chat_context(db, user_id):
             sections.append(f"今日（{today_date}）最新详细记录：\n" + "\n".join(today_details))
 
     # 血糖数据
-    c.execute("""
+    c.execute(f"""
         SELECT value, type, timestamp FROM records
         WHERE user_id = ? AND value > 0 AND is_predicted = 0
-        AND timestamp > {}
+        AND timestamp > {interval_sql(days)}
         AND type NOT IN ('跑步', '运动')
         AND type NOT LIKE '%血压%'
         AND systolic_pressure IS NULL
         ORDER BY timestamp DESC
-    """.format(interval_sql(days)), (user_id,))
+    """, (user_id,))
     glucose = c.fetchall()
     if glucose:
         vals = [r[0] for r in glucose]

@@ -1,6 +1,7 @@
-import json
 import datetime
+import json
 import re
+
 import settings
 from ai_client import call_ai
 from utils.timezone import now as app_now
@@ -383,14 +384,13 @@ def _postprocess_records(records, original_text=None):
             # 修正2：AI 可能把脉搏错放到 spo2（血氧正常范围95-100，低于90不可能是正常血氧）
             spo2 = r.get('spo2')
             pulse_rate = r.get('pulse_rate')
-            if spo2 is not None:
-                if spo2 < 90:
-                    if pulse_rate is None:
-                        r['pulse_rate'] = spo2
-                        print(f"[parser] 修正血压字段: spo2={spo2} → pulse_rate={spo2}")
-                    else:
-                        print(f"[parser] 修正血压字段: 清除异常 spo2={spo2}（pulse_rate={pulse_rate} 已存在）")
-                    r['spo2'] = None
+            if spo2 is not None and spo2 < 90:
+                if pulse_rate is None:
+                    r['pulse_rate'] = spo2
+                    print(f"[parser] 修正血压字段: spo2={spo2} → pulse_rate={spo2}")
+                else:
+                    print(f"[parser] 修正血压字段: 清除异常 spo2={spo2}（pulse_rate={pulse_rate} 已存在）")
+                r['spo2'] = None
 
             # 修正3：根据原始文本推断血压类型
             if original_text and r.get('type') == '血压测量':

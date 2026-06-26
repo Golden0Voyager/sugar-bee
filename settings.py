@@ -1,4 +1,3 @@
-import json
 
 from utils.timezone import now as app_now
 
@@ -174,9 +173,7 @@ def get_glucose_target(glucose_type):
         return GLUCOSE_TARGETS['postmeal_1h']
     elif '餐后2小时' in glucose_type or '餐后2h' in glucose_type.lower() or '餐后' in glucose_type:
         return GLUCOSE_TARGETS['postmeal_2h']
-    elif '晚饭前' in glucose_type or '晚餐前' in glucose_type:
-        return GLUCOSE_TARGETS['premeal']
-    elif '餐前' in glucose_type:
+    elif '晚饭前' in glucose_type or '晚餐前' in glucose_type or '餐前' in glucose_type:
         return GLUCOSE_TARGETS['premeal']
     elif '睡前' in glucose_type:
         return GLUCOSE_TARGETS['bedtime']
@@ -301,8 +298,8 @@ def load_config(user_id: int | None = None) -> dict:
     """
     if user_id is not None:
         # 延迟 import 避免循环依赖(user_manager 可能反向 import settings)
-        from user_manager import UserManager
         from core.config import DB_NAME
+        from user_manager import UserManager
         cfg = UserManager(DB_NAME).get_user_config(user_id)
         # 缺失字段补齐
         if not cfg.get('default_meals'):

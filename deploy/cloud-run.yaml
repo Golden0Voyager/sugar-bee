@@ -16,7 +16,7 @@ spec:
       containerConcurrency: 1
       timeoutSeconds: 300
       containers:
-        - image: asia-east2-docker.pkg.dev/project-c0560c79-7c6a-4f31-a11/sugar-bee/sugar-bee@sha256:c3b6e7b9f6575c9e52c2974182b48cd8d30712aa4836ff697a3137db1d0311af
+        - image: asia-east2-docker.pkg.dev/project-c0560c79-7c6a-4f31-a11/sugar-bee/sugar-bee@sha256:48e1861329c98f11b21ec73e41b75af9c54fd966420bc3662c576a66814aba0f
           ports:
             - containerPort: 8080
           env:

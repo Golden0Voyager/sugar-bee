@@ -105,12 +105,11 @@ def _get_client():
     """用持久化 token 登录。没有 token 时先尝试从 GCS 恢复，再报错。
     首次登录请跑 `uv run python3 garmin_login.py` 生成 token。"""
     token_file = os.path.join(TOKEN_DIR, 'garmin_tokens.json')
-    if not os.path.isfile(token_file):
-        if not _ensure_token_from_gcs():
-            raise RuntimeError(
-                f"未找到 Garmin token ({token_file})。请先执行：\n"
-                f"  uv run python3 garmin_login.py"
-            )
+    if not os.path.isfile(token_file) and not _ensure_token_from_gcs():
+        raise RuntimeError(
+            f"未找到 Garmin token ({token_file})。请先执行：\n"
+            f"  uv run python3 garmin_login.py"
+        )
     is_cn = os.environ.get('GARMIN_IS_CN', '').lower() in ('1', 'true', 'yes')
     email = os.environ.get('GARMIN_EMAIL')
     with _no_proxy():
@@ -122,7 +121,7 @@ def _get_client():
             raise RuntimeError(
                 f"Garmin token 失效或登录失败（{e}）。请重新跑：\n"
                 f"  uv run python3 garmin_login.py"
-            )
+            ) from e
 
 
 def _get_activities_with_retry(client, start, end):
@@ -201,9 +200,9 @@ def sync_activities(user_id, days=30):
         try:
             activities = _get_activities_with_retry(client, start, end)
         except GarminConnectTooManyRequestsError:
-            raise RuntimeError("Garmin 请求过于频繁，稍后再试")
+            raise RuntimeError("Garmin 请求过于频繁，稍后再试") from None
         except (GarminConnectConnectionError, TimeoutError, ConnectionError) as e:
-            raise RuntimeError(f"Garmin 连接超时：{e}")
+            raise RuntimeError(f"Garmin 连接超时：{e}") from e
 
         conn = get_raw_conn()
         c = conn.cursor()

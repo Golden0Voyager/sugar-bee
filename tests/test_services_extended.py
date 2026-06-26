@@ -1,14 +1,18 @@
 """扩展 services 和 routes 测试 — 冲击 80%+"""
 import json
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock
 
 from tests.helpers import (
-    mock_dashboard_service_settings as _setup_dashboard_mocks,
-    make_dashboard_stats_fetchone as _make_dashboard_fetchone,
     make_dashboard_stats_fetchall as _make_dashboard_fetchall,
 )
-
+from tests.helpers import (
+    make_dashboard_stats_fetchone as _make_dashboard_fetchone,
+)
+from tests.helpers import (
+    mock_dashboard_service_settings as _setup_dashboard_mocks,
+)
 
 # ============================================================
 # prediction_service 扩展 (73% → 88%)
@@ -327,7 +331,7 @@ class TestDashboardStatsExtended:
         # Replace last entry (health_analyses) with a dict-like mock that survives dict()
         health_mock = MagicMock()
         health_mock.keys.return_value = ['id', 'health_score', 'recommendations', 'days', 'created_at']
-        health_mock.__getitem__ = lambda s, k: {'id': 1, 'health_score': 85, 'recommendations': None, 'days': 7, 'created_at': '2024-06-01'}.get(k, None)
+        health_mock.__getitem__ = lambda s, k: {'id': 1, 'health_score': 85, 'recommendations': None, 'days': 7, 'created_at': '2024-06-01'}.get(k)
         side_effect[-1] = health_mock
 
         mock_c.fetchone.side_effect = side_effect

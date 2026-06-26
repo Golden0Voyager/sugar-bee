@@ -6,8 +6,9 @@ import json
 import re
 import sqlite3
 from contextlib import contextmanager
+
 from flask import session
-from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.security import check_password_hash, generate_password_hash
 
 from core import config
 from utils.db import ConnectionWrapper, get_raw_conn, put_raw_conn
@@ -186,20 +187,20 @@ class UserManager:
         if not partial_data:
             return
 
-        JSON_FIELDS = {'default_meals', 'target_ranges', 'enabled_modules'}
-        SCALAR_FIELDS = {'name', 'birth_year', 'birth_month', 'birth_day', 'height', 'weight', 'gender', 'target_weight'}
-        ALIASES = {'target': 'target_ranges'}
+        json_fields = {'default_meals', 'target_ranges', 'enabled_modules'}
+        scalar_fields = {'name', 'birth_year', 'birth_month', 'birth_day', 'height', 'weight', 'gender', 'target_weight'}
+        aliases = {'target': 'target_ranges'}
 
         set_clauses = []
         values = []
         for key, value in partial_data.items():
-            col = ALIASES.get(key, key)
+            col = aliases.get(key, key)
             if not re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', col):
                 continue
-            if col in SCALAR_FIELDS:
+            if col in scalar_fields:
                 set_clauses.append(f"{col} = ?")
                 values.append(value)
-            elif col in JSON_FIELDS:
+            elif col in json_fields:
                 default = [] if col == 'enabled_modules' else {}
                 set_clauses.append(f"{col} = ?")
                 values.append(json.dumps(value if value is not None else default))

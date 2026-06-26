@@ -801,7 +801,7 @@ class TestAutoBackupGCS:
         monkeypatch.setattr('os.path.isfile', lambda p: True)
         # 需要让 os.path.exists(DB_NAME) 返回 True
         from core.config import DB_NAME
-        monkeypatch.setattr('os.path.exists', lambda p: True if p == DB_NAME else False)
+        monkeypatch.setattr('os.path.exists', lambda p: p == DB_NAME)
         app_mod.auto_backup()
         mock_backup_to_gcs.assert_called_once()
 
@@ -812,7 +812,7 @@ class TestAutoBackupGCS:
         monkeypatch.setattr('os.makedirs', lambda p, exist_ok: None)
         monkeypatch.setattr('shutil.copy2', lambda *a: None)
         from core.config import DB_NAME
-        monkeypatch.setattr('os.path.exists', lambda p: True if p == DB_NAME else False)
+        monkeypatch.setattr('os.path.exists', lambda p: p == DB_NAME)
         import app as app_mod
         mock_backup_to_gcs = MagicMock()
         monkeypatch.setattr(app_mod, 'backup_db_to_gcs', mock_backup_to_gcs)
@@ -918,7 +918,7 @@ class TestAiPredictionError:
 
     def test_prediction_thread_error(self, monkeypatch, app):
         """预测函数抛异常时被闭包 except 捕获"""
-        from app import _prediction_running, _prediction_last_run
+        from app import _prediction_last_run, _prediction_running
 
         _prediction_running.clear()
         _prediction_last_run.clear()
@@ -929,21 +929,20 @@ class TestAiPredictionError:
                             MagicMock(side_effect=ValueError("pred fail")))
         monkeypatch.setattr('app.predict_post_exercise_glucose', MagicMock())
 
-        with patch('builtins.print') as mock_print:
-            with patch('app.render_template', return_value=''):
-                with patch('app.build_timeline', return_value=([], [])):
-                    with patch('app.get_dashboard_stats', return_value={}):
-                        mock_user = MagicMock()
-                        mock_user.get.return_value = ['glucose', 'blood_pressure']
-                        monkeypatch.setattr('app.user_manager.get_user',
-                                            lambda uid: mock_user)
-                        monkeypatch.setattr('app.settings', MagicMock())
-                        monkeypatch.setattr('app.settings.USER_EMOJI_MAP', {})
+        with patch('builtins.print') as mock_print, patch('app.render_template', return_value=''):  # noqa: SIM117
+            with patch('app.build_timeline', return_value=([], [])):
+                with patch('app.get_dashboard_stats', return_value={}):
+                    mock_user = MagicMock()
+                    mock_user.get.return_value = ['glucose', 'blood_pressure']
+                    monkeypatch.setattr('app.user_manager.get_user',
+                                        lambda uid: mock_user)
+                    monkeypatch.setattr('app.settings', MagicMock())
+                    monkeypatch.setattr('app.settings.USER_EMOJI_MAP', {})
 
-                        with app.test_client() as client:
-                            with client.session_transaction() as sess:
-                                sess['current_user_id'] = 1
-                            client.get('/')
+                    with app.test_client() as client:
+                        with client.session_transaction() as sess:
+                            sess['current_user_id'] = 1
+                        client.get('/')
 
         import time
         time.sleep(0.3)
