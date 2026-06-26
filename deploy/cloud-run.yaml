@@ -16,7 +16,7 @@ spec:
       containerConcurrency: 1
       timeoutSeconds: 300
       containers:
-source ~/.zshrc        - image: asia-east2-docker.pkg.dev/project-c0560c79-7c6a-4f31-a11/sugar-bee/sugar-bee:latest
+        - image: asia-east2-docker.pkg.dev/project-c0560c79-7c6a-4f31-a11/sugar-bee/sugar-bee:latest
           ports:
             - containerPort: 8080
           env:
@@ -55,6 +55,16 @@ source ~/.zshrc        - image: asia-east2-docker.pkg.dev/project-c0560c79-7c6a-
                 secretKeyRef:
                   key: latest
                   name: SUGAR_BEE_GARMIN_EMAIL
+            - name: MODELSCOPE_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  key: latest
+                  name: modelscope-api-key
+            - name: SENSENOVA_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  key: latest
+                  name: sensenova-api-key
           resources:
             limits:
               cpu: '1'
