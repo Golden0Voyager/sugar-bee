@@ -128,6 +128,78 @@ crontab -e
 | `VOLC_API_KEY` | 火山引擎 Key（可选） | `...` |
 | `GEMINI_API_KEY` | Gemini Key（可选） | `...` |
 
+## Cloud Run 部署（生产环境）
+
+### 架构
+
+- **Cloud Run** (asia-east2, 512Mi, 1 CPU, 1 concurrency) — Flask 应用
+- **Cloud SQL** (PostgreSQL 17, db-f1-micro, 10GB, asia-east2) — 数据库
+- **Artifact Registry** (asia-east2) — Docker 镜像仓库
+- **Secret Manager** — API 密钥生产环境注入
+
+### 部署流程
+
+```bash
+# 1. 本地构建推送
+gcloud builds submit --tag asia-east2-docker.pkg.dev/project-c0560c79-7c6a-4f31-a11/sugar-bee/sugar-bee:latest
+
+# 2. 获取新镜像 digest（从 Cloud Build 输出或查看）
+gcloud artifacts docker images list \
+  asia-east2-docker.pkg.dev/project-c0560c79-7c6a-4f31-a11/sugar-bee \
+  --include-tags --filter="tags:latest" --format="value(version)"
+
+# 3. 更新 deploy/cloud-run.yaml 中的 digest（不要用 :latest 标签）
+#    image: ...@sha256:NEW_DIGEST
+
+# 4. 部署
+gcloud run services replace deploy/cloud-run.yaml --region asia-east2
+
+# 或快速部署（跳过 YAML 更新）
+gcloud run deploy sugar-bee \
+  --image asia-east2-docker.pkg.dev/project-c0560c79-7c6a-4f31-a11/sugar-bee/sugar-bee@sha256:NEW_DIGEST \
+  --region asia-east2
+```
+
+### 项目信息
+
+| 项目 | 值 |
+|------|-----|
+| GCP Project ID | `project-c0560c79-7c6a-4f31-a11` |
+| Cloud Run URL | `https://sugar-bee-670879142538.asia-east2.run.app` |
+| 镜像仓库 | `asia-east2-docker.pkg.dev/project-c0560c79-7c6a-4f31-a11/sugar-bee/sugar-bee` |
+| Cloud SQL 实例 | `sugar-bee-db-hk` (asia-east2) |
+| Cloud Scheduler | `garmin-sync` — 每日 3/9/15/21 点触发 |
+
+### 环境变量与 Secret
+
+cloud-run.yaml 中已配置的 Secret Manager 引用：
+
+| 环境变量 | Secret 名 | 用途 |
+|----------|-----------|------|
+| `SUGAR_BEE_DATABASE_URL` | `SUGAR_BEE_DATABASE_URL` | PostgreSQL 连接串 |
+| `SECRET_KEY` | `SUGAR_BEE_SECRET_KEY` | Flask session 密钥 |
+| `INTERNAL_API_TOKEN` | `SUGAR_BEE_INTERNAL_API_TOKEN` | 内部 API 鉴权 |
+| `GARMIN_USER_ID` | `SUGAR_BEE_GARMIN_USER_ID` | Garmin 绑定用户 |
+| `GARMIN_EMAIL` | `SUGAR_BEE_GARMIN_EMAIL` | Garmin 账号 |
+| `MODELSCOPE_API_KEY` | `modelscope-api-key` | AI 视觉/文本模型 |
+| `SENSENOVA_API_KEY` | `sensenova-api-key` | AI 文本模型兜底 |
+
+### 注意事项
+
+- YAML 中的镜像必须使用 **digest**（`@sha256:...`），不用 `:latest` 标签，否则 YAML 未变更时 Cloud Run 不会创建新 revision
+- 更新 Secret 后不需要重新部署，Cloud Run 会在下次请求时加载新版本
+- Artifact Registry 旧镜像不会自动清理，定期用以下命令删除：
+
+```bash
+# 列出所有版本
+gcloud artifacts docker images list \
+  asia-east2-docker.pkg.dev/project-c0560c79-7c6a-4f31-a11/sugar-bee \
+  --include-tags
+
+# 按 tag 删除旧版本
+gcloud artifacts docker images delete IMAGE:tag --quiet
+```
+
 ## 故障排查
 
 ```bash
@@ -142,4 +214,10 @@ docker compose ps
 
 # 重启应用
 docker compose restart
+
+# Cloud Run 查看实时日志
+gcloud logging read "resource.type=cloud_run_revision AND resource.labels.service_name=sugar-bee" --limit=50
+
+# 查看 Cloud SQL 连接
+gcloud sql instances describe sugar-bee-db-hk
 ```
