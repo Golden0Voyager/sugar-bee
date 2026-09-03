@@ -5,18 +5,21 @@
 import datetime
 import hmac
 import io
+import os
+import plistlib
 import secrets
+import subprocess
+import tempfile
 import traceback
 import uuid
 
 from flask import Blueprint, request, send_file
 
-from services.shortcut_generator import generate_binding_shortcut
-from user_manager import UserManager
 from core import config as core_config
-from utils.responses import api_success, api_error
-from utils.db import get_db
+from user_manager import UserManager
 from utils.auth import login_required
+from utils.db import get_db
+from utils.responses import api_error, api_success
 
 user_manager = UserManager(core_config.DB_NAME)
 
@@ -95,7 +98,7 @@ def bind_device():
             'bind_code': bind_code,
             'expires_in': BIND_CODE_EXPIRY_SECONDS,
         })
-    except Exception as e:
+    except Exception:
         traceback.print_exc()
         return api_error("绑定码生成失败", status_code=500)
 
@@ -134,7 +137,6 @@ def bind_from_shortcut():
             return api_error("绑定码无效或已过期", status_code=404)
 
         binding_id = row['id']
-        user_id = row['user_id']
 
         # 生成 device_id + device_token
         device_id = str(uuid.uuid4())
@@ -156,7 +158,7 @@ def bind_from_shortcut():
             'device_id': device_id,
             'device_token': device_token,
         })
-    except Exception as e:
+    except Exception:
         traceback.print_exc()
         return api_error("设备绑定失败", status_code=500)
 
@@ -183,7 +185,7 @@ def confirm_binding():
                 'bound_at': row['bound_at'],
             })
         return api_success(data={'device_id': None})
-    except Exception as e:
+    except Exception:
         traceback.print_exc()
         return api_error("查询绑定状态失败", status_code=500)
 
@@ -275,30 +277,9 @@ def sync_health_data():
 
         db.commit()
         return api_success(data={'inserted': inserted, 'skipped': skipped})
-    except Exception as e:
-        traceback.print_exc()
-        return api_error("数据同步失败", status_code=500)
-
-
-@bp_health_sync.route('/download-shortcut', methods=['GET'])
-@login_required
-def download_shortcut():
-    """下载 iOS 捷径文件(.shortcut)用于 Apple Health 绑定。
-
-    返回一个未签名的 binary plist,可被 iOS「快捷指令」App 导入。
-    """
-    try:
-        base_url = request.host_url.rstrip('/')
-        plist_bytes = generate_binding_shortcut(base_url)
-        return send_file(
-            io.BytesIO(plist_bytes),
-            mimetype='application/octet-stream',
-            as_attachment=True,
-            download_name='SugarBee.sync.shortcut',
-        )
     except Exception:
         traceback.print_exc()
-        return api_error("捷径文件生成失败", status_code=500)
+        return api_error("数据同步失败", status_code=500)
 
 
 @bp_health_sync.route('/unbind', methods=['POST'])
@@ -315,6 +296,159 @@ def unbind_device():
         )
         db.commit()
         return api_success(message="绑定已解除")
-    except Exception as e:
+    except Exception:
         traceback.print_exc()
         return api_error("解除绑定失败", status_code=500)
+
+
+@bp_health_sync.route('/download_shortcut', methods=['GET'])
+@login_required
+def download_shortcut():
+    """下载 iOS 捷径文件（动态生成，包含正确的服务器地址）。
+
+    在 macOS 本地运行时会自动签名，生产环境返回未签名版本。
+    """
+    try:
+        # 获取服务器地址（host_url 保留 scheme；生产环境经 ProxyFix 还原 https）
+        base_url = request.host_url.rstrip('/')
+        url = f'{base_url}/api/v1/health-sync/bind_from_shortcut'
+
+        # 构建捷径 actions
+        actions = [
+            # 1. 获取剪贴板
+            {
+                'WFWorkflowActionIdentifier': 'is.workflow.actions.getclipboard',
+                'WFWorkflowActionParameters': {},
+            },
+            # 2. 设置变量 "BindCode"
+            {
+                'WFWorkflowActionIdentifier': 'is.workflow.actions.setvariable',
+                'WFWorkflowActionParameters': {
+                    'WFVariableName': 'BindCode',
+                },
+            },
+            # 3. 获取变量 "BindCode"（用于后续引用）
+            {
+                'WFWorkflowActionIdentifier': 'is.workflow.actions.getvariable',
+                'WFWorkflowActionParameters': {
+                    'WFVariable': {
+                        'Value': {'Type': 'Variable', 'VariableName': 'BindCode'},
+                        'WFSerializationType': 'WFTextTokenAttachment',
+                    },
+                },
+            },
+            # 4. 文本 - JSON 模板（使用变量）
+            {
+                'WFWorkflowActionIdentifier': 'is.workflow.actions.gettext',
+                'WFWorkflowActionParameters': {
+                    'WFTextActionText': {
+                        'Value': {
+                            'attachmentsByRange': {
+                                '{8, 1}': {
+                                    'Type': 'Variable',
+                                    'VariableName': 'BindCode',
+                                },
+                            },
+                            'string': '{"code": "\ufffc"}',
+                        },
+                        'WFSerializationType': 'WFTextTokenString',
+                    },
+                },
+            },
+            # 5. URL
+            {
+                'WFWorkflowActionIdentifier': 'is.workflow.actions.url',
+                'WFWorkflowActionParameters': {
+                    'WFURLActionURL': url,
+                },
+            },
+            # 6. 获取 URL 内容 (POST)
+            {
+                'WFWorkflowActionIdentifier': 'is.workflow.actions.geturlcontent',
+                'WFWorkflowActionParameters': {
+                    'WFHTTPMethod': 'POST',
+                    'WFHTTPBodyType': 'JSON',
+                    'WFGetDictionaryValueType': 'Dictionary',
+                    'WFHTTPHeaders': [],
+                    'WFFormValues': {
+                        'Value': {
+                            'attachmentsByRange': {
+                                '{0, 1}': {
+                                    'Type': 'Variable',
+                                    'VariableName': 'BindCode',
+                                },
+                            },
+                            'string': '\ufffc',
+                        },
+                        'WFSerializationType': 'WFTextTokenString',
+                    },
+                },
+            },
+            # 7. 显示结果
+            {
+                'WFWorkflowActionIdentifier': 'is.workflow.actions.showresult',
+                'WFWorkflowActionParameters': {},
+            },
+        ]
+
+        shortcut_dict = {
+            'WFWorkflowMinimumClientVersion': 900,
+            'WFWorkflowMinimumClientVersionString': '900',
+            'WFWorkflowClientVersion': '2612.0.4',
+            'WFWorkflowHasShortcutInputVariables': False,
+            'WFWorkflowIcon': {
+                'WFWorkflowIconStartColor': 463140863,
+                'WFWorkflowIconGlyphNumber': 59771,
+            },
+            'WFWorkflowImportQuestions': [],
+            'WFWorkflowInputContentItemClasses': [],
+            'WFWorkflowTypes': ['NCWidget', 'WatchKit', 'ActionExtension'],
+            'WFWorkflowActions': actions,
+            'WFWorkflowHasOutputFallback': False,
+            'WFWorkflowName': 'Sugar Bee 绑定',
+        }
+
+        # 生成未签名的 plist 到临时文件
+        with tempfile.NamedTemporaryFile(suffix='.shortcut', delete=False) as tmp_unsigned:
+            plistlib.dump(shortcut_dict, tmp_unsigned, fmt=plistlib.FMT_BINARY)
+            tmp_unsigned_path = tmp_unsigned.name
+
+        try:
+            # 尝试签名（仅 macOS 本地有效）
+            tmp_signed_path = tmp_unsigned_path + '.signed'
+            sign_result = subprocess.run(
+                ['shortcuts', 'sign', '--mode', 'anyone',
+                 '--input', tmp_unsigned_path, '--output', tmp_signed_path],
+                capture_output=True, text=True, timeout=30,
+            )
+
+            if sign_result.returncode == 0 and os.path.exists(tmp_signed_path):
+                # 签名成功，使用签名版本
+                with open(tmp_signed_path, 'rb') as f:
+                    signed_data = f.read()
+                os.unlink(tmp_signed_path)
+                return send_file(
+                    io.BytesIO(signed_data),
+                    mimetype='application/octet-stream',
+                    as_attachment=True,
+                    download_name='SugarBeeBind.shortcut',
+                )
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            pass
+        finally:
+            os.unlink(tmp_unsigned_path)
+
+        # 签名失败或不可用，返回未签名版本
+        buffer = io.BytesIO()
+        plistlib.dump(shortcut_dict, buffer, fmt=plistlib.FMT_BINARY)
+        buffer.seek(0)
+
+        return send_file(
+            buffer,
+            mimetype='application/octet-stream',
+            as_attachment=True,
+            download_name='SugarBeeBind.shortcut',
+        )
+    except Exception:
+        traceback.print_exc()
+        return api_error("生成捷径文件失败", status_code=500)

@@ -8,6 +8,8 @@ WSGI 入口文件
 import os
 import time
 
+from werkzeug.middleware.proxy_fix import ProxyFix
+
 from app import app
 from core.config import DB_TYPE
 from services.gcs_sync import restore_db_from_gcs, sync_file_from_gcs
@@ -43,4 +45,6 @@ for attempt in range(1, _max_retries + 1):
         time.sleep(_retry_delay)
 
 # Gunicorn 识别的 application 对象
-application = app
+# ProxyFix：Cloud Run 前置代理通过 X-Forwarded-Proto/Host 传递原始请求信息，
+# 不加会导致 request.scheme 恒为 http（影响 request.host_url 等 URL 生成）
+application = ProxyFix(app, x_proto=1, x_host=1)

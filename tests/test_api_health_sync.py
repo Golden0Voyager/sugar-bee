@@ -1,7 +1,5 @@
 """Apple Health sync API: bind endpoints"""
-import json
-import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 
 class TestHealthSyncBind:
@@ -136,8 +134,8 @@ def _bind_device(client):
     """helper: 完成一次完整的设备绑定流程，返回 (device_id, device_token)"""
     # 先登录
     with client.session_transaction() as sess:
-        from user_manager import UserManager
         from core import config as _core_config
+        from user_manager import UserManager
         um = UserManager(_core_config.DB_NAME)
         import uuid as _uuid
         unique_name = f'_sync_test_{_uuid.uuid4().hex[:8]}'
@@ -453,3 +451,51 @@ class TestHealthSyncCoverage:
             mock_g.side_effect = Exception("DB error")
             result = client_authenticated.post('/api/v1/health-sync/unbind')
             assert result.status_code == 500
+
+
+class TestDownloadShortcut:
+    """下载 iOS 绑定捷径测试"""
+
+    def test_download_requires_auth(self, client):
+        """未登录的页面请求重定向到登录页"""
+        result = client.get('/api/v1/health-sync/download_shortcut')
+        assert result.status_code == 302
+        assert '/login' in result.headers['Location']
+
+    def test_download_success_https_url(self, client_authenticated):
+        """生成的捷径使用请求的 scheme/host，不再写死 http 和 :80"""
+        import plistlib
+
+        with patch('routes.api_health_sync.subprocess.run') as mock_run:
+            mock_run.side_effect = FileNotFoundError("shortcuts CLI 不可用")
+            result = client_authenticated.get(
+                '/api/v1/health-sync/download_shortcut',
+                base_url='https://localhost',
+            )
+        assert result.status_code == 200
+        shortcut = plistlib.loads(result.data)
+        urls = [
+            a['WFWorkflowActionParameters']['WFURLActionURL']
+            for a in shortcut['WFWorkflowActions']
+            if a['WFWorkflowActionIdentifier'] == 'is.workflow.actions.url'
+        ]
+        assert urls == ['https://localhost/api/v1/health-sync/bind_from_shortcut']
+
+    def test_download_success_localhost(self, client_authenticated):
+        """本地开发环境保留 host 与端口"""
+        import plistlib
+
+        with patch('routes.api_health_sync.subprocess.run') as mock_run:
+            mock_run.side_effect = FileNotFoundError("shortcuts CLI 不可用")
+            result = client_authenticated.get(
+                '/api/v1/health-sync/download_shortcut',
+                base_url='http://localhost:5001',
+            )
+        assert result.status_code == 200
+        shortcut = plistlib.loads(result.data)
+        urls = [
+            a['WFWorkflowActionParameters']['WFURLActionURL']
+            for a in shortcut['WFWorkflowActions']
+            if a['WFWorkflowActionIdentifier'] == 'is.workflow.actions.url'
+        ]
+        assert urls == ['http://localhost:5001/api/v1/health-sync/bind_from_shortcut']
