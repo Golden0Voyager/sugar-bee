@@ -41,6 +41,14 @@ garmin_cookies.json
 *.log
 # 自动备份
 backups/
+
+# Toolchain caches
+.ruff_cache/
+.mypy_cache/
+.pytest_cache/
+
+# Coverage
+htmlcov/
 # Skill-generated analysis artifacts
 .understand-anything/
 .codegraph/
