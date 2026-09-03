@@ -158,6 +158,7 @@ class TestCallAi:
         mock_try.return_value = (None, Exception("fail"))
         with pytest.raises(Exception):  # noqa: B017
             call_ai('test prompt')
+    @patch('ai_client.AI_AVAILABLE', True)
     @patch('ai_client.MODELSCOPE_API_KEY', 'fake-key')
     @patch('ai_client._try_provider')
     def test_has_images_forces_vision(self, mock_try):
