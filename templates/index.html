@@ -4273,22 +4273,42 @@
 
         // 从 timelineData 提取所有 CGM 记录（不做槽位采样）
         const cgmRecords = [];
-        timelineData.forEach(day => {
-            const dayDate = new Date(day.date);
-            if (cutoffDate && dayDate < new Date(cutoffDate.getTime() - 24 * 60 * 60 * 1000)) return;
-            if (endDate && dayDate > endDate) return;
+        const collectCgmRecords = () => {
+            cgmRecords.length = 0;
+            timelineData.forEach(day => {
+                const dayDate = new Date(day.date);
+                if (cutoffDate && dayDate < new Date(cutoffDate.getTime() - 24 * 60 * 60 * 1000)) return;
+                if (endDate && dayDate > endDate) return;
 
-            day.data.entries.forEach(entry => {
-                if (entry.type === 'CGM' && entry.value > 0) {
-                    const entryTime = new Date(entry.timestamp);
-                    if (days && days <= 1) {
-                        if (cutoffDate && entryTime < cutoffDate) return;
-                        if (endDate && entryTime > endDate) return;
+                day.data.entries.forEach(entry => {
+                    if (entry.type === 'CGM' && entry.value > 0) {
+                        const entryTime = new Date(entry.timestamp);
+                        if (days && days <= 1) {
+                            if (cutoffDate && entryTime < cutoffDate) return;
+                            if (endDate && entryTime > endDate) return;
+                        }
+                        cgmRecords.push({ x: entryTime.getTime(), y: entry.value });
                     }
-                    cgmRecords.push({ x: entryTime.getTime(), y: entry.value });
-                }
+                });
             });
-        });
+        };
+        collectCgmRecords();
+
+        // 当前时间范围内没有 CGM 数据时，自动锚定到最近一次 CGM 数据所在的时间段
+        if (cgmRecords.length === 0 && days) {
+            let latestCgm = null;
+            timelineData.forEach(day => day.data.entries.forEach(entry => {
+                if (entry.type === 'CGM' && entry.value > 0) {
+                    const t = new Date(entry.timestamp);
+                    if (!latestCgm || t > latestCgm) latestCgm = t;
+                }
+            }));
+            if (latestCgm) {
+                endDate = new Date(latestCgm.getTime() + 12 * 60 * 60 * 1000);
+                cutoffDate = new Date(endDate.getTime() - days * 24 * 60 * 60 * 1000);
+                collectCgmRecords();
+            }
+        }
 
         if (cgmRecords.length === 0) return;
         cgmRecords.sort((a, b) => a.x - b.x);
@@ -4478,6 +4498,18 @@
             }] : []
         });
     }
+
+    // CGM 标签页激活时再渲染：隐藏状态下 Chart.js 无法正确计算尺寸，
+    // 且首次加载时当前时间范围可能不含 CGM 数据（initCgmChart 内部会自动锚定到最近数据段）
+    document.getElementById('cgm-chart-tab')?.addEventListener('shown.bs.tab', () => {
+        if (cgmChartInstance) {
+            cgmChartInstance.resize();
+        } else {
+            const savedRange = localStorage.getItem('glucoseTimeRange') || '14';
+            const days = savedRange === 'all' ? null : parseFloat(savedRange);
+            initCgmChart(days, trendOffset);
+        }
+    });
 
     // Initialize blood pressure trend chart
     let bpChartInstance = null;
