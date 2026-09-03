@@ -306,6 +306,7 @@ from routes.api_auth import bp_auth  # noqa: E402
 from routes.api_chat import bp_chat  # noqa: E402
 from routes.api_dashboard import bp_dashboard  # noqa: E402
 from routes.api_health import bp_health  # noqa: E402
+from routes.api_health_sync import bp_health_sync  # noqa: E402
 from routes.api_internal import bp_internal  # noqa: E402
 from routes.api_meds import bp_meds  # noqa: E402
 from routes.api_prediction import bp_prediction  # noqa: E402
@@ -322,6 +323,7 @@ app.register_blueprint(bp_user)
 app.register_blueprint(bp_dashboard)
 app.register_blueprint(bp_prediction)
 app.register_blueprint(bp_internal)
+app.register_blueprint(bp_health_sync)
 
 # 为敏感端点添加请求限速（在 Blueprint 注册后配置，避免循环导入）
 # Flask Blueprint view_functions 使用 "blueprint.endpoint" 格式
@@ -329,6 +331,10 @@ app.view_functions['auth.login'] = limiter.limit("10 per minute")(app.view_funct
 app.view_functions['auth.set_password'] = limiter.limit("5 per minute")(app.view_functions['auth.set_password'])
 app.view_functions['auth.change_password'] = limiter.limit("10 per minute")(app.view_functions['auth.change_password'])
 
+# Apple Health 同步端点限速
+app.view_functions['health_sync.bind_device'] = limiter.limit("5 per minute")(app.view_functions['health_sync.bind_device'])
+app.view_functions['health_sync.bind_from_shortcut'] = limiter.limit("10 per minute")(app.view_functions['health_sync.bind_from_shortcut'])
+app.view_functions['health_sync.sync_health_data'] = limiter.limit("30 per minute")(app.view_functions['health_sync.sync_health_data'])
 
 # ========== 健康检查 ==========
 @app.route('/health')

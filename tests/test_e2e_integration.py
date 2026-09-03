@@ -709,3 +709,72 @@ class TestRealDBUserJourney:
             slots = result.json['slots']
             fasting_slot = [s for s in slots if s['key'] == 'fasting'][0]
             assert fasting_slot['status'] in ('measured', 'verified')
+
+
+# ============================================================
+# Apple Health 同步
+# ============================================================
+
+class TestRealDBHealthSyncFlow:
+
+    def test_bind_and_sync_flow(self, client_authenticated):
+        """完整的绑定 + 同步流程"""
+        # 1. 生成绑定码
+        bind_resp = client_authenticated.post('/api/v1/health-sync/bind')
+        assert bind_resp.status_code == 200
+        bind_code = bind_resp.json['data']['bind_code']
+        assert len(bind_code) == 6
+
+        # 2. 完成绑定（模拟 iOS 捷径）
+        bind_shortcut_resp = client_authenticated.post(
+            '/api/v1/health-sync/bind_from_shortcut',
+            json={'code': bind_code, 'device_name': 'E2E Test iPhone'},
+        )
+        assert bind_shortcut_resp.status_code == 200
+        device_id = bind_shortcut_resp.json['data']['device_id']
+        device_token = bind_shortcut_resp.json['data']['device_token']
+        assert len(device_id) == 36
+
+        # 3. 查询绑定状态
+        confirm_resp = client_authenticated.get('/api/v1/health-sync/confirm_binding')
+        assert confirm_resp.status_code == 200
+        assert confirm_resp.json['data']['device_id'] == device_id
+        assert confirm_resp.json['data']['device_name'] == 'E2E Test iPhone'
+
+        # 4. 同步血糖 + 步数
+        sync_resp = client_authenticated.post(
+            '/api/v1/health-sync/sync',
+            headers={'X-Device-Id': device_id, 'X-Device-Token': device_token},
+            json={'records': [
+                {'external_id': 'e2e:glucose-1', 'type': '血糖', 'value': 6.2,
+                 'unit': 'mmol/L', 'timestamp': '2024-06-01T07:15:00'},
+                {'external_id': 'e2e:steps-1', 'type': '步数', 'value': 8500,
+                 'unit': 'steps', 'timestamp': '2024-06-01T12:00:00'},
+            ]},
+        )
+        assert sync_resp.status_code == 200
+        assert sync_resp.json['data']['inserted'] == 2
+        assert sync_resp.json['data']['skipped'] == 0
+
+        # 5. 去重验证：同一 external_id 再次同步应跳过
+        dedup_resp = client_authenticated.post(
+            '/api/v1/health-sync/sync',
+            headers={'X-Device-Id': device_id, 'X-Device-Token': device_token},
+            json={'records': [
+                {'external_id': 'e2e:glucose-1', 'type': '血糖', 'value': 6.2,
+                 'unit': 'mmol/L', 'timestamp': '2024-06-01T07:15:00'},
+                {'external_id': 'e2e:new-record', 'type': '体重', 'value': 72.0,
+                 'unit': 'kg', 'timestamp': '2024-06-01T08:00:00'},
+            ]},
+        )
+        assert dedup_resp.status_code == 200
+        assert dedup_resp.json['data']['inserted'] == 1
+        assert dedup_resp.json['data']['skipped'] == 1
+
+        # 6. 解除绑定
+        unbind_resp = client_authenticated.post('/api/v1/health-sync/unbind')
+        assert unbind_resp.status_code == 200
+
+        # 7. 确认已解除
+        final_confirm = client_authenticated.get('/api/v1/health-sync/confirm_binding')
+        assert final_confirm.json['data']['device_id'] is None

@@ -1864,6 +1864,69 @@
                                 <button class="btn btn-primary" onclick="syncGarmin()">同步</button>
                             </div>
                             {% endif %}
+                            <!-- Apple Health 绑定（未绑定） -->
+                            <div class="d-flex align-items-center justify-content-between p-3 bg-light rounded-3" id="ios-device-unbound-card">
+                                <div class="d-flex align-items-center gap-3">
+                                    <i class="bi bi-apple text-secondary fs-4"></i>
+                                    <div>
+                                        <div class="fw-medium">Apple Health 同步</div>
+                                        <div class="text-muted small">绑定 iOS 设备后通过快捷指令同步健康数据</div>
+                                        <div id="bind-code-display" class="d-none mt-2">
+                                            <div class="alert alert-info py-2 px-3 mb-0 d-flex align-items-center flex-wrap gap-2">
+                                                <div>
+                                                    <strong>绑定码：</strong>
+                                                    <span id="bind-code" class="fs-5 fw-bold font-monospace"></span>
+                                                    <span class="text-muted ms-2 small">（30 分钟内有效）</span>
+                                                </div>
+                                                <div class="ms-auto">
+                                                    <button class="btn btn-sm btn-outline-secondary" onclick="copyBindCode()">
+                                                        <i class="bi bi-clipboard"></i> 复制
+                                                    </button>
+                                                    <a href="/api/v1/health-sync/download_shortcut" class="btn btn-sm btn-success ms-1" download>
+                                                        <i class="bi bi-download"></i> 下载捷径
+                                                    </a>
+                                                    <button class="btn btn-sm btn-outline-primary ms-1" onclick="showShortcutGuide()">
+                                                        <i class="bi bi-book"></i> 使用说明
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            <p class="text-muted small mt-2 mb-0">
+                                                1. 点击「下载捷径」→ 在 iPhone 上打开，自动添加到「快捷指令」<br>
+                                                2. 复制绑定码 → 运行「Sugar Bee 绑定」捷径<br>
+                                                3. 捷径自动完成绑定，显示绑定结果
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <button class="btn btn-primary" onclick="bindIOSDevice()">
+                                    <i class="bi bi-link-45deg"></i> 绑定
+                                </button>
+                            </div>
+                            <!-- Apple Health 绑定（已绑定） -->
+                            <div class="d-flex align-items-center justify-content-between p-3 bg-light rounded-3 d-none" id="ios-device-bound-card">
+                                <div class="d-flex align-items-center gap-3">
+                                    <i class="bi bi-apple text-success fs-4"></i>
+                                    <div>
+                                        <div class="fw-medium">Apple Health 同步</div>
+                                        <div class="small">
+                                            <span class="text-success"><i class="bi bi-check-circle-fill me-1"></i>已绑定</span>
+                                            <span id="bound-device-name" class="ms-2 text-secondary">-</span>
+                                        </div>
+                                        <div class="text-muted small" id="bound-device-time">-</div>
+                                    </div>
+                                </div>
+                                <div class="d-flex gap-2">
+                                    <a href="/api/v1/health-sync/download_shortcut" class="btn btn-outline-success btn-sm" download>
+                                        <i class="bi bi-download"></i> 下载捷径
+                                    </a>
+                                    <button class="btn btn-outline-primary btn-sm" onclick="showShortcutGuide()">
+                                        <i class="bi bi-book"></i> 使用说明
+                                    </button>
+                                    <button class="btn btn-outline-danger btn-sm" onclick="resetIOSBinding()">
+                                        <i class="bi bi-unlink"></i> 解绑
+                                    </button>
+                                </div>
+                            </div>
                             <div class="d-flex align-items-center justify-content-between p-3 bg-light rounded-3">
                                 <div class="d-flex align-items-center gap-3">
                                     <i class="bi bi-wrench text-secondary fs-4"></i>
@@ -4215,22 +4278,42 @@
 
         // 从 timelineData 提取所有 CGM 记录（不做槽位采样）
         const cgmRecords = [];
-        timelineData.forEach(day => {
-            const dayDate = new Date(day.date);
-            if (cutoffDate && dayDate < new Date(cutoffDate.getTime() - 24 * 60 * 60 * 1000)) return;
-            if (endDate && dayDate > endDate) return;
+        const collectCgmRecords = () => {
+            cgmRecords.length = 0;
+            timelineData.forEach(day => {
+                const dayDate = new Date(day.date);
+                if (cutoffDate && dayDate < new Date(cutoffDate.getTime() - 24 * 60 * 60 * 1000)) return;
+                if (endDate && dayDate > endDate) return;
 
-            day.data.entries.forEach(entry => {
-                if (entry.type === 'CGM' && entry.value > 0) {
-                    const entryTime = new Date(entry.timestamp);
-                    if (days && days <= 1) {
-                        if (cutoffDate && entryTime < cutoffDate) return;
-                        if (endDate && entryTime > endDate) return;
+                day.data.entries.forEach(entry => {
+                    if (entry.type === 'CGM' && entry.value > 0) {
+                        const entryTime = new Date(entry.timestamp);
+                        if (days && days <= 1) {
+                            if (cutoffDate && entryTime < cutoffDate) return;
+                            if (endDate && entryTime > endDate) return;
+                        }
+                        cgmRecords.push({ x: entryTime.getTime(), y: entry.value });
                     }
-                    cgmRecords.push({ x: entryTime.getTime(), y: entry.value });
-                }
+                });
             });
-        });
+        };
+        collectCgmRecords();
+
+        // 当前时间范围内没有 CGM 数据时，自动锚定到最近一次 CGM 数据所在的时间段
+        if (cgmRecords.length === 0 && days) {
+            let latestCgm = null;
+            timelineData.forEach(day => day.data.entries.forEach(entry => {
+                if (entry.type === 'CGM' && entry.value > 0) {
+                    const t = new Date(entry.timestamp);
+                    if (!latestCgm || t > latestCgm) latestCgm = t;
+                }
+            }));
+            if (latestCgm) {
+                endDate = new Date(latestCgm.getTime() + 12 * 60 * 60 * 1000);
+                cutoffDate = new Date(endDate.getTime() - days * 24 * 60 * 60 * 1000);
+                collectCgmRecords();
+            }
+        }
 
         if (cgmRecords.length === 0) return;
         cgmRecords.sort((a, b) => a.x - b.x);
@@ -4420,6 +4503,18 @@
             }] : []
         });
     }
+
+    // CGM 标签页激活时再渲染：隐藏状态下 Chart.js 无法正确计算尺寸，
+    // 且首次加载时当前时间范围可能不含 CGM 数据（initCgmChart 内部会自动锚定到最近数据段）
+    document.getElementById('cgm-chart-tab')?.addEventListener('shown.bs.tab', () => {
+        if (cgmChartInstance) {
+            cgmChartInstance.resize();
+        } else {
+            const savedRange = localStorage.getItem('glucoseTimeRange') || '14';
+            const days = savedRange === 'all' ? null : parseFloat(savedRange);
+            initCgmChart(days, trendOffset);
+        }
+    });
 
     // Initialize blood pressure trend chart
     let bpChartInstance = null;
@@ -8627,6 +8722,82 @@
         fileInput.click();
     }
 
+    // ========== Apple Health 同步 ==========
+
+    async function bindIOSDevice() {
+        try {
+            const resp = await fetch('/api/v1/health-sync/bind', {method: 'POST'});
+            const data = await resp.json();
+            if (data.status === 'success') {
+                document.getElementById('bind-code').textContent = data.data.bind_code;
+                document.getElementById('bind-code-display').classList.remove('d-none');
+            } else {
+                alert('生成绑定码失败：' + (data.message || '未知错误'));
+            }
+        } catch (e) {
+            alert('网络错误：' + e.message);
+        }
+    }
+
+    function copyBindCode() {
+        const code = document.getElementById('bind-code').textContent;
+        navigator.clipboard.writeText(code).then(function () {
+            const btn = event.currentTarget;
+            const orig = btn.innerHTML;
+            btn.innerHTML = '<i class="bi bi-check"></i> 已复制';
+            setTimeout(function () { btn.innerHTML = orig; }, 2000);
+        }).catch(function () {
+            const el = document.getElementById('bind-code');
+            const range = document.createRange();
+            range.selectNodeContents(el);
+            const sel = window.getSelection();
+            sel.removeAllRanges();
+            sel.addRange(range);
+        });
+    }
+
+    async function checkIOSBinding() {
+        try {
+            const resp = await fetch('/api/v1/health-sync/confirm_binding');
+            const data = await resp.json();
+            if (data.status === 'success' && data.data && data.data.device_id) {
+                document.getElementById('ios-device-unbound-card').classList.add('d-none');
+                document.getElementById('ios-device-bound-card').classList.remove('d-none');
+                document.getElementById('bound-device-name').textContent = data.data.device_name || 'iOS 设备';
+                if (data.data.bound_at) {
+                    document.getElementById('bound-device-time').textContent = '绑定时间：' + data.data.bound_at;
+                }
+            }
+        } catch (e) {
+            console.error('检查绑定状态失败：', e);
+        }
+    }
+
+    async function resetIOSBinding() {
+        if (!confirm('确定要解除 iOS 设备绑定？')) return;
+        try {
+            const resp = await fetch('/api/v1/health-sync/unbind', {method: 'POST'});
+            const data = await resp.json();
+            if (data.status === 'success') {
+                document.getElementById('ios-device-unbound-card').classList.remove('d-none');
+                document.getElementById('ios-device-bound-card').classList.add('d-none');
+                document.getElementById('bind-code-display').classList.add('d-none');
+            } else {
+                alert('解除绑定失败：' + (data.message || '未知错误'));
+            }
+        } catch (e) {
+            alert('网络错误：' + e.message);
+        }
+    }
+
+    // 页面加载时检查绑定状态
+    document.addEventListener('DOMContentLoaded', checkIOSBinding);
+
+    function showShortcutGuide() {
+        const el = document.getElementById('shortcutGuideModal');
+        (bootstrap.Modal.getInstance(el) || new bootstrap.Modal(el)).show();
+    }
+
     // ========== 去重功能 ==========
 
     // ========== 用户管理（设置页 Tab） ==========
@@ -9238,6 +9409,329 @@
 
 <script src="/static/js/chat.js"></script>
 
+
+
+<!-- iOS 捷径搭建指南模态框 -->
+<div class="modal fade" id="shortcutGuideModal" tabindex="-1" data-bs-backdrop="static">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title"><i class="bi bi-apple me-2"></i>iOS 捷径搭建指南</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+
+                <div class="alert alert-info small mb-4">
+                    <i class="bi bi-lightbulb me-2"></i>
+                    <strong>什么是「快捷指令」？</strong>这是 iPhone 自带的 App，可以让你自动化一些操作。我们用它来读取你的绑定码并发送给服务器完成设备绑定。
+                </div>
+
+                <h6 class="mb-3 fw-bold"><i class="bi bi-1-circle-fill text-primary me-1"></i>打开「快捷指令」App</h6>
+                <div class="mb-4 ps-4">
+                    <p class="mb-2">在 iPhone 上找到并打开「快捷指令」App（蓝色图标，有重叠的彩色方块）。</p>
+                    <p class="mb-0 text-muted small">如果找不到，可以在主屏幕向左滑动，在搜索栏输入「快捷指令」。</p>
+                </div>
+
+                <h6 class="mb-3 fw-bold"><i class="bi bi-2-circle-fill text-primary me-1"></i>创建新捷径</h6>
+                <div class="mb-4 ps-4">
+                    <ol class="mb-2">
+                        <li>点击右上角 <strong>「+」</strong> 按钮创建新捷径</li>
+                        <li>点击顶部「新快捷指令」，可以改名为「Sugar Bee 绑定」</li>
+                    </ol>
+                </div>
+
+                <h6 class="mb-3 fw-bold"><i class="bi bi-3-circle-fill text-primary me-1"></i>添加 5 个操作</h6>
+                <div class="mb-4 ps-4">
+                    <p class="mb-3">点击底部 <strong>「添加操作」</strong>，按顺序添加以下 5 个操作：</p>
+
+                    <div class="card mb-3 border-primary">
+                        <div class="card-body py-3">
+                            <div class="d-flex align-items-start gap-3">
+                                <span class="badge bg-primary fs-6">1</span>
+                                <div class="flex-grow-1">
+                                    <strong>获取剪贴板</strong>
+                                    <div class="text-muted small mt-1">
+                                        搜索「剪贴板」→ 选择「获取剪贴板」<br>
+                                        <em>作用：自动读取你复制的 6 位绑定码</em>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card mb-3 border-primary">
+                        <div class="card-body py-3">
+                            <div class="d-flex align-items-start gap-3">
+                                <span class="badge bg-primary fs-6">2</span>
+                                <div class="flex-grow-1">
+                                    <strong>词典</strong>
+                                    <div class="text-muted small mt-1">
+                                        搜索「词典」→ 选择「词典」<br>
+                                        点击「添加新字段」：<br>
+                                        · 键（Key）输入：<code>code</code><br>
+                                        · 值（Value）：点击输入框 → 选择上方的 <strong>「剪贴板」</strong> 蓝色药丸<br>
+                                        <em>作用：把绑定码包装成 JSON 格式</em>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card mb-3 border-primary">
+                        <div class="card-body py-3">
+                            <div class="d-flex align-items-start gap-3">
+                                <span class="badge bg-primary fs-6">3</span>
+                                <div class="flex-grow-1">
+                                    <strong>URL</strong>
+                                    <div class="text-muted small mt-1">
+                                        搜索「URL」→ 选择「URL」<br>
+                                        输入以下地址：<br>
+                                        <div class="bg-light p-2 rounded mt-1 mb-1">
+                                            <code class="user-select-all small">http://192.168.1.72:5001/api/v1/health-sync/bind_from_shortcut</code>
+                                        </div>
+                                        <em>⚠️ 如果你的服务器地址不同，请修改为实际地址</em>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card mb-3 border-primary">
+                        <div class="card-body py-3">
+                            <div class="d-flex align-items-start gap-3">
+                                <span class="badge bg-primary fs-6">4</span>
+                                <div class="flex-grow-1">
+                                    <strong>获取请求内容</strong>
+                                    <div class="text-muted small mt-1">
+                                        搜索「获取请求」→ 选择「获取 URL 内容」<br>
+                                        配置：<br>
+                                        · 方法：选择 <code>POST</code><br>
+                                        · 请求体：选择 <code>JSON</code><br>
+                                        · 点击「JSON」字段 → 选择变量 <strong>②「词典」</strong>（蓝色药丸）<br>
+                                        <em>作用：向服务器发送绑定请求</em>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card mb-3 border-primary">
+                        <div class="card-body py-3">
+                            <div class="d-flex align-items-start gap-3">
+                                <span class="badge bg-primary fs-6">5</span>
+                                <div class="flex-grow-1">
+                                    <strong>显示提醒</strong>
+                                    <div class="text-muted small mt-1">
+                                        搜索「提醒」→ 选择「显示提醒」<br>
+                                        标题：输入 <code>绑定结果</code><br>
+                                        内容：选择变量 <strong>④「获取 URL 内容」</strong>（蓝色药丸）<br>
+                                        <em>作用：显示服务器返回的绑定结果</em>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="alert alert-success small mb-4">
+                    <i class="bi bi-lightning-fill me-2"></i>
+                    <strong>推荐方式：直接下载捷径</strong>
+                    <p class="mb-2 mt-2">点击页面上的「下载捷径」按钮，在 iPhone 上打开下载的文件，会自动跳转到「快捷指令」App 并提示添加。</p>
+                    <p class="mb-0">添加后，只需复制绑定码 → 运行捷径 → 完成绑定。</p>
+                </div>
+
+                <hr class="my-4">
+
+                <h6 class="mb-3 fw-bold"><i class="bi bi-tools me-1"></i>手动搭建（备选方案）</h6>
+                <p class="small text-muted mb-3">如果下载的捷径无法使用，可以手动搭建：</p>
+
+                <h6 class="mb-3"><i class="bi bi-1-circle-fill text-primary me-1"></i>打开「快捷指令」App</h6>
+                <div class="mb-4 ps-4">
+                    <p class="mb-2">在 iPhone 上找到并打开「快捷指令」App（蓝色图标，有重叠的彩色方块）。</p>
+                    <p class="mb-0 text-muted small">如果找不到，可以在主屏幕向左滑动，在搜索栏输入「快捷指令」。</p>
+                </div>
+
+                <h6 class="mb-3"><i class="bi bi-2-circle-fill text-primary me-1"></i>创建新捷径</h6>
+                <div class="mb-4 ps-4">
+                    <ol class="mb-2">
+                        <li>点击右上角 <strong>「+」</strong> 按钮创建新捷径</li>
+                        <li>点击顶部「新快捷指令」，可以改名为「Sugar Bee 绑定」</li>
+                    </ol>
+                </div>
+
+                <h6 class="mb-3"><i class="bi bi-3-circle-fill text-primary me-1"></i>添加 5 个操作</h6>
+                <div class="mb-4 ps-4">
+                    <p class="mb-3">点击底部 <strong>「添加操作」</strong>，按顺序添加以下 5 个操作：</p>
+
+                    <div class="card mb-3 border-primary">
+                        <div class="card-body py-3">
+                            <div class="d-flex align-items-start gap-3">
+                                <span class="badge bg-primary fs-6">1</span>
+                                <div class="flex-grow-1">
+                                    <strong>获取剪贴板</strong>
+                                    <div class="text-muted small mt-1">
+                                        搜索「剪贴板」→ 选择「获取剪贴板」<br>
+                                        <em>作用：自动读取你复制的 6 位绑定码</em>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card mb-3 border-primary">
+                        <div class="card-body py-3">
+                            <div class="d-flex align-items-start gap-3">
+                                <span class="badge bg-primary fs-6">2</span>
+                                <div class="flex-grow-1">
+                                    <strong>词典</strong>
+                                    <div class="text-muted small mt-1">
+                                        搜索「词典」→ 选择「词典」<br>
+                                        点击「添加新字段」：<br>
+                                        · 键（Key）输入：<code>code</code><br>
+                                        · 值（Value）：点击输入框 → 选择上方的 <strong>「剪贴板」</strong> 蓝色药丸<br>
+                                        <em>作用：把绑定码包装成 JSON 格式</em>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card mb-3 border-primary">
+                        <div class="card-body py-3">
+                            <div class="d-flex align-items-start gap-3">
+                                <span class="badge bg-primary fs-6">3</span>
+                                <div class="flex-grow-1">
+                                    <strong>URL</strong>
+                                    <div class="text-muted small mt-1">
+                                        搜索「URL」→ 选择「URL」<br>
+                                        输入以下地址：<br>
+                                        <div class="bg-light p-2 rounded mt-1 mb-1">
+                                            <code class="user-select-all small">http://192.168.1.72:5001/api/v1/health-sync/bind_from_shortcut</code>
+                                        </div>
+                                        <em>⚠️ 如果你的服务器地址不同，请修改为实际地址</em>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card mb-3 border-primary">
+                        <div class="card-body py-3">
+                            <div class="d-flex align-items-start gap-3">
+                                <span class="badge bg-primary fs-6">4</span>
+                                <div class="flex-grow-1">
+                                    <strong>获取请求内容</strong>
+                                    <div class="text-muted small mt-1">
+                                        搜索「获取请求」→ 选择「获取 URL 内容」<br>
+                                        配置：<br>
+                                        · 方法：选择 <code>POST</code><br>
+                                        · 请求体：选择 <code>JSON</code><br>
+                                        · 点击「JSON」字段 → 选择变量 <strong>②「词典」</strong>（蓝色药丸）<br>
+                                        <em>作用：向服务器发送绑定请求</em>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card mb-3 border-primary">
+                        <div class="card-body py-3">
+                            <div class="d-flex align-items-start gap-3">
+                                <span class="badge bg-primary fs-6">5</span>
+                                <div class="flex-grow-1">
+                                    <strong>显示提醒</strong>
+                                    <div class="text-muted small mt-1">
+                                        搜索「提醒」→ 选择「显示提醒」<br>
+                                        标题：输入 <code>绑定结果</code><br>
+                                        内容：选择变量 <strong>④「获取 URL 内容」</strong>（蓝色药丸）<br>
+                                        <em>作用：显示服务器返回的绑定结果</em>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <h6 class="mb-3"><i class="bi bi-4-circle-fill text-primary me-1"></i>完成并测试</h6>
+                <div class="mb-4 ps-4">
+                    <ol>
+                        <li class="mb-2">点击右上角 <strong>「完成」</strong> 保存捷径</li>
+                        <li class="mb-2">回到 Sugar Bee 网页，点击「绑定」生成 6 位绑定码</li>
+                        <li class="mb-2"><strong>复制绑定码</strong>（点击复制按钮）</li>
+                        <li class="mb-2">打开「快捷指令」App，点击刚才创建的捷径运行</li>
+                        <li>弹窗显示绑定结果 → <strong>截图保存！</strong></li>
+                    </ol>
+                </div>
+
+                <div class="p-3 mb-3 bg-success bg-opacity-10 rounded small">
+                    <i class="bi bi-check-circle text-success me-1"></i>
+                    <strong>绑定成功后：</strong>网页会自动显示「已绑定」状态。以后直接在网页上记录数据即可，<strong>无需再运行捷径</strong>。
+                </div>
+
+                <hr class="my-4">
+
+                <h6 class="mb-3 fw-bold"><i class="bi bi-question-circle me-1"></i>常见问题</h6>
+                <div class="accordion small" id="shortcutFAQ">
+                    <div class="accordion-item">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button collapsed py-2" type="button" data-bs-toggle="collapse" data-bs-target="#faq1">
+                                捷径提示「绑定码无效或已过期」怎么办？
+                            </button>
+                        </h2>
+                        <div id="faq1" class="accordion-collapse collapse" data-bs-parent="#shortcutFAQ">
+                            <div class="accordion-body text-muted">
+                                绑定码有效期为 <strong>30 分钟</strong>。请回到网页重新点击「绑定」生成新绑定码，复制后立即运行捷径。
+                            </div>
+                        </div>
+                    </div>
+                    <div class="accordion-item">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button collapsed py-2" type="button" data-bs-toggle="collapse" data-bs-target="#faq2">
+                                捷径提示「网络错误」或「无法连接」怎么办？
+                            </button>
+                        </h2>
+                        <div id="faq2" class="accordion-collapse collapse" data-bs-parent="#shortcutFAQ">
+                            <div class="accordion-body text-muted">
+                                请确认：<br>
+                                1. iPhone 和服务器在同一局域网<br>
+                                2. URL 中的 IP 地址和端口正确<br>
+                                3. 服务器正在运行（<code>uv run python app.py</code>）
+                            </div>
+                        </div>
+                    </div>
+                    <div class="accordion-item">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button collapsed py-2" type="button" data-bs-toggle="collapse" data-bs-target="#faq3">
+                                下载的捷径文件打不开怎么办？
+                            </button>
+                        </h2>
+                        <div id="faq3" class="accordion-collapse collapse" data-bs-parent="#shortcutFAQ">
+                            <div class="accordion-body text-muted">
+                                在 iPhone 上点击下载链接后，选择「在快捷指令中打开」。如果仍然无法打开，可以使用上方的「手动搭建」方式创建捷径。
+                            </div>
+                        </div>
+                    </div>
+                    <div class="accordion-item">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button collapsed py-2" type="button" data-bs-toggle="collapse" data-bs-target="#faq4">
+                                绑定后还需要运行捷径吗？
+                            </button>
+                        </h2>
+                        <div id="faq4" class="accordion-collapse collapse" data-bs-parent="#shortcutFAQ">
+                            <div class="accordion-body text-muted">
+                                <strong>不需要。</strong>绑定码只在首次绑定时使用一次。之后直接在网页上记录数据即可。
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+            </div>
+        </div>
+    </div>
+</div>
 
 <!-- Standalone 模式检测 -->
 <script src="/static/js/pwa.js"></script>
