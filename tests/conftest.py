@@ -25,15 +25,10 @@ def db_info():
 
 
 @pytest.fixture
-def app(db_info, monkeypatch):
+def app(db_info):
     """创建测试用的 Flask 应用实例"""
     from app import app
-    from core import config as core_config
     from utils.db import init_db
-
-    # 强制覆盖 config.DB_NAME：core.config 可能在 db_info 设置环境变量之前就被
-    # 其他模块 import 时缓存了生产路径，monkeypatch 确保所有测试使用 db_info 指定的临时数据库。
-    monkeypatch.setattr(core_config, 'DB_NAME', db_info['path'])
 
     app.config['TESTING'] = True
     app.config['WTF_CSRF_ENABLED'] = False
