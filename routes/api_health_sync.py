@@ -20,6 +20,7 @@ from user_manager import UserManager
 from utils.auth import login_required
 from utils.db import get_db
 from utils.responses import api_error, api_success
+from utils.timezone import utc_now
 
 user_manager = UserManager(core_config.DB_NAME)
 
@@ -86,7 +87,12 @@ def bind_device():
 
         # 生成新绑定码（30 分钟过期）
         bind_code = _get_bind_code()
-        expires_at = (datetime.datetime.now() + datetime.timedelta(minutes=30)).isoformat()
+        # SQLite 的 datetime('now') 恒为 UTC，清理/校验用的 SQL 也是拿它比对的
+        # （见 :83 的清理语句与 :131 的校验语句）。这里必须写 UTC naive 时间与之对齐，
+        # 一旦容器设置了 TZ（例如 Asia/Shanghai），用 datetime.now() 会偏 8 小时。
+        expires_at = (
+            (utc_now() + datetime.timedelta(minutes=30)).replace(tzinfo=None).isoformat()
+        )
 
         c.execute(
             "INSERT INTO device_bindings (user_id, bind_code, code_expires_at) VALUES (?, ?, ?)",
@@ -141,7 +147,7 @@ def bind_from_shortcut():
         # 生成 device_id + device_token
         device_id = str(uuid.uuid4())
         device_token = _generate_device_token()
-        now = datetime.datetime.now().isoformat()
+        now = utc_now().replace(tzinfo=None).isoformat()
 
         c.execute(
             "UPDATE device_bindings SET device_id = ?, device_token = ?, "

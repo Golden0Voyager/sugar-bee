@@ -47,4 +47,9 @@ for attempt in range(1, _max_retries + 1):
 # Gunicorn 识别的 application 对象
 # ProxyFix：Cloud Run 前置代理通过 X-Forwarded-Proto/Host 传递原始请求信息，
 # 不加会导致 request.scheme 恒为 http（影响 request.host_url 等 URL 生成）
-application = ProxyFix(app, x_proto=1, x_host=1)
+# x_for: 取可信代理链最右侧（由 nginx 追加的真实客户端 IP）。
+# 若不启用，nginx 反代后 request.remote_addr 恒为 127.0.0.1，flask-limiter 的
+# 限速会变成全站共享一个桶（登录接口只挡得住第一个人却会被单人打满）。
+# 仅在「确实有反向代理」时开启；IP 直连模式下不要开，否则客户端可伪造
+# X-Forwarded-For 绕过限速。
+application = ProxyFix(app, x_for=1, x_proto=1, x_host=1)

@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   sugar-bee:
     build:
@@ -8,15 +6,20 @@ services:
     image: sugar-bee:latest
     container_name: sugar-bee
     restart: unless-stopped
+    # 只监听回环地址，公网一律经宿主机 nginx 反代进入（避免防火墙误放行时裸暴露 Flask）
     ports:
-      - "${SUGAR_BEE_PORT:-5000}:5000"
+      - "127.0.0.1:${SUGAR_BEE_PORT:-5000}:5000"
     env_file:
       - .env
     environment:
+      # 用例剖面：容器时区跟随业务时区，gunicorn 日志与应用时间的日历天一致
+      - TZ=Asia/Shanghai
       # 数据库路径（Docker 内使用挂载的目录）
       - SUGAR_BEE_DB_PATH=/app/db_data/glucose.db
       # Gunicorn 配置（可通过环境变量覆盖）
-      - GUNICORN_WORKERS=${GUNICORN_WORKERS:-4}
+      # SQLite 不支持并发写入，默认 2 个 sync worker 足够（gunicorn.conf.py 自身默认为 1）；
+      # worker 调多只会放大 "database is locked" 概率。
+      - GUNICORN_WORKERS=${GUNICORN_WORKERS:-2}
       - GUNICORN_TIMEOUT=${GUNICORN_TIMEOUT:-120}
       - GUNICORN_LOG_LEVEL=${GUNICORN_LOG_LEVEL:-info}
       # Flask 配置

@@ -26,7 +26,8 @@ def make_snapshot():
     if not os.path.isfile(SRC):
         raise SystemExit(f'ERROR: source db not found: {SRC}')
     os.makedirs(DST_DIR, exist_ok=True)
-    ts = datetime.datetime.now().strftime('%Y%m%d')
+    # 显式用 UTC：容器是否设了 TZ 不影响快照文件名与轮转基准
+    ts = datetime.datetime.now(datetime.UTC).strftime('%Y%m%d')
     dst = os.path.join(DST_DIR, f'{PREFIX}{ts}.db')
 
     src = sqlite3.connect(f'file:{SRC}?mode=ro', uri=True)
@@ -51,7 +52,8 @@ def make_snapshot():
 
 
 def rotate():
-    cutoff = datetime.datetime.now() - datetime.timedelta(days=KEEP_DAYS)
+    # 与文件名（%Y%m%d，naive）比较，cutoff 必须同样去掉 tzinfo
+    cutoff = (datetime.datetime.now(datetime.UTC) - datetime.timedelta(days=KEEP_DAYS)).replace(tzinfo=None)
     removed = []
     for f in glob.glob(os.path.join(DST_DIR, f'{PREFIX}*.db')):
         name = os.path.basename(f).replace(PREFIX, '').replace('.db', '')
