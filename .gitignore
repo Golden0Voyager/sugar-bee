@@ -55,7 +55,11 @@ htmlcov/
 db_data/
 
 # omo 工具运行缓存
+
 .omo/
 
 # 捷径生成产物（运行时动态生成，见 routes/api_health_sync.py）
 static/shortcuts/
+
+# playwright-cli 工具产物（控制台日志与页面快照）
+.playwright-cli/

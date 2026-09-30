@@ -21,6 +21,8 @@ services:
       - GUNICORN_LOG_LEVEL=${GUNICORN_LOG_LEVEL:-info}
       # Flask 配置
       - FLASK_ENV=production
+      # 当前以 HTTP / IP 直连访问，cookie 不能带 Secure 标志；接入 HTTPS 后改回 true
+      - SESSION_COOKIE_SECURE=false
       - PYTHONUNBUFFERED=1
     volumes:
       # 数据库目录挂载（使用目录而非文件，避免 Docker 自动创建目录的问题）

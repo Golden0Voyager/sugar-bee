@@ -53,7 +53,13 @@ app.config['UPLOAD_FOLDER'] = AVATAR_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB
 
 # Session 安全配置
-app.config['SESSION_COOKIE_SECURE'] = _is_prod       # 仅 HTTPS 传输 cookie
+# SESSION_COOKIE_SECURE 默认跟随 FLASK_ENV（生产模式=仅经 HTTPS 传输 cookie）。
+# 若暂时以 HTTP / IP 直连访问（例如无域名的试用环境），需显式设为 false，
+# 否则浏览器会直接丢弃带 Secure 标志的 cookie，表现为「登录成功后又被踢回登录页」。
+_sc_secure_env = os.environ.get('SESSION_COOKIE_SECURE')
+app.config['SESSION_COOKIE_SECURE'] = (
+    _sc_secure_env.strip().lower() == 'true' if _sc_secure_env else _is_prod
+)
 app.config['SESSION_COOKIE_HTTPONLY'] = True          # 禁止 JS 访问 cookie
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'         # CSRF 基础防护
 app.config['PERMANENT_SESSION_LIFETIME'] = datetime.timedelta(days=7)
