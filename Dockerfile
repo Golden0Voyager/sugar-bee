@@ -17,7 +17,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     HOME=/app
 
 # 安装系统依赖（清理缓存减小镜像体积）
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN sed -i "s|deb.debian.org|mirrors.tencent.com|g" /etc/apt/sources.list.d/debian.sources 2>/dev/null; apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     libc6-dev \
     libpq-dev \
@@ -26,7 +26,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # 先复制依赖文件并安装（利用 Docker 缓存层）
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt gunicorn google-cloud-storage
+RUN pip install --no-cache-dir -i https://mirrors.cloud.tencent.com/pypi/simple -r requirements.txt gunicorn google-cloud-storage
 
 # 复制应用代码
 COPY . .
