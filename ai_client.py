@@ -1,7 +1,7 @@
 """
 统一 AI 调用客户端 — 多提供商跨平台降级
 
-降级链：ModelScope (Qwen3/DeepSeek) → SenseNova (deepseek-v4-flash, 仅 text/report)
+降级链：ModelScope (Qwen3/DeepSeek) → SenseNova (deepseek-flash, 仅 text/report)
   vision 跳过 SenseNova: ModelScope (VL/397B/122B/8B)
 
 三类任务使用不同模型：
@@ -110,7 +110,7 @@ def call_ai(prompt, images_data=None, mime_type=None, task_type=None):
     统一 AI 调用接口，支持跨提供商降级。
 
     降级链:
-      ModelScope (Qwen3/DeepSeek) → SenseNova (deepseek-v4-flash, 仅 text/report)
+      ModelScope (Qwen3/DeepSeek) → SenseNova (deepseek-flash, 仅 text/report)
       vision 跳过 SenseNova: 仅 ModelScope
 
     Args:
@@ -156,7 +156,7 @@ def call_ai(prompt, images_data=None, mime_type=None, task_type=None):
 # ========== 健康助手流式聊天 ==========
 
 SENSENOVA_CHAT_BASE_URL = settings.SENSENOVA_BASE_URL
-SENSENOVA_CHAT_MODEL = "deepseek-v4-flash"
+SENSENOVA_CHAT_MODEL = "deepseek-flash"
 MODELSCOPE_CHAT_MODEL = settings.MODELSCOPE_MODELS['chat'][0]
 CHAT_AVAILABLE = bool(SENSENOVA_API_KEY or MODELSCOPE_API_KEY)
 

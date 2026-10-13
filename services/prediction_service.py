@@ -422,6 +422,18 @@ def predict_remaining_glucose_slots(db, user_id=1, target_date=None, force_updat
         if not missing_slots:
             return 'all_measured'
 
+        # 非强制更新时，若缺失槽位均已被旧预测占位，则无需重复生成
+        if not force_update:
+            slot_types = [s['type'] for s in missing_slots]
+            placeholders = ','.join('?' * len(slot_types))
+            c.execute(
+                "SELECT COUNT(DISTINCT type) FROM records "
+                "WHERE user_id = ? AND DATE(timestamp) = ? AND value > 0 "
+                "AND is_predicted = 1 AND type IN (%s)" % placeholders,
+                [user_id, target_date] + slot_types)
+            if c.fetchone()[0] == len(slot_types):
+                return 'all_predicted'
+
         measured_str = ', '.join([f"{r[0]} mmol/L ({r[1]})" for r in measured])
         missing_str = ', '.join([s['type'] for s in missing_slots])
 

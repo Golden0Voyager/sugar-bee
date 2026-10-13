@@ -21,9 +21,9 @@ MODELSCOPE_BASE_URL = 'https://api-inference.modelscope.cn/v1'
 
 # SenseNova（商汤）模型配置
 SENSENOVA_MODELS = {
-    'text': ['deepseek-v4-flash'],
+    'text': ['deepseek-flash', 'sensenova-6.8-flash-lite'],  # deepseek-flash TPM 配额极小易 429，6.8-flash-lite 兜底
     'vision': [],   # 图片识别不走 SenseNova
-    'report': ['deepseek-v4-flash'],
+    'report': ['deepseek-flash', 'sensenova-6.8-flash-lite'],
 }
 SENSENOVA_BASE_URL = 'https://token.sensenova.cn/v1'
 

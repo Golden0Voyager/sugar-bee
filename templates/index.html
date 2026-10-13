@@ -2998,7 +2998,7 @@
             const response = await fetch('/trigger_prediction', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ type: 'remaining' })
+                body: JSON.stringify({ type: 'remaining', date: overviewDate })
             });
 
             const data = await response.json();
@@ -3021,8 +3021,12 @@
                     const reason = skipped && skipped.reason ? skipped.reason : '';
                     if (reason.includes('无实测')) {
                         showToast('请先录入至少一条实测血糖值，AI 才能预测其余时间点', 'warning');
-                    } else {
+                    } else if (reason.includes('已有实测')) {
                         showToast('所有时间点已有实测数据，无需预测', 'info');
+                    } else if (reason.includes('已有AI预测') || reason.includes('已有预测')) {
+                        showToast('这些时间点已有AI预测结果，无需重复生成', 'info');
+                    } else {
+                        showToast(reason || '预测未返回有效结果，请稍后重试', 'warning');
                     }
                 }
             } else {

@@ -18,7 +18,7 @@ class TestAiClientConfig:
 
     def test_chat_model_configured(self):
         from ai_client import SENSENOVA_CHAT_BASE_URL, SENSENOVA_CHAT_MODEL
-        assert SENSENOVA_CHAT_MODEL == "deepseek-v4-flash"
+        assert SENSENOVA_CHAT_MODEL == "deepseek-flash"
         assert "sensenova.cn" in SENSENOVA_CHAT_BASE_URL
 
 
@@ -222,7 +222,7 @@ class TestCallChatStream:
 
         result = list(call_chat_stream([{"role": "user", "content": "hi"}]))
         assert result == ["Hello", " World"]
-        assert mock_client.chat.completions.create.call_args[1]['model'] == 'deepseek-v4-flash'
+        assert mock_client.chat.completions.create.call_args[1]['model'] == 'deepseek-flash'
 
     @patch('ai_client.SENSENOVA_API_KEY', None)
     @patch('ai_client.MODELSCOPE_API_KEY', 'fake-key')

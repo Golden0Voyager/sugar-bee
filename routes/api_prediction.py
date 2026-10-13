@@ -69,6 +69,8 @@ def trigger_prediction():
                 results.append({'type': '剩余时间点', 'status': 'skipped', 'reason': '无实测血糖基准，请先录入实测数据'})
             elif remaining_results == 'all_measured':
                 results.append({'type': '剩余时间点', 'status': 'skipped', 'reason': '所有时间点已有实测数据'})
+            elif remaining_results == 'all_predicted':
+                results.append({'type': '剩余时间点', 'status': 'skipped', 'reason': '这些时间点已有AI预测，无需重复生成'})
             else:
                 results.append({'type': '剩余时间点', 'status': 'skipped', 'reason': '预测未返回有效结果'})
 
