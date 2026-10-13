@@ -331,9 +331,9 @@
                                     <span class="count-measured">{{ stats.today_completion.measured }}</span><span class="count-sep">/</span><span>{{ stats.today_completion.total }}</span>
                                 </div>
                             </div>
-                            {% if stats.today_completion.measured > 0 %}
-                            <span class="status-badge" style="background: {{ stats.compliance_badge.bg_color }}; color: {{ stats.compliance_badge.text_color }};">
-                                血糖达标 {{ stats.compliance_badge.icon }} {{ stats.compliance }}%
+                            {% if stats.today_completion.measured > 0 and stats.today_compliance is not none %}
+                            <span class="status-badge" style="background: {{ stats.today_compliance_badge.bg_color }}; color: {{ stats.today_compliance_badge.text_color }};">
+                                今日达标 {{ stats.today_compliance_badge.icon }} {{ stats.today_compliance }}%
                             </span>
                             {% endif %}
                         </div>
@@ -735,7 +735,7 @@
                 <div class="tab-pane fade {% if first_active.module == 'glucose' %}show active{% endif %}" id="glucose-stats" role="tabpanel">
                     <div class="d-flex justify-content-between align-items-center mb-2">
                         <h6 class="mb-0 text-primary fw-bold"><i class="bi bi-droplet-fill me-2"></i>血糖监测（近7天）</h6>
-                        <span class="badge bg-primary-subtle text-primary">达标率 {{ stats.compliance }}%</span>
+                        <span class="badge bg-primary-subtle text-primary">近7天达标率 {{ stats.compliance }}%</span>
                     </div>
                     <div class="row g-2">
                         <div class="col-6 col-md-3">

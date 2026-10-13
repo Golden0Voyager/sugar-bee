@@ -265,6 +265,13 @@ def get_dashboard_stats(db, user_id):
 
         today_overview.append(slot_data)
 
+    # === 7b. 今日实测达标率（复用今日记录，仅实测 is_predicted=0，预测值不计入）===
+    # 注：today_records 为 sqlite3.Row（生产）/ dict（测试），均支持按列名访问
+    today_glucose_rows = [r for r in today_records if r['is_predicted'] == 0]
+    today_glucose_total = len(today_glucose_rows)
+    today_ok_count = sum(1 for r in today_glucose_rows if settings.check_glucose_compliance(r['value'], r['type'] or '')['is_compliant'])
+    today_compliance = int(today_ok_count / today_glucose_total * 100) if today_glucose_total > 0 else None
+
     measured_count = sum(1 for s in today_overview if s['status'] == 'measured')
     predicted_count = sum(1 for s in today_overview if s['status'] == 'predicted')
     today_completion = {
@@ -433,6 +440,8 @@ def get_dashboard_stats(db, user_id):
         'user': user_config,
         'compliance': compliance,
         'compliance_badge': settings.get_badge_for_rate(compliance),
+        'today_compliance': today_compliance,
+        'today_compliance_badge': settings.get_badge_for_rate(today_compliance) if today_compliance is not None else None,
         'glucose_targets': settings.GLUCOSE_TARGETS,
         'badge_system': settings.BADGE_SYSTEM,
 
