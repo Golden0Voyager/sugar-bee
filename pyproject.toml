@@ -32,7 +32,7 @@ dependencies = [
     # Security pins for transitive dependencies
     "cryptography>=50.0.0",
     "pyasn1>=0.6.4",
-    "pyjwt>=2.13.0",
+    "pyjwt>=2.14.0",
     "python-multipart>=0.0.31",
     "starlette>=1.3.1",
     # Garmin 同步是线上功能（services/garmin_service.py），必须属生产依赖。
