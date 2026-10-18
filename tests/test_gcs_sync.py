@@ -75,7 +75,7 @@ class TestRestoreDbFromGcs:
     def test_downloads_latest_blob(self, gcs_env, mock_storage, tmp_path, monkeypatch):
         _, _, bucket = mock_storage
         db_path = tmp_path / 'glucose.db'
-        monkeypatch.setattr(gcs_env, 'DB_NAME', str(db_path))
+        monkeypatch.setenv('SUGAR_BEE_DB_PATH', str(db_path))
         blobs = [
             _make_blob('db/glucose_20260614.db', datetime.datetime(2026, 6, 14, 10, 0)),
             _make_blob('db/glucose_20260615.db', datetime.datetime(2026, 6, 15, 10, 0)),
@@ -109,7 +109,7 @@ class TestBackupDbToGcs:
     def test_missing_local_db(self, gcs_env, mock_storage, tmp_path, monkeypatch, capsys):
         _, _, bucket = mock_storage
         missing = tmp_path / 'missing.db'
-        monkeypatch.setattr(gcs_env, 'DB_NAME', str(missing))
+        monkeypatch.setenv('SUGAR_BEE_DB_PATH', str(missing))
         gcs_env.backup_db_to_gcs()
         captured = capsys.readouterr()
         assert '本地数据库不存在' in captured.out
@@ -119,7 +119,7 @@ class TestBackupDbToGcs:
         _, _, bucket = mock_storage
         db_path = tmp_path / 'glucose.db'
         db_path.write_text('data')
-        monkeypatch.setattr(gcs_env, 'DB_NAME', str(db_path))
+        monkeypatch.setenv('SUGAR_BEE_DB_PATH', str(db_path))
         gcs_env.backup_db_to_gcs()
         bucket.blob.assert_called_once_with('db/glucose.db')
         bucket.blob.return_value.upload_from_filename.assert_called_once_with(str(db_path))
@@ -128,7 +128,7 @@ class TestBackupDbToGcs:
         _, _, bucket = mock_storage
         db_path = tmp_path / 'glucose.db'
         db_path.write_text('data')
-        monkeypatch.setattr(gcs_env, 'DB_NAME', str(db_path))
+        monkeypatch.setenv('SUGAR_BEE_DB_PATH', str(db_path))
         bucket.blob.return_value.upload_from_filename.side_effect = RuntimeError('upload failed')
         gcs_env.backup_db_to_gcs()
         captured = capsys.readouterr()

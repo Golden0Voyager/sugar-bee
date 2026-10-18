@@ -9,7 +9,7 @@ import datetime
 import os
 from typing import Any
 
-from core.config import DB_NAME, DB_TYPE, GCS_BUCKET_NAME, GCS_DB_PATH
+from core.config import DB_TYPE, GCS_BUCKET_NAME, GCS_DB_PATH, get_db_name
 
 
 def _get_storage_client() -> Any | None:
@@ -42,7 +42,7 @@ def _db_prefix() -> str:
 
 
 def restore_db_from_gcs() -> None:
-    """从 GCS 恢复最新的数据库文件到本地 DB_NAME。
+    """从 GCS 恢复最新的数据库文件到本地数据库路径。
 
     首次运行（GCS 中无备份）时直接返回，由 init_db() 创建新库。
     PostgreSQL 模式下该操作无意义，直接跳过（依赖 Cloud SQL 自动备份）。
@@ -66,13 +66,14 @@ def restore_db_from_gcs() -> None:
         return
 
     latest = max(blobs, key=lambda b: b.time_created or datetime.datetime.min.replace(tzinfo=None))
-    target_dir = os.path.dirname(DB_NAME)
+    db_path = get_db_name()
+    target_dir = os.path.dirname(db_path)
     if target_dir:
         os.makedirs(target_dir, exist_ok=True)
 
     try:
-        latest.download_to_filename(DB_NAME)
-        print(f"[GCS] 已从 {latest.name} 恢复数据库到 {DB_NAME}")
+        latest.download_to_filename(db_path)
+        print(f"[GCS] 已从 {latest.name} 恢复数据库到 {db_path}")
     except Exception as e:  # pragma: no cover
         print(f"[GCS] 下载数据库失败: {e}")
 
@@ -92,14 +93,15 @@ def backup_db_to_gcs(blob_name: str | None = None) -> None:
     bucket = get_gcs_bucket()
     if bucket is None:
         return
-    if not os.path.isfile(DB_NAME):
-        print(f"[GCS] 本地数据库不存在，跳过备份: {DB_NAME}")
+    db_path = get_db_name()
+    if not os.path.isfile(db_path):
+        print(f"[GCS] 本地数据库不存在，跳过备份: {db_path}")
         return
 
     target = blob_name or GCS_DB_PATH
     try:
         blob = bucket.blob(target)
-        blob.upload_from_filename(DB_NAME)
+        blob.upload_from_filename(db_path)
         print(f"[GCS] 数据库已备份到 {target}")
     except Exception as e:  # pragma: no cover
         print(f"[GCS] 上传数据库失败: {e}")

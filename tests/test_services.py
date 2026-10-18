@@ -321,7 +321,9 @@ class TestPredictRemainingSlots:
         partial_1col = [('空腹',), ('早餐后2小时',)]
         mock_c = MagicMock()
         mock_c.fetchall.side_effect = [partial_3col, partial_1col]
-        mock_c.fetchone.return_value = None
+        # fetchone 共被调用 3 次：先是一次 COUNT(DISTINCT type) 查旧预测占位（返回 (0,)
+        # 表示无占位），随后每条预测各查一次是否已存在（返回 None 表示不存在）。
+        mock_c.fetchone.side_effect = [(0,), None, None]
         mock_db = MagicMock()
         mock_db.cursor.return_value = mock_c
         result = predict_remaining_glucose_slots(mock_db, user_id=1)

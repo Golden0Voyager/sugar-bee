@@ -13,7 +13,7 @@ import settings
 
 load_dotenv(override=True)
 
-from core.config import AVATAR_FOLDER, DB_NAME  # noqa: E402
+from core.config import AVATAR_FOLDER, get_db_name  # noqa: E402
 from services import (  # noqa: E402
     build_timeline,
     get_dashboard_stats,
@@ -81,7 +81,8 @@ limiter = Limiter(
 )
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-user_manager = UserManager(DB_NAME)
+# 不传 db_path：路径在每次访问时动态解析，测试改环境变量即可隔离
+user_manager = UserManager()
 
 # AI 功能可用性检查
 try:
@@ -190,13 +191,14 @@ _auto_backup_timer = None
 def auto_backup():
     global _auto_backup_timer
     try:
-        if not os.path.exists(DB_NAME):
+        db_path = get_db_name()
+        if not os.path.exists(db_path):
             return
         os.makedirs(AUTO_BACKUP_DIR, exist_ok=True)
         today = app_today().strftime('%Y%m%d')
         backup_path = os.path.join(AUTO_BACKUP_DIR, f'glucose_auto_{today}.db')
         if not os.path.exists(backup_path):
-            shutil.copy2(DB_NAME, backup_path)
+            shutil.copy2(db_path, backup_path)
 
         # Cloud Run / 生产环境：同时上传当前数据库到 GCS
         if os.environ.get('GCS_BUCKET_NAME'):

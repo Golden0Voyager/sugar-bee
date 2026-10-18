@@ -3,14 +3,14 @@ import re
 from flask import Blueprint, redirect, render_template, request, session, url_for
 from werkzeug.security import check_password_hash, generate_password_hash
 
-from core.config import DB_NAME
 from user_manager import UserManager
 from utils.auth import login_required
 from utils.db import get_db
 from utils.responses import api_error, api_success
 
 bp_auth = Blueprint('auth', __name__)
-user_manager = UserManager(DB_NAME)
+# 不传 db_path：路径在每次访问时动态解析，测试改环境变量即可隔离
+user_manager = UserManager()
 
 
 @bp_auth.route('/login', methods=['GET', 'POST'])

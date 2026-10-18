@@ -404,7 +404,7 @@ class TestAdminBackupRestore:
         db_path = tmp_path / 'test.db'
         db_path.write_text('fake db content')
         monkeypatch.setattr('routes.api_admin.os.path.join', lambda *a: str(db_path))
-        monkeypatch.setattr('routes.api_admin.DB_NAME', str(db_path))
+        monkeypatch.setenv('SUGAR_BEE_DB_PATH', str(db_path))
         monkeypatch.setattr('routes.api_admin.os.path.exists', lambda p: True)
         with patch('routes.api_admin.shutil.copy2') as mock_copy, \
              patch('routes.api_admin.send_file') as mock_send:
@@ -459,7 +459,7 @@ class TestAdminBackupRestore:
         import io
         import sqlite3
         monkeypatch.setattr('routes.api_admin.BASE_DIR', str(tmp_path))
-        monkeypatch.setattr('routes.api_admin.DB_NAME', str(tmp_path / 'glucose.db'))
+        monkeypatch.setenv('SUGAR_BEE_DB_PATH', str(tmp_path / 'glucose.db'))
         # Create the temporary restore DB and the target DB
         real_conn = sqlite3.connect(':memory:')
         real_conn.execute("CREATE TABLE records (id INTEGER)")

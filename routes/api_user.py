@@ -5,14 +5,14 @@ import traceback
 from flask import Blueprint, current_app, jsonify, request, session
 
 import settings
-from core.config import DB_NAME
 from user_manager import UserManager
 from utils.auth import login_required
 from utils.db import get_db
 from utils.responses import api_error, api_success
 from utils.timezone import now as app_now
 
-user_manager = UserManager(DB_NAME)
+# 不传 db_path：路径在每次访问时动态解析，测试改环境变量即可隔离
+user_manager = UserManager()
 bp_user = Blueprint('user', __name__)
 
 ALL_MODULES = ['glucose', 'blood_pressure', 'exercise', 'weight', 'medication']

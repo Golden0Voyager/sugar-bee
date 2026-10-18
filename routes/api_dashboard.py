@@ -4,7 +4,6 @@ import traceback
 from flask import Blueprint, jsonify, request
 
 import settings
-from core.config import DB_NAME
 from services import build_timeline
 from user_manager import UserManager
 from utils.auth import login_required
@@ -12,7 +11,8 @@ from utils.db import get_db
 from utils.timezone import now as app_now
 from utils.timezone import today_str as app_today_str
 
-user_manager = UserManager(DB_NAME)
+# 不传 db_path：路径在每次访问时动态解析，测试改环境变量即可隔离
+user_manager = UserManager()
 bp_dashboard = Blueprint('dashboard', __name__)
 
 

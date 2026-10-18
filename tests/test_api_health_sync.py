@@ -134,9 +134,8 @@ def _bind_device(client):
     """helper: 完成一次完整的设备绑定流程，返回 (device_id, device_token)"""
     # 先登录
     with client.session_transaction() as sess:
-        from core import config as _core_config
         from user_manager import UserManager
-        um = UserManager(_core_config.DB_NAME)
+        um = UserManager()
         import uuid as _uuid
         unique_name = f'_sync_test_{_uuid.uuid4().hex[:8]}'
         user_id = um.create_user(unique_name, 'Sync测试', {})

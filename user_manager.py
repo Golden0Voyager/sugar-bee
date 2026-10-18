@@ -45,6 +45,11 @@ class UserManager:
     def __init__(self, db_path=None):
         # db_path 在 SQLite 测试/本地场景中作为目标数据库路径；
         # PostgreSQL 生产环境下通过 utils.db 连接池获取连接，db_path 被忽略。
+        #
+        # 生产代码请传 None（推荐）：此时 _db_conn 走 utils.db 的连接管理，
+        # 路径在每次调用时从 SUGAR_BEE_DB_PATH 动态解析。路由模块里的单例是在
+        # import 时创建的，若在此处把路径钉死，测试即使改了环境变量也仍会写真实库
+        # ——这正是历史上测试污染 glucose.db 的根因。
         self.db_path = db_path
 
     _USER_QUERY = """

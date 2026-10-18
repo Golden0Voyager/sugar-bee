@@ -422,7 +422,7 @@ def get_db():
             conn = pool_obj.getconn()
             db = g._database = _PgConnectionWrapper(conn, pool_obj)
         else:
-            raw_conn = sqlite3.connect(config.DB_NAME)
+            raw_conn = sqlite3.connect(config.get_db_name())
             raw_conn.row_factory = sqlite3.Row
             db = g._database = ConnectionWrapper(raw_conn)
     return db
@@ -435,7 +435,7 @@ def get_raw_conn():
         conn = pool_obj.getconn()
         return _PgConnectionWrapper(conn, pool_obj)
     import sqlite3
-    conn = sqlite3.connect(config.DB_NAME)
+    conn = sqlite3.connect(config.get_db_name())
     conn.row_factory = sqlite3.Row
     return ConnectionWrapper(conn)
 
@@ -677,7 +677,7 @@ def _init_db_sqlite():
     """SQLite schema 初始化（保留现有迁移逻辑）。"""
     conn = None
     try:
-        conn = sqlite3.connect(config.DB_NAME)
+        conn = sqlite3.connect(config.get_db_name())
         c = conn.cursor()
         c.execute('''CREATE TABLE IF NOT EXISTS records
                      (id INTEGER PRIMARY KEY AUTOINCREMENT,

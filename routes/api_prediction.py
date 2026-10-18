@@ -4,7 +4,6 @@ import traceback
 from flask import Blueprint, jsonify, request
 
 import settings
-from core.config import DB_NAME
 from services import (
     backfill_post_exercise_predictions,
     predict_morning_fpg,
@@ -18,7 +17,8 @@ from utils.responses import api_error, api_success
 from utils.sql_dialect import interval_sql
 from utils.timezone import today_str as app_today_str
 
-user_manager = UserManager(DB_NAME)
+# 不传 db_path：路径在每次访问时动态解析，测试改环境变量即可隔离
+user_manager = UserManager()
 bp_prediction = Blueprint('prediction', __name__)
 
 

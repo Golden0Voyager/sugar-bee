@@ -2,13 +2,13 @@ import traceback
 
 from flask import Blueprint, jsonify, request
 
-from core.config import DB_NAME
 from user_manager import UserManager
 from utils.auth import login_required
 from utils.db import get_db
 from utils.responses import api_error, api_success
 
-user_manager = UserManager(DB_NAME)
+# 不传 db_path：路径在每次访问时动态解析，测试改环境变量即可隔离
+user_manager = UserManager()
 bp_meds = Blueprint('meds', __name__)
 
 @bp_meds.route('/add_medication_plan', methods=['POST'])
