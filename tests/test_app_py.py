@@ -111,7 +111,7 @@ class TestAutoBackup:
             db_path = os.path.join(tmp, 'test.db')
             with open(db_path, 'w') as f:
                 f.write('test data')
-            monkeypatch.setattr('app.DB_NAME', db_path)
+            monkeypatch.setenv('SUGAR_BEE_DB_PATH', db_path)
             monkeypatch.setattr('app.AUTO_BACKUP_DIR', os.path.join(tmp, 'backups'))
             # Prevent timer from starting
             monkeypatch.setattr('app._auto_backup_timer', MagicMock())
@@ -130,7 +130,7 @@ class TestAutoBackup:
 
     def test_backup_db_not_exists(self, monkeypatch):
         from app import auto_backup
-        monkeypatch.setattr('app.DB_NAME', '/nonexistent/db.db')
+        monkeypatch.setenv('SUGAR_BEE_DB_PATH', '/nonexistent/db.db')
         monkeypatch.setattr('app._auto_backup_timer', MagicMock())
         backup_called = [False]
         def fake_timer(*args, **kwargs):
@@ -153,7 +153,7 @@ class TestAutoBackup:
             existing = os.path.join(backup_dir, f'glucose_auto_{today}.db')
             with open(existing, 'w') as f:
                 f.write('old')
-            monkeypatch.setattr('app.DB_NAME', db_path)
+            monkeypatch.setenv('SUGAR_BEE_DB_PATH', db_path)
             monkeypatch.setattr('app.AUTO_BACKUP_DIR', backup_dir)
             monkeypatch.setattr('app._auto_backup_timer', MagicMock())
             monkeypatch.setattr(threading, 'Timer', lambda *a, **kw: MagicMock())
@@ -176,7 +176,7 @@ class TestAutoBackup:
             with open(old_file, 'w') as f:
                 f.write('old data')
 
-            monkeypatch.setattr('app.DB_NAME', db_path)
+            monkeypatch.setenv('SUGAR_BEE_DB_PATH', db_path)
             monkeypatch.setattr('app.AUTO_BACKUP_DIR', backup_dir)
             monkeypatch.setattr('app._auto_backup_timer', MagicMock())
             monkeypatch.setattr(threading, 'Timer', lambda *a, **kw: MagicMock())
@@ -514,7 +514,6 @@ class TestAutoBackupCleanup:
             open(bad_file, 'w').close()
 
             with patch('app.AUTO_BACKUP_DIR', tmpdir), \
-                 patch('app.DB_NAME', os.path.join(tmpdir, 'test.db')), \
                  patch('app.os.path.exists', return_value=True), \
                  patch('app.os.makedirs'), \
                  patch('app.shutil.copy2'), \
@@ -799,9 +798,10 @@ class TestAutoBackupGCS:
         monkeypatch.setattr(app_mod, 'backup_db_to_gcs', mock_backup_to_gcs)
         # 设置 DB_NAME 存在
         monkeypatch.setattr('os.path.isfile', lambda p: True)
-        # 需要让 os.path.exists(DB_NAME) 返回 True
-        from core.config import DB_NAME
-        monkeypatch.setattr('os.path.exists', lambda p: p == DB_NAME)
+        # 需要让 os.path.exists(当前数据库路径) 返回 True
+        from core.config import get_db_name
+        db_path = get_db_name()
+        monkeypatch.setattr('os.path.exists', lambda p: p == db_path)
         app_mod.auto_backup()
         mock_backup_to_gcs.assert_called_once()
 
@@ -811,8 +811,9 @@ class TestAutoBackupGCS:
         monkeypatch.setattr('os.path.exists', lambda p: True)
         monkeypatch.setattr('os.makedirs', lambda p, exist_ok: None)
         monkeypatch.setattr('shutil.copy2', lambda *a: None)
-        from core.config import DB_NAME
-        monkeypatch.setattr('os.path.exists', lambda p: p == DB_NAME)
+        from core.config import get_db_name
+        db_path = get_db_name()
+        monkeypatch.setattr('os.path.exists', lambda p: p == db_path)
         import app as app_mod
         mock_backup_to_gcs = MagicMock()
         monkeypatch.setattr(app_mod, 'backup_db_to_gcs', mock_backup_to_gcs)

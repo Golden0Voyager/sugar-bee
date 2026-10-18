@@ -5,7 +5,7 @@ import traceback
 
 from flask import Blueprint, after_this_request, request, send_file
 
-from core.config import DB_NAME, DB_TYPE
+from core.config import DB_TYPE, get_db_name
 from user_manager import UserManager
 from utils.auth import login_required
 from utils.db import get_db
@@ -25,14 +25,15 @@ def backup_database():
     try:
         if DB_TYPE == 'postgres':
             return api_error("PostgreSQL 模式下请使用 Cloud SQL 托管备份", status_code=400)
-        if not os.path.exists(DB_NAME):
+        db_path = get_db_name()
+        if not os.path.exists(db_path):
             return api_error("数据库文件不存在", status_code=404)
 
         timestamp = app_now().strftime('%Y%m%d_%H%M%S')
         backup_filename = f'glucose_backup_{timestamp}.db'
         backup_path = os.path.join(BASE_DIR, backup_filename)
 
-        shutil.copy2(DB_NAME, backup_path)
+        shutil.copy2(db_path, backup_path)
 
         @after_this_request
         def cleanup(response):
@@ -88,11 +89,12 @@ def restore_database():
             return api_error("无效的数据库文件", status_code=400)
 
         # 备份当前数据库作为安全网
-        if os.path.exists(DB_NAME):
-            shutil.copy2(DB_NAME, DB_NAME + '.before_restore')
+        db_path = get_db_name()
+        if os.path.exists(db_path):
+            shutil.copy2(db_path, db_path + '.before_restore')
 
         # 覆盖当前数据库
-        shutil.move(temp_path, DB_NAME)
+        shutil.move(temp_path, db_path)
         return api_success(message='数据库恢复成功，请刷新页面')
     except Exception as e:
         traceback.print_exc()
@@ -102,7 +104,8 @@ def restore_database():
         return api_error(str(e), status_code=500)
 
 
-user_manager = UserManager(DB_NAME)
+# 不传 db_path：路径在每次访问时动态解析，测试改环境变量即可隔离
+user_manager = UserManager()
 
 
 @bp_admin.route('/find_duplicates', methods=['GET'])

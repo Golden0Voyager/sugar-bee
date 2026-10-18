@@ -15,14 +15,14 @@ import uuid
 
 from flask import Blueprint, request, send_file
 
-from core import config as core_config
 from user_manager import UserManager
 from utils.auth import login_required
 from utils.db import get_db
 from utils.responses import api_error, api_success
 from utils.timezone import utc_now
 
-user_manager = UserManager(core_config.DB_NAME)
+# 不传 db_path：路径在每次访问时动态解析，测试改环境变量即可隔离
+user_manager = UserManager()
 
 bp_health_sync = Blueprint('health_sync', __name__, url_prefix='/api/v1/health-sync')
 

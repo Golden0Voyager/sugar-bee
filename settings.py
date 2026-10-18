@@ -298,9 +298,8 @@ def load_config(user_id: int | None = None) -> dict:
     """
     if user_id is not None:
         # 延迟 import 避免循环依赖(user_manager 可能反向 import settings)
-        from core.config import DB_NAME
         from user_manager import UserManager
-        cfg = UserManager(DB_NAME).get_user_config(user_id)
+        cfg = UserManager().get_user_config(user_id)
         # 缺失字段补齐
         if not cfg.get('default_meals'):
             cfg['default_meals'] = dict(DEFAULT_MEALS)

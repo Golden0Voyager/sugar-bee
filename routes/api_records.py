@@ -7,7 +7,6 @@ import pandas as pd
 from flask import Blueprint, jsonify, redirect, request, send_file, url_for
 
 import settings
-from core.config import DB_NAME
 from glucose_parser import parse_glucose_input, split_by_emoji
 from services import link_prediction_to_real_record
 from user_manager import UserManager
@@ -18,7 +17,7 @@ from utils.sql_dialect import date_format_sql, interval_sql
 from utils.timezone import timestamp_str as app_timestamp_str
 from utils.timezone import today as app_today
 
-user_manager = UserManager(DB_NAME)
+user_manager = UserManager()
 bp_records = Blueprint('records', __name__)
 
 

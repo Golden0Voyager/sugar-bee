@@ -58,9 +58,8 @@ def login_or_token_required(f):
             except (ValueError, TypeError):
                 return api_error("X-User-Id header missing or invalid",
                                  status_code=400, error_type="agent_auth")
-            from core.config import DB_NAME
             from user_manager import UserManager
-            if not UserManager(DB_NAME).get_user(uid):
+            if not UserManager().get_user(uid):
                 return api_error(f"Unknown user_id: {uid}",
                                  status_code=404, error_type="agent_auth")
             g.current_user_id = uid
