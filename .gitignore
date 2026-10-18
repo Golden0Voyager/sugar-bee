@@ -63,3 +63,6 @@ static/shortcuts/
 
 # playwright-cli 工具产物（控制台日志与页面快照）
 .playwright-cli/
+
+# WorkBuddy 工作记录（每日工作日志、项目长期记忆）
+.workbuddy-ai/
