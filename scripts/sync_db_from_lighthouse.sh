@@ -13,7 +13,10 @@
 
 set -uo pipefail
 
-SSH_HOST="${SB_HOST:-124.220.181.225}"
+# 主机优先级：SB_HOST 环境变量 > ~/.sugar_bee_host 文件 > 内置默认
+# 迁移换服务器时只需改 ~/.sugar_bee_host 一行，不用动脚本：
+#   echo 1.2.3.4 > ~/.sugar_bee_host
+SSH_HOST="${SB_HOST:-$(cat "$HOME/.sugar_bee_host" 2>/dev/null || echo 124.220.181.225)}"
 SSH_USER="${SB_USER:-root}"
 SSH_KEY="${SB_KEY:-$HOME/.ssh/lighthouse_sh}"
 

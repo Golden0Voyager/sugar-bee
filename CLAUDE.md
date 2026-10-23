@@ -55,7 +55,8 @@ uv run ruff check .
 | `utils/db.py` | `get_db()` / `close_db()` / `init_db()`，Flask `g` 管理连接 |
 | `utils/responses.py` | `api_success()` / `api_error()` 统一 JSON 响应包装 |
 | `utils/auth.py` | `@login_required` / `@login_or_token_required` |
-| `mcp_server.py` | MCP Server，支持 stdio（Claude Desktop）与 sse 模式 |
+| `mcp_adapter/servers/writer.py` | 写 MCP Server（stdio/sse，11 工具），根目录 `mcp_writer.py` 是入口 |
+| `mcp_adapter/servers/reader.py` | 只读分析 MCP Server（12 工具），根目录 `mcp_reader.py` 是入口 |
 | `generate_report.py` | PDF 健康报告生成（reportlab） |
 | `models.py` | SQLAlchemy 模型，用于 Alembic 迁移 |
 

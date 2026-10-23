@@ -28,6 +28,8 @@ data/
 
 # 个人配置（含隐私数据）
 .env
+.env.bak.*
+.env.*.bak
 user_config.json
 user_config.json.legacy.*
 static/avatars/
