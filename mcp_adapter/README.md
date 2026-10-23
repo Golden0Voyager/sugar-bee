@@ -4,9 +4,30 @@
 
 MCP 相关代码已集中到 `mcp_adapter/` 目录：
 
-- `mcp_adapter/server.py` — MCP Server 主逻辑
-- `mcp_adapter/tests/test_mcp_server.py` — 单元测试
-- `mcp_server.py`（仓库根目录）— 兼容入口，调用 `mcp_adapter.server.main()`
+```
+mcp_adapter/
+├── core/                    # 两个 server 共享：类型/阈值、时间口径、纯计算
+│   ├── domain.py
+│   ├── timefmt.py
+│   └── analytics.py
+├── servers/
+│   ├── writer.py            # 写服务：11 个工具（记录/撤销/当日核对）
+│   └── reader.py            # 只读分析：12 个 sbhealth_* 工具
+└── tests/                   # 234 个用例
+```
+
+入口（都是薄壳，不含逻辑）：
+
+| 入口 | 指向 | 用途 |
+|---|---|---|
+| `mcp_writer.py`（根目录） | `servers/writer.py` | 写服务，Octop `sugarwrite` / Claude Desktop 指向它 |
+| `mcp_reader.py`（根目录） | `servers/reader.py` | 只读分析，Octop `sbhealth` 指向它 |
+| `uv run python -m mcp_adapter.servers.writer` | — | 模块方式启动写服务 |
+| `uv run python -m mcp_adapter.servers.reader` | — | 模块方式启动读服务 |
+
+> 两个入口**本地和服务器同名同层**：仓库根 `/` 与 `/root/health_tools/` 下都叫
+> `mcp_writer.py` / `mcp_reader.py`，部署时不用换名字，也不会认错哪个是哪个。
+> 历史名字 `mcp_server.py`、`scripts/sugar_bee_mcp.py` 已废弃。
 
 > 为什么不直接用 `mcp/` 作为目录名？因为项目依赖了官方的 `mcp` Python 包，若本地目录也叫 `mcp` 会产生命名冲突，导致 `from mcp.server.fastmcp import FastMCP` 解析失败。因此使用 `mcp_adapter/` 避免冲突。
 
@@ -18,7 +39,7 @@ MCP 相关代码已集中到 `mcp_adapter/` 目录：
    - `POST /add` — 单条写入
    - `POST /parse_ai` — 自然语言解析
    - `POST /batch_add` — 批量写入
-2. **MCP Server**：`mcp_adapter/server.py` 支持 **stdio**（Claude Desktop）与 **sse**（任意 MCP 客户端）双模式。
+2. **MCP Server**：`mcp_adapter/servers/writer.py` 支持 **stdio**（Claude Desktop）与 **sse**（任意 MCP 客户端）双模式。
 
 ---
 
@@ -121,14 +142,14 @@ curl -sS -X POST http://127.0.0.1:5001/batch_add \
 
 ## 方式二：MCP Server（协议级集成）
 
-`mcp_adapter/server.py` 将功能封装为 MCP 工具，支持两种传输模式。
+`mcp_adapter/servers/writer.py` 将功能封装为 MCP 工具，支持两种传输模式。
 
 ### 模式 A：stdio（Claude Desktop 专用）
 
 ```bash
-uv run python mcp_server.py
+uv run python mcp_writer.py
 # 或显式指定
-uv run python mcp_server.py --transport stdio
+uv run python mcp_writer.py --transport stdio
 ```
 
 配置 `~/Library/Application Support/Claude/claude_desktop_config.json`：
@@ -138,7 +159,7 @@ uv run python mcp_server.py --transport stdio
   "mcpServers": {
     "sugar-bee": {
       "command": "uv",
-      "args": ["run", "python", "mcp_server.py", "--transport", "stdio"],
+      "args": ["run", "python", "mcp_writer.py", "--transport", "stdio"],
       "env": {
         "AGENT_API_TOKEN": "你的token值"
       }
@@ -152,29 +173,48 @@ uv run python mcp_server.py --transport stdio
 ```bash
 export AGENT_API_TOKEN="你的token值"
 export FASTMCP_PORT=3001   # 默认 8000，可自选
-uv run python mcp_server.py --transport sse
+uv run python mcp_writer.py --transport sse
 ```
 
 启动后，任意 MCP 客户端连接 `http://127.0.0.1:3001/sse` 即可调用工具。
 
 > 若 Flask 不在 `127.0.0.1:5001`，加 `API_BASE=http://ip:端口`。
 
-### 可用工具
+### 可用工具（写入 / 核对）
 
 | 工具名 | 用途 | 示例问法 |
 |---|---|---|
-| `record_blood_pressure` | 记录血压 | "帮妈妈记录血压 110/70，脉搏 72" |
-| `record_weight` | 记录体重 | "记录爸爸体重 73.2kg" |
-| `record_glucose` | 记录血糖 | "记录爸爸空腹血糖 6.0" |
-| `parse_and_record` | 自然语言解析入库 | "爸爸早上空腹血糖 5.8，血压 120/80" |
-| `list_today_records` | 查看今日记录 | "今天妈妈有什么记录？" |
+| `record_blood_pressure` | 记录血压（收缩压/舒张压/脉搏/血氧） | "帮妈妈记录血压 110/70，脉搏 72" |
+| `record_weight` | 记录体重（自动算 BMI） | "记录爸爸体重 73.2kg" |
+| `record_glucose` | 记录血糖（按测量类型判定达标） | "记录爸爸空腹血糖 6.0" |
+| `record_exercise` | 记录运动（距离/时长/配速/心率） | "记一下今天跑步 5 公里 32 分钟" |
+| `parse_and_record` | 自然语言 → AI 解析 → 入库 | "爸爸早上空腹血糖 5.8，血压 120/80" |
+| `batch_record` | 批量写入已结构化记录（跳过 AI 解析） | 由上层 agent 组装 records 后调用 |
+| `batch_parse_and_record` | emoji 多用户批量解析入库 | "🐯103/69、64，54.20" |
+| `undo_last_record` | 撤销该用户最近一条记录 | "刚才那条记错了，删掉" |
+| `today_summary` | 今日数据摘要（核对入库结果） | "爸爸今天记了哪些？" |
+| `list_today_records` | 列出今日所有记录 | "今天妈妈有什么记录？" |
 | `get_user_info` | 查看用户信息 | "妈妈身高体重是多少？" |
+
+> 另有只读分析 server（`mcp_adapter/servers/reader.py`，12 个 `sbhealth_*` 工具，
+> 血糖统计/趋势/相关性/异常扫描/CSV 导出），面向远端分析 agent，见
+> [`docs/mcp-architecture-review.md`](../docs/mcp-architecture-review.md)。
+
+### 共享核心
+
+两个 server 的类型清单、阈值与时间口径统一在 `mcp_adapter/core/`：
+
+| 模块 | 职责 |
+|---|---|
+| `core/domain.py` | 记录类型、TIR/低血糖/高血糖/血压阈值（与 `settings.py` 由单测守护一致） |
+| `core/timefmt.py` | 时间戳解析/展示/回溯窗口（默认本地墙钟，`SB_MCP_TS_MODE=utc` 可切） |
+| `core/analytics.py` | TIR、斜率、前后半段对比、运动分层等纯计算 |
 
 ### 在 Python 脚本中直接调用
 
 ```python
 import asyncio
-from mcp_adapter.server import record_blood_pressure, list_today_records
+from mcp_adapter.servers.writer import record_blood_pressure, list_today_records
 
 async def main():
     # 写

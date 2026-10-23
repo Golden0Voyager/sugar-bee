@@ -1,7 +1,7 @@
 """
-mcp_adapter/server.py 补充测试（覆盖剩余未覆盖行）
+mcp_adapter/servers/writer.py 补充测试（覆盖剩余未覆盖行）
 
-目标：将 server.py 覆盖率从 ~82% 提升到 >=95%。
+目标：将 writer.py 覆盖率从 ~82% 提升到 >=95%。
 策略：针对 missing lines 列表逐块覆盖，复用现有 fixture 风格。
 """
 import asyncio
@@ -20,7 +20,7 @@ import pytest
 
 @pytest.fixture
 def mcp_db():
-    """创建临时 SQLite 数据库并初始化 mcp_adapter.server 需要的表结构。"""
+    """创建临时 SQLite 数据库并初始化 mcp_adapter.servers.writer 需要的表结构。"""
     fd, path = tempfile.mkstemp(suffix='.db')
     conn = sqlite3.connect(path)
     conn.row_factory = sqlite3.Row
@@ -63,16 +63,16 @@ def mcp_db():
 
 @pytest.fixture
 def patch_db(mcp_db):
-    """monkeypatch mcp_adapter.server.DB_PATH 指向临时数据库路径，返回连接供直接操作。"""
+    """monkeypatch mcp_adapter.servers.writer.DB_PATH 指向临时数据库路径，返回连接供直接操作。"""
     path, conn = mcp_db
-    with patch('mcp_adapter.server.DB_PATH', path):
+    with patch('mcp_adapter.servers.writer.DB_PATH', path):
         yield conn
 
 
 @pytest.fixture
 def mock_api():
-    """mock mcp_adapter.server._api_post 返回成功响应"""
-    with patch('mcp_adapter.server._api_post', new_callable=AsyncMock) as mock:
+    """mock mcp_adapter.servers.writer._api_post 返回成功响应"""
+    with patch('mcp_adapter.servers.writer._api_post', new_callable=AsyncMock) as mock:
         mock.return_value = {"status": "success", "data": {"id": 42, "bmi": 22.5}}
         yield mock
 
@@ -86,7 +86,7 @@ class TestApiPostExceptions:
 
     @pytest.mark.asyncio
     async def test_connect_error(self):
-        from mcp_adapter.server import _api_post
+        from mcp_adapter.servers.writer import _api_post
         with patch('httpx.AsyncClient.post', side_effect=httpx.ConnectError("Connection refused")):
             result = await _api_post(1, "/add", {})
         assert result["status"] == "error"
@@ -95,7 +95,7 @@ class TestApiPostExceptions:
 
     @pytest.mark.asyncio
     async def test_timeout_exception(self):
-        from mcp_adapter.server import _api_post
+        from mcp_adapter.servers.writer import _api_post
         with patch('httpx.AsyncClient.post', side_effect=httpx.TimeoutException("Timed out")):
             result = await _api_post(1, "/add", {})
         assert result["status"] == "error"
@@ -104,7 +104,7 @@ class TestApiPostExceptions:
 
     @pytest.mark.asyncio
     async def test_http_status_error(self):
-        from mcp_adapter.server import _api_post
+        from mcp_adapter.servers.writer import _api_post
         mock_response = MagicMock()
         mock_response.status_code = 500
         mock_response.text = "Internal Server Error"
@@ -117,7 +117,7 @@ class TestApiPostExceptions:
 
     @pytest.mark.asyncio
     async def test_generic_exception(self):
-        from mcp_adapter.server import _api_post
+        from mcp_adapter.servers.writer import _api_post
         with patch('httpx.AsyncClient.post', side_effect=ValueError("boom")):
             result = await _api_post(1, "/add", {})
         assert result["status"] == "error"
@@ -126,7 +126,7 @@ class TestApiPostExceptions:
 
     @pytest.mark.asyncio
     async def test_409_response(self):
-        from mcp_adapter.server import _api_post
+        from mcp_adapter.servers.writer import _api_post
         mock_response = MagicMock()
         mock_response.status_code = 409
         mock_response.json.return_value = {"status": "error", "error_type": "duplicate", "message": "重复"}
@@ -137,7 +137,7 @@ class TestApiPostExceptions:
 
     @pytest.mark.asyncio
     async def test_success_response(self):
-        from mcp_adapter.server import _api_post
+        from mcp_adapter.servers.writer import _api_post
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = {"status": "success", "data": {"id": 1}}
@@ -152,7 +152,7 @@ class TestApiPostExceptions:
 
 class TestCheckDuplicateFallback:
     def test_missing_timestamp_fallback(self, patch_db):
-        from mcp_adapter.server import _check_duplicate
+        from mcp_adapter.servers.writer import _check_duplicate
         conn = patch_db
         # 不提供 datetime/timestamp，触发 fallback 到当前时间
         result = _check_duplicate(conn, 1, {"systolic_pressure": 120, "diastolic_pressure": 80})
@@ -163,14 +163,33 @@ class TestCheckDuplicateFallback:
 # _calculate_and_set_bmi exception (lines 223-228)
 # ============================================================
 
-class TestCalculateAndSetBmiException:
-    def test_import_error_returns_none(self, patch_db):
-        from mcp_adapter.server import _calculate_and_set_bmi
+class TestCalculateAndSetBmiEdgeCases:
+    """BMI 改为直接查 user_profiles.height 后（不再委托 settings.calculate_bmi），
+    覆盖"缺档案 / 库异常 / 数值非法"三种边界。"""
+
+    def test_missing_height_returns_none(self, patch_db):
+        from mcp_adapter.servers.writer import _calculate_and_set_bmi
         conn = patch_db
-        # 让 settings.calculate_bmi 抛出异常
-        with patch('settings.calculate_bmi', side_effect=ImportError("no module")):
-            result = _calculate_and_set_bmi(conn, 1, 70.0)
-        assert result is None
+        conn.execute("UPDATE user_profiles SET height = NULL WHERE user_id = 1")
+        conn.commit()
+        assert _calculate_and_set_bmi(conn, 1, 70.0) is None
+
+    def test_db_error_returns_none(self):
+        from mcp_adapter.servers.writer import _calculate_and_set_bmi
+        mock_conn = MagicMock()
+        mock_conn.cursor.return_value.execute.side_effect = sqlite3.OperationalError("readonly")
+        assert _calculate_and_set_bmi(mock_conn, 1, 70.0) is None
+
+    def test_invalid_values_return_none(self, patch_db):
+        from mcp_adapter.servers.writer import _calculate_and_set_bmi
+        conn = patch_db
+        assert _calculate_and_set_bmi(conn, 1, 0) is None
+        assert _calculate_and_set_bmi(conn, 1, -5) is None
+
+    def test_computes_from_profile_height(self, patch_db):
+        """fixture 档案身高 175cm → 70.0kg 应为 22.9（保留 1 位小数）。"""
+        from mcp_adapter.servers.writer import _calculate_and_set_bmi
+        assert _calculate_and_set_bmi(patch_db, 1, 70.0) == 22.9
 
 
 # ============================================================
@@ -179,7 +198,7 @@ class TestCalculateAndSetBmiException:
 
 class TestUpdateProfileWeightException:
     def test_exception_silently_ignored(self, patch_db):
-        from mcp_adapter.server import _update_profile_weight
+        from mcp_adapter.servers.writer import _update_profile_weight
         # 用一个 MagicMock 替代 conn，让 execute 抛出异常，覆盖 try/except 静默忽略分支
         mock_conn = MagicMock()
         mock_conn.cursor.return_value.execute.side_effect = sqlite3.OperationalError("readonly")
@@ -194,7 +213,7 @@ class TestUpdateProfileWeightException:
 
 class TestInsertRecordEdgeCases:
     def test_missing_timestamp(self, patch_db):
-        from mcp_adapter.server import _insert_record
+        from mcp_adapter.servers.writer import _insert_record
         conn = patch_db
         rid = _insert_record(conn, {
             "user_id": 1, "type": "空腹", "value": 5.5,
@@ -207,19 +226,17 @@ class TestInsertRecordEdgeCases:
         assert ts is not None
 
     def test_bmi_calculation_path(self, patch_db):
-        from mcp_adapter.server import _insert_record
+        from mcp_adapter.servers.writer import _insert_record
         conn = patch_db
-        # 提供 weight 但不提供 bmi，触发 _calculate_and_set_bmi
-        with patch('settings.calculate_bmi', return_value=22.8) as mock_bmi:
-            rid = _insert_record(conn, {
-                "user_id": 1, "type": "体重记录", "value": 0, "weight": 70.0,
-                "timestamp": "2026-05-02 07:00:00"
-            })
+        # 提供 weight 但不提供 bmi，触发 _calculate_and_set_bmi（档案身高 175cm）
+        rid = _insert_record(conn, {
+            "user_id": 1, "type": "体重记录", "value": 0, "weight": 70.0,
+            "timestamp": "2026-05-02 07:00:00"
+        })
         assert rid > 0
-        mock_bmi.assert_called_once()
         c = conn.cursor()
         c.execute("SELECT bmi FROM records WHERE id = ?", (rid,))
-        assert c.fetchone()["bmi"] == 22.8
+        assert c.fetchone()["bmi"] == 22.9
 
 
 # ============================================================
@@ -230,17 +247,17 @@ class TestTryRegexParseEdgeCases:
     """覆盖 _try_regex_parse 中各种边缘分支。"""
 
     def test_empty_text_returns_none(self):
-        from mcp_adapter.server import _try_regex_parse
+        from mcp_adapter.servers.writer import _try_regex_parse
         assert _try_regex_parse("") is None
         assert _try_regex_parse(None) is None
 
     def test_no_emoji_no_match_returns_none(self):
-        from mcp_adapter.server import _try_regex_parse
+        from mcp_adapter.servers.writer import _try_regex_parse
         # 纯文本无 emoji，应返回 None
         assert _try_regex_parse("120/80 70 65.5") is None
 
     def test_unknown_emoji_skipped(self):
-        from mcp_adapter.server import _try_regex_parse
+        from mcp_adapter.servers.writer import _try_regex_parse
         # 使用 settings 中不存在的 emoji
         with patch('settings.EMOJI_USER_MAP', {'🐰': 1}):
             result = _try_regex_parse("🦊120/80")
@@ -248,7 +265,7 @@ class TestTryRegexParseEdgeCases:
         assert result is None
 
     def test_emoji_user_id_none_skipped(self):
-        from mcp_adapter.server import _try_regex_parse
+        from mcp_adapter.servers.writer import _try_regex_parse
         # 当 EMOJI_USER_MAP 包含该 emoji 但值为 None 时触发 line 326
         with patch('settings.EMOJI_USER_MAP', {'🐰': None}):
             result = _try_regex_parse("🐰120/80")
@@ -256,14 +273,14 @@ class TestTryRegexParseEdgeCases:
         assert result is None
 
     def test_pulse_in_range(self):
-        from mcp_adapter.server import _try_regex_parse
+        from mcp_adapter.servers.writer import _try_regex_parse
         with patch('settings.EMOJI_USER_MAP', {'🐰': 1}):
             result = _try_regex_parse("🐰120/80、72")
         assert result is not None
         assert any(r.get("pulse_rate") == 72 for r in result)
 
     def test_weight_decimal_priority(self):
-        from mcp_adapter.server import _try_regex_parse
+        from mcp_adapter.servers.writer import _try_regex_parse
         with patch('settings.EMOJI_USER_MAP', {'🐰': 1}):
             result = _try_regex_parse("🐰120/80、72，65.50")
         assert result is not None
@@ -272,7 +289,7 @@ class TestTryRegexParseEdgeCases:
         assert weight_records[0]["weight"] == 65.5
 
     def test_weight_fallback_to_float(self):
-        from mcp_adapter.server import _try_regex_parse
+        from mcp_adapter.servers.writer import _try_regex_parse
         # 不带小数点但符合体重范围，且不等于脉搏
         with patch('settings.EMOJI_USER_MAP', {'🐰': 1}):
             result = _try_regex_parse("🐰120/80、72，80")
@@ -282,14 +299,14 @@ class TestTryRegexParseEdgeCases:
         assert weight_records[0]["weight"] == 80.0
 
     def test_no_records_for_user_returns_none(self):
-        from mcp_adapter.server import _try_regex_parse
+        from mcp_adapter.servers.writer import _try_regex_parse
         # emoji 存在但 segment 中没有可识别的数字
         with patch('settings.EMOJI_USER_MAP', {'🐰': 1}):
             result = _try_regex_parse("🐰abc")
         assert result is None
 
     def test_bp_with_pulse_record(self):
-        from mcp_adapter.server import _try_regex_parse
+        from mcp_adapter.servers.writer import _try_regex_parse
         with patch('settings.EMOJI_USER_MAP', {'🐰': 1}):
             result = _try_regex_parse("🐰120/80、72")
         assert result is not None
@@ -298,7 +315,7 @@ class TestTryRegexParseEdgeCases:
         assert bp_records[0].get("pulse_rate") == 72
 
     def test_weight_only_record(self):
-        from mcp_adapter.server import _try_regex_parse
+        from mcp_adapter.servers.writer import _try_regex_parse
         with patch('settings.EMOJI_USER_MAP', {'🐰': 1}):
             result = _try_regex_parse("🐰65.50")
         assert result is not None
@@ -312,7 +329,7 @@ class TestTryRegexParseEdgeCases:
 
 class TestInlineBatchInsertEdgeCases:
     def test_missing_timestamp_fallback(self, patch_db):
-        from mcp_adapter.server import _inline_batch_insert
+        from mcp_adapter.servers.writer import _inline_batch_insert
         conn = patch_db
         result = _inline_batch_insert(conn, [
             {"user_id": 1, "type": "空腹", "value": 5.5},
@@ -320,7 +337,7 @@ class TestInlineBatchInsertEdgeCases:
         assert len(result["inserted_ids"]) == 1
 
     def test_conflict_resolution_ask(self, patch_db):
-        from mcp_adapter.server import _inline_batch_insert
+        from mcp_adapter.servers.writer import _inline_batch_insert
         conn = patch_db
         c = conn.cursor()
         c.execute("INSERT INTO records (user_id, value, type, timestamp) "
@@ -333,22 +350,22 @@ class TestInlineBatchInsertEdgeCases:
         assert len(result["duplicates_skipped"]) == 1
 
     def test_bmi_calculation_in_batch(self, patch_db):
-        from mcp_adapter.server import _inline_batch_insert
+        from mcp_adapter.servers.writer import _inline_batch_insert
         conn = patch_db
-        with patch('settings.calculate_bmi', return_value=23.1):
-            result = _inline_batch_insert(conn, [
-                {"user_id": 1, "type": "体重记录", "value": 0, "weight": 72.0,
-                 "datetime": "2026-05-02 07:00:00"},
-            ], conflict_resolution="overwrite")
+        # 档案身高 175cm → 72.0kg 应为 23.5
+        result = _inline_batch_insert(conn, [
+            {"user_id": 1, "type": "体重记录", "value": 0, "weight": 72.0,
+             "datetime": "2026-05-02 07:00:00"},
+        ], conflict_resolution="overwrite")
         assert len(result["inserted_ids"]) == 1
         c = conn.cursor()
         c.execute("SELECT bmi FROM records WHERE id = ?", (result["inserted_ids"][0],))
-        assert c.fetchone()["bmi"] == 23.1
+        assert c.fetchone()["bmi"] == 23.5
 
     def test_update_profile_weight_in_batch(self, patch_db):
-        from mcp_adapter.server import _inline_batch_insert
+        from mcp_adapter.servers.writer import _inline_batch_insert
         conn = patch_db
-        with patch('mcp_adapter.server._update_profile_weight') as mock_upd:
+        with patch('mcp_adapter.servers.writer._update_profile_weight') as mock_upd:
             result = _inline_batch_insert(conn, [
                 {"user_id": 1, "type": "体重记录", "value": 0, "weight": 72.0,
                  "datetime": "2026-05-02 07:00:00"},
@@ -364,7 +381,7 @@ class TestInlineBatchInsertEdgeCases:
 class TestRecordBloodPressureNotes:
     @pytest.mark.asyncio
     async def test_with_notes(self, mock_api):
-        from mcp_adapter.server import record_blood_pressure
+        from mcp_adapter.servers.writer import record_blood_pressure
         result = await record_blood_pressure(1, systolic=120, diastolic=80, notes="晨起测量")
         assert "✅" in result
 
@@ -376,7 +393,7 @@ class TestRecordBloodPressureNotes:
 class TestRecordWeightNotes:
     @pytest.mark.asyncio
     async def test_with_notes(self, mock_api):
-        from mcp_adapter.server import record_weight
+        from mcp_adapter.servers.writer import record_weight
         result = await record_weight(1, weight=70.0, notes="空腹")
         assert "✅" in result
 
@@ -388,7 +405,7 @@ class TestRecordWeightNotes:
 class TestRecordGlucoseNotes:
     @pytest.mark.asyncio
     async def test_with_notes(self, mock_api):
-        from mcp_adapter.server import record_glucose
+        from mcp_adapter.servers.writer import record_glucose
         result = await record_glucose(1, value=5.5, record_type="空腹", notes="早餐前")
         assert "✅" in result
 
@@ -400,14 +417,14 @@ class TestRecordGlucoseNotes:
 class TestRecordExerciseEdgeCases:
     @pytest.mark.asyncio
     async def test_with_notes(self, mock_api):
-        from mcp_adapter.server import record_exercise
+        from mcp_adapter.servers.writer import record_exercise
         result = await record_exercise(1, exercise_type="跑步", distance=5.0, notes="公园跑")
         assert "✅" in result
 
     @pytest.mark.asyncio
     async def test_duplicate(self, mock_api):
         mock_api.return_value = {"status": "error", "error_type": "duplicate", "message": "重复运动"}
-        from mcp_adapter.server import record_exercise
+        from mcp_adapter.servers.writer import record_exercise
         result = await record_exercise(1, exercise_type="跑步", distance=5.0)
         assert "⚠️" in result
 
@@ -420,21 +437,21 @@ class TestHasNumericDataBranches:
     """补充覆盖 _has_numeric_data 剩余分支。"""
 
     def test_plain_text_no_numbers(self):
-        from mcp_adapter.server import _has_numeric_data
+        from mcp_adapter.servers.writer import _has_numeric_data
         assert _has_numeric_data("今天天气不错") is False
 
     def test_numeric_sequence_branch(self):
-        from mcp_adapter.server import _has_numeric_data
+        from mcp_adapter.servers.writer import _has_numeric_data
         # 覆盖 \d{2,3}\s*[，,、]\s*\d{2,3} 分支，且不满足前面的血压/单位分支
         assert _has_numeric_data("103、64") is True
 
     def test_bp_format_branch(self):
-        from mcp_adapter.server import _has_numeric_data
+        from mcp_adapter.servers.writer import _has_numeric_data
         # 覆盖 \d{2,3}\s*/\s*\d{2,3} 分支
         assert _has_numeric_data("血压 120/80") is True
 
     def test_unit_branch(self):
-        from mcp_adapter.server import _has_numeric_data
+        from mcp_adapter.servers.writer import _has_numeric_data
         # 覆盖 \d+\.?\d*\s*(mmol/L|mg/dL|kg|公斤|kcal|km) 分支
         assert _has_numeric_data("血糖 5.5 mmol/L") is True
 
@@ -445,7 +462,7 @@ class TestHasNumericDataBranches:
 
 class TestFormatParsedPreviewMedication:
     def test_medication_name(self):
-        from mcp_adapter.server import _format_parsed_preview
+        from mcp_adapter.servers.writer import _format_parsed_preview
         records = [{
             "type": "用药记录", "medication_name": "二甲双胍", "datetime": "2026-05-02 08:00:00"
         }]
@@ -460,11 +477,11 @@ class TestFormatParsedPreviewMedication:
 class TestParseAndRecordEdgeCases:
     @pytest.mark.asyncio
     async def test_duplicate_response(self, patch_db):
-        from mcp_adapter.server import parse_and_record
+        from mcp_adapter.servers.writer import parse_and_record
         records_data = [
             {"type": "空腹", "value": 5.5, "unit": "mmol/L", "datetime": "2026-05-02 07:00"}
         ]
-        with patch('mcp_adapter.server._api_post', new_callable=AsyncMock) as mock:
+        with patch('mcp_adapter.servers.writer._api_post', new_callable=AsyncMock) as mock:
             mock.side_effect = [
                 records_data,
                 {"status": "error", "error_type": "duplicate", "message": "重复啦"}
@@ -475,11 +492,11 @@ class TestParseAndRecordEdgeCases:
 
     @pytest.mark.asyncio
     async def test_warnings_in_response(self, patch_db):
-        from mcp_adapter.server import parse_and_record
+        from mcp_adapter.servers.writer import parse_and_record
         records_data = [
             {"type": "空腹", "value": 5.5, "unit": "mmol/L", "datetime": "2026-05-02 07:00"}
         ]
-        with patch('mcp_adapter.server._api_post', new_callable=AsyncMock) as mock:
+        with patch('mcp_adapter.servers.writer._api_post', new_callable=AsyncMock) as mock:
             mock.side_effect = [
                 records_data,
                 {"status": "success", "data": {"warnings": ["血糖值偏低"]}}
@@ -496,7 +513,7 @@ class TestParseAndRecordEdgeCases:
 class TestBatchRecordParamValidation:
     @pytest.mark.asyncio
     async def test_heart_rate_validation(self, patch_db):
-        from mcp_adapter.server import batch_record
+        from mcp_adapter.servers.writer import batch_record
         result = await batch_record(1, records=[
             {"type": "血压测量", "systolic_pressure": 120, "diastolic_pressure": 80, "pulse_rate": 250}
         ])
@@ -505,7 +522,7 @@ class TestBatchRecordParamValidation:
 
     @pytest.mark.asyncio
     async def test_glucose_validation(self, patch_db):
-        from mcp_adapter.server import batch_record
+        from mcp_adapter.servers.writer import batch_record
         result = await batch_record(1, records=[
             {"type": "空腹", "value": 35.0}
         ])
@@ -514,7 +531,7 @@ class TestBatchRecordParamValidation:
 
     @pytest.mark.asyncio
     async def test_weight_validation(self, patch_db):
-        from mcp_adapter.server import batch_record
+        from mcp_adapter.servers.writer import batch_record
         result = await batch_record(1, records=[
             {"type": "体重记录", "weight": 350.0}
         ])
@@ -529,7 +546,7 @@ class TestBatchRecordParamValidation:
 class TestBatchRecordTimestampCleanup:
     @pytest.mark.asyncio
     async def test_timestamp_deleted(self, patch_db):
-        from mcp_adapter.server import batch_record
+        from mcp_adapter.servers.writer import batch_record
         result = await batch_record(1, records=[
             {"type": "空腹", "value": 5.5, "timestamp": "2026-05-02 07:00", "datetime": "2026-05-02 07:00"}
         ])
@@ -545,8 +562,8 @@ class TestBatchRecordWarningOutput:
 
     @pytest.mark.asyncio
     async def test_skip_output(self, patch_db):
-        from mcp_adapter.server import batch_record
-        with patch('mcp_adapter.server._inline_batch_insert') as mock_inline:
+        from mcp_adapter.servers.writer import batch_record
+        with patch('mcp_adapter.servers.writer._inline_batch_insert') as mock_inline:
             mock_inline.return_value = {
                 "inserted_ids": [1],
                 "warnings": [],
@@ -560,8 +577,8 @@ class TestBatchRecordWarningOutput:
 
     @pytest.mark.asyncio
     async def test_warning_output(self, patch_db):
-        from mcp_adapter.server import batch_record
-        with patch('mcp_adapter.server._inline_batch_insert') as mock_inline:
+        from mcp_adapter.servers.writer import batch_record
+        with patch('mcp_adapter.servers.writer._inline_batch_insert') as mock_inline:
             mock_inline.return_value = {
                 "inserted_ids": [1],
                 "warnings": ["血糖值偏低"],
@@ -581,7 +598,7 @@ class TestBatchRecordWarningOutput:
 class TestBatchRecordDetailFormatting:
     @pytest.mark.asyncio
     async def test_bp_with_pulse_detail(self, patch_db):
-        from mcp_adapter.server import batch_record
+        from mcp_adapter.servers.writer import batch_record
         result = await batch_record(1, records=[
             {"type": "血压测量", "systolic_pressure": 120, "diastolic_pressure": 80,
              "pulse_rate": 72, "datetime": "2026-05-02 07:00"}
@@ -590,7 +607,7 @@ class TestBatchRecordDetailFormatting:
 
     @pytest.mark.asyncio
     async def test_weight_with_bmi_detail(self, patch_db):
-        from mcp_adapter.server import batch_record
+        from mcp_adapter.servers.writer import batch_record
         result = await batch_record(1, records=[
             {"type": "体重记录", "weight": 70.0, "bmi": 22.5, "datetime": "2026-05-02 07:00"}
         ])
@@ -598,7 +615,7 @@ class TestBatchRecordDetailFormatting:
 
     @pytest.mark.asyncio
     async def test_generic_record_detail(self, patch_db):
-        from mcp_adapter.server import batch_record
+        from mcp_adapter.servers.writer import batch_record
         result = await batch_record(1, records=[
             {"type": "运动", "value": 0, "distance": 5.0, "datetime": "2026-05-02 07:00"}
         ])
@@ -612,9 +629,9 @@ class TestBatchRecordDetailFormatting:
 class TestBatchParseAndRecordAiFallbackError:
     @pytest.mark.asyncio
     async def test_ai_fallback_error(self, patch_db):
-        from mcp_adapter.server import batch_parse_and_record
-        with patch('mcp_adapter.server._try_regex_parse', return_value=None), \
-             patch('mcp_adapter.server._api_post', new_callable=AsyncMock) as mock_api, \
+        from mcp_adapter.servers.writer import batch_parse_and_record
+        with patch('mcp_adapter.servers.writer._try_regex_parse', return_value=None), \
+             patch('mcp_adapter.servers.writer._api_post', new_callable=AsyncMock) as mock_api, \
              patch('settings.EMOJI_USER_MAP', {}):
             mock_api.return_value = {"status": "error", "message": "AI 解析失败"}
             result = await batch_parse_and_record("爸爸空腹血糖 5.5")
@@ -629,9 +646,9 @@ class TestBatchParseAndRecordAiFallbackError:
 class TestBatchParseAndRecordNoRecordsHint:
     @pytest.mark.asyncio
     async def test_no_records_with_numeric_hint(self, patch_db):
-        from mcp_adapter.server import batch_parse_and_record
-        with patch('mcp_adapter.server._try_regex_parse', return_value=None), \
-             patch('mcp_adapter.server._api_post', new_callable=AsyncMock) as mock_api, \
+        from mcp_adapter.servers.writer import batch_parse_and_record
+        with patch('mcp_adapter.servers.writer._try_regex_parse', return_value=None), \
+             patch('mcp_adapter.servers.writer._api_post', new_callable=AsyncMock) as mock_api, \
              patch('settings.EMOJI_USER_MAP', {}):
             mock_api.return_value = []
             result = await batch_parse_and_record("120/80")
@@ -646,8 +663,8 @@ class TestBatchParseAndRecordNoRecordsHint:
 class TestBatchParseAndRecordTimestampCleanup:
     @pytest.mark.asyncio
     async def test_timestamp_cleanup(self, patch_db):
-        from mcp_adapter.server import batch_parse_and_record
-        with patch('mcp_adapter.server._try_regex_parse', return_value=[
+        from mcp_adapter.servers.writer import batch_parse_and_record
+        with patch('mcp_adapter.servers.writer._try_regex_parse', return_value=[
             {"user_id": 1, "type": "空腹", "value": 5.5, "timestamp": "2026-05-02 07:00"}
         ]), patch('settings.EMOJI_USER_MAP', {}):
             result = await batch_parse_and_record("空腹 5.5")
@@ -661,11 +678,11 @@ class TestBatchParseAndRecordTimestampCleanup:
 class TestBatchParseAndRecordWriteException:
     @pytest.mark.asyncio
     async def test_write_exception(self, patch_db):
-        from mcp_adapter.server import batch_parse_and_record
-        with patch('mcp_adapter.server._try_regex_parse', return_value=[
+        from mcp_adapter.servers.writer import batch_parse_and_record
+        with patch('mcp_adapter.servers.writer._try_regex_parse', return_value=[
             {"user_id": 1, "type": "空腹", "value": 5.5}
         ]), \
-             patch('mcp_adapter.server._inline_batch_insert', side_effect=Exception("db crash")), \
+             patch('mcp_adapter.servers.writer._inline_batch_insert', side_effect=Exception("db crash")), \
              patch('settings.EMOJI_USER_MAP', {}):
             result = await batch_parse_and_record("空腹 5.5")
         assert "❌" in result
@@ -679,11 +696,11 @@ class TestBatchParseAndRecordWriteException:
 class TestBatchParseAndRecordSkipWarningOutput:
     @pytest.mark.asyncio
     async def test_skip_output(self, patch_db):
-        from mcp_adapter.server import batch_parse_and_record
-        with patch('mcp_adapter.server._try_regex_parse', return_value=[
+        from mcp_adapter.servers.writer import batch_parse_and_record
+        with patch('mcp_adapter.servers.writer._try_regex_parse', return_value=[
             {"user_id": 1, "type": "空腹", "value": 5.5, "datetime": "2026-05-02 07:00:00"}
         ]), \
-             patch('mcp_adapter.server._inline_batch_insert') as mock_inline, \
+             patch('mcp_adapter.servers.writer._inline_batch_insert') as mock_inline, \
              patch('settings.EMOJI_USER_MAP', {}):
             mock_inline.return_value = {
                 "inserted_ids": [],
@@ -696,11 +713,11 @@ class TestBatchParseAndRecordSkipWarningOutput:
 
     @pytest.mark.asyncio
     async def test_warning_output(self, patch_db):
-        from mcp_adapter.server import batch_parse_and_record
-        with patch('mcp_adapter.server._try_regex_parse', return_value=[
+        from mcp_adapter.servers.writer import batch_parse_and_record
+        with patch('mcp_adapter.servers.writer._try_regex_parse', return_value=[
             {"user_id": 1, "type": "空腹", "value": 5.5, "datetime": "2026-05-02 07:00:00"}
         ]), \
-             patch('mcp_adapter.server._inline_batch_insert') as mock_inline, \
+             patch('mcp_adapter.servers.writer._inline_batch_insert') as mock_inline, \
              patch('settings.EMOJI_USER_MAP', {}):
             mock_inline.return_value = {
                 "inserted_ids": [1],
@@ -719,8 +736,8 @@ class TestBatchParseAndRecordSkipWarningOutput:
 class TestBatchParseAndRecordPreviewBranches:
     @pytest.mark.asyncio
     async def test_spo2_branch(self, patch_db):
-        from mcp_adapter.server import batch_parse_and_record
-        with patch('mcp_adapter.server._try_regex_parse', return_value=[
+        from mcp_adapter.servers.writer import batch_parse_and_record
+        with patch('mcp_adapter.servers.writer._try_regex_parse', return_value=[
             {"user_id": 1, "type": "血压测量", "systolic_pressure": 120, "diastolic_pressure": 80,
              "pulse_rate": 72, "spo2": 98, "datetime": "2026-05-02 07:00:00"}
         ]), patch('settings.EMOJI_USER_MAP', {}):
@@ -729,8 +746,8 @@ class TestBatchParseAndRecordPreviewBranches:
 
     @pytest.mark.asyncio
     async def test_weight_branch(self, patch_db):
-        from mcp_adapter.server import batch_parse_and_record
-        with patch('mcp_adapter.server._try_regex_parse', return_value=[
+        from mcp_adapter.servers.writer import batch_parse_and_record
+        with patch('mcp_adapter.servers.writer._try_regex_parse', return_value=[
             {"user_id": 1, "type": "体重记录", "weight": 70.0, "datetime": "2026-05-02 07:00:00"}
         ]), patch('settings.EMOJI_USER_MAP', {}):
             result = await batch_parse_and_record("体重 70.0")
@@ -738,8 +755,8 @@ class TestBatchParseAndRecordPreviewBranches:
 
     @pytest.mark.asyncio
     async def test_glucose_branch(self, patch_db):
-        from mcp_adapter.server import batch_parse_and_record
-        with patch('mcp_adapter.server._try_regex_parse', return_value=[
+        from mcp_adapter.servers.writer import batch_parse_and_record
+        with patch('mcp_adapter.servers.writer._try_regex_parse', return_value=[
             {"user_id": 1, "type": "空腹", "value": 5.5, "datetime": "2026-05-02 07:00:00"}
         ]), patch('settings.EMOJI_USER_MAP', {}):
             result = await batch_parse_and_record("空腹 5.5")
@@ -753,7 +770,7 @@ class TestBatchParseAndRecordPreviewBranches:
 
 class TestUndoLastRecordBranches:
     def test_bp_with_spo2(self, patch_db):
-        from mcp_adapter.server import undo_last_record
+        from mcp_adapter.servers.writer import undo_last_record
         conn = patch_db
         c = conn.cursor()
         c.execute("INSERT INTO records (user_id, type, value, systolic_pressure, "
@@ -764,7 +781,7 @@ class TestUndoLastRecordBranches:
         assert "血氧98%" in result
 
     def test_exercise_with_distance(self, patch_db):
-        from mcp_adapter.server import undo_last_record
+        from mcp_adapter.servers.writer import undo_last_record
         conn = patch_db
         c = conn.cursor()
         c.execute("INSERT INTO records (user_id, type, value, distance, timestamp) "
@@ -774,7 +791,7 @@ class TestUndoLastRecordBranches:
         assert "距离 5.0km" in result
 
     def test_record_with_notes(self, patch_db):
-        from mcp_adapter.server import undo_last_record
+        from mcp_adapter.servers.writer import undo_last_record
         conn = patch_db
         c = conn.cursor()
         c.execute("INSERT INTO records (user_id, type, value, notes, timestamp) "
@@ -790,7 +807,7 @@ class TestUndoLastRecordBranches:
 
 class TestTodaySummaryBranches:
     def test_bp_branch(self, patch_db):
-        from mcp_adapter.server import today_summary
+        from mcp_adapter.servers.writer import today_summary
         conn = patch_db
         c = conn.cursor()
         today = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -804,7 +821,7 @@ class TestTodaySummaryBranches:
         assert "血氧 98%" in result
 
     def test_bmi_branch(self, patch_db):
-        from mcp_adapter.server import today_summary
+        from mcp_adapter.servers.writer import today_summary
         conn = patch_db
         c = conn.cursor()
         today = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -816,7 +833,7 @@ class TestTodaySummaryBranches:
         assert "BMI 22.5" in result
 
     def test_else_branch(self, patch_db):
-        from mcp_adapter.server import today_summary
+        from mcp_adapter.servers.writer import today_summary
         conn = patch_db
         c = conn.cursor()
         today = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -833,7 +850,7 @@ class TestTodaySummaryBranches:
 
 class TestListTodayRecordsBranches:
     def test_bp_branch(self, patch_db):
-        from mcp_adapter.server import list_today_records
+        from mcp_adapter.servers.writer import list_today_records
         conn = patch_db
         c = conn.cursor()
         today = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -847,7 +864,7 @@ class TestListTodayRecordsBranches:
         assert "血氧98%" in result
 
     def test_weight_branch(self, patch_db):
-        from mcp_adapter.server import list_today_records
+        from mcp_adapter.servers.writer import list_today_records
         conn = patch_db
         c = conn.cursor()
         today = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -858,7 +875,7 @@ class TestListTodayRecordsBranches:
         assert "体重 70.0kg" in result
 
     def test_notes_branch(self, patch_db):
-        from mcp_adapter.server import list_today_records
+        from mcp_adapter.servers.writer import list_today_records
         conn = patch_db
         c = conn.cursor()
         today = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -875,15 +892,15 @@ class TestListTodayRecordsBranches:
 
 class TestMainEntry:
     def test_main_stdio(self):
-        from mcp_adapter.server import main
-        with patch('mcp_adapter.server.mcp') as mock_mcp:
-            with patch('sys.argv', ['mcp_server.py']):
+        from mcp_adapter.servers.writer import main
+        with patch('mcp_adapter.servers.writer.mcp') as mock_mcp:
+            with patch('sys.argv', ['mcp_writer.py']):
                 main()
             mock_mcp.run.assert_called_once_with(transport="stdio")
 
     def test_main_sse(self):
-        from mcp_adapter.server import main
-        with patch('mcp_adapter.server.mcp') as mock_mcp:
-            with patch('sys.argv', ['mcp_server.py', '--transport', 'sse']):
+        from mcp_adapter.servers.writer import main
+        with patch('mcp_adapter.servers.writer.mcp') as mock_mcp:
+            with patch('sys.argv', ['mcp_writer.py', '--transport', 'sse']):
                 main()
             mock_mcp.run.assert_called_once_with(transport="sse")

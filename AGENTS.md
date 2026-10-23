@@ -60,7 +60,10 @@ Monolithic Flask app (`app.py`) with Blueprint modules for routing. Single-page 
 | `utils/db.py` | `get_db()`, `close_db()`, `init_db()` — SQLite via Flask `g` |
 | `utils/responses.py` | `api_success()` / `api_error()` — standard JSON envelope |
 | `utils/auth.py` | `@login_required`, `@login_or_token_required` decorators |
-| `mcp_adapter/server.py` | MCP server for Claude Desktop integration (stdio/sse), inline SQLite writes, regex fast path |
+| `mcp_adapter/servers/writer.py` | 写 MCP server（stdio/sse，11 工具）：单条走 Flask API，批量内联写库 |
+| `mcp_adapter/servers/reader.py` | 只读分析 MCP server（12 个 `sbhealth_*` 工具），`mode=ro`，可独立部署 |
+| `mcp_adapter/core/` | MCP 共享核心：`domain.py` 类型/阈值、`timefmt.py` 时间口径、`analytics.py` 纯计算 |
+| `scripts/deploy_mcp.sh` | 两个 MCP server 一起发布到 `/root/health_tools`（`--dry-run` / `--restart` / `--only`） |
 | `generate_report.py` | PDF health report generation (reportlab) |
 | `models.py` | SQLAlchemy models for Alembic migrations |
 
@@ -134,7 +137,7 @@ ignore = ["E501", "E402", "E702"]  # E402/E702 for test files
 | `test_auth_decorators.py` | `utils/auth.py`: login_required, login_or_token_required |
 | `test_generate_report.py` | `glucose_parser.py`: parse, history_context |
 | `test_glucose_parser.py` | `glucose_parser.py` additional branches |
-| `test_mcp_server.py` | `mcp_server.py`: all tools, inline batch, regex parse |
+| `test_mcp_server.py` | `mcp_adapter/servers/writer.py`: all tools, inline batch, regex parse |
 | `test_routes_coverage.py` | Route coverage gaps: auth, health, records, user |
 | `test_remaining_routes.py` | Prediction, meds, admin, font registration |
 | `test_services_garmin.py` | Garmin connect API, activity mapping, sync logic |

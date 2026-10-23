@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""
-Sugar Bee MCP Server
+"""Sugar Bee 写入 / 核对 MCP server（11 个工具）。
+
 支持 stdio（Claude Desktop）与 sse（通用 MCP 客户端）双模式。
+单条写入走 Flask API（复用校验/预测关联），批量写入内联操作数据库。
 
 环境变量:
   AGENT_API_TOKEN  (必需) — Phase 1 生成的 token
@@ -9,21 +10,21 @@ Sugar Bee MCP Server
   DB_PATH          (可选) — SQLite 路径，默认项目根目录下的 glucose.db
 
 用法:
-  # 方式 1：通过根目录兼容入口（推荐，Claude Desktop 配置不变）
-  uv run python mcp_server.py
+  # 方式 1：通过根目录入口（推荐，本地与服务器同名）
+  uv run python mcp_writer.py
 
   # 方式 2：直接以模块运行
-  uv run python -m mcp.server
+  uv run python -m mcp_adapter.servers.writer
 
   # sse 模式（通用 MCP 客户端，默认端口 3001）
-  uv run python mcp_server.py --transport sse --port 3001
+  uv run python mcp_writer.py --transport sse --port 3001
 
 Claude Desktop 配置示例 (~/Library/Application Support/Claude/claude_desktop_config.json):
   {
     "mcpServers": {
       "sugar-bee": {
         "command": "uv",
-        "args": ["run", "python", "mcp_server.py"],
+        "args": ["run", "python", "mcp_writer.py"],
         "env": {
           "AGENT_API_TOKEN": "<your-token>"
         }
@@ -39,12 +40,17 @@ import sqlite3
 import httpx
 from mcp.server.fastmcp import FastMCP
 
+from mcp_adapter.core import domain
+from mcp_adapter.core.timefmt import day_bounds as _day_bounds
+from mcp_adapter.core.timefmt import normalize_input as _normalize_input
+from mcp_adapter.core.timefmt import parse as _parse_ts
+from mcp_adapter.core.timefmt import shift_minutes as _shift_minutes
+from mcp_adapter.core.timefmt import today_bounds as _today_bounds
 from utils.db import get_raw_conn
 from utils.sql_dialect import date_format_sql
-from utils.timezone import now as app_now
 from utils.timezone import timestamp_str as app_timestamp_str
 
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 DB_PATH = os.environ.get("DB_PATH", os.path.join(PROJECT_ROOT, "glucose.db"))
 API_BASE = os.environ.get("API_BASE", "http://127.0.0.1:5001")
 AGENT_API_TOKEN = os.environ.get("AGENT_API_TOKEN", "")
@@ -55,18 +61,11 @@ mcp = FastMCP("sugar-bee")
 
 
 def _normalize_timestamp(ts: str | None = None) -> str:
-    """校验并补全时间戳，确保格式为 YYYY-MM-DD HH:MM:SS。"""
-    if not ts:
-        return app_timestamp_str()
-    # 已经是完整格式
-    if re.match(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}", ts):
-        return ts
-    # 缺少年份：-MM-DD HH:MM 或 MM-DD HH:MM → 补当年
-    m = re.match(r"^-?(\d{2}-\d{2} \d{2}:\d{2}.*)$", ts)
-    if m:
-        return f"{app_now().year}-{m.group(1)}"
-    # 其他无法识别的格式，回退到当前时间
-    return app_timestamp_str()
+    """校验并补全时间戳，确保格式为 YYYY-MM-DD HH:MM:SS。
+
+    实现已收敛到 ``core.timefmt.normalize_input``，两个 server 共用同一套规则。
+    """
+    return _normalize_input(ts)
 
 
 def _api_headers(user_id: int) -> dict:
@@ -174,7 +173,11 @@ def _validate_record_data(r: dict) -> list[str]:
 
 def _check_duplicate(conn: sqlite3.Connection, user_id: int, record: dict) -> str | None:
     """检测重复记录。与 Flask /add 和 /batch_add 的重复检测逻辑保持一致。
-    返回重复信息或 None。"""
+    返回重复信息或 None。
+
+    SQL 只做 ``timestamp`` 区间比较，不用 ``datetime()`` / ``date()`` 等
+    方言函数：SQLite 与 PostgreSQL 行为一致，且能命中 timestamp 索引。
+    """
     c = conn.cursor()
     ts = record.get("datetime") or record.get("timestamp", "")
     if not ts:
@@ -191,9 +194,9 @@ def _check_duplicate(conn: sqlite3.Connection, user_id: int, record: dict) -> st
         c.execute(
             """SELECT id, timestamp FROM records
                WHERE user_id = ? AND systolic_pressure = ? AND diastolic_pressure = ?
-               AND timestamp BETWEEN datetime(?, '-3 minutes') AND datetime(?, '+3 minutes')
+               AND timestamp >= ? AND timestamp <= ?
                LIMIT 1""",
-            (user_id, systolic, diastolic, ts, ts),
+            (user_id, systolic, diastolic, _shift_minutes(ts, -3), _shift_minutes(ts, 3)),
         )
         dup = c.fetchone()
         if dup:
@@ -202,20 +205,24 @@ def _check_duplicate(conn: sqlite3.Connection, user_id: int, record: dict) -> st
         c.execute(
             """SELECT id, timestamp FROM records
                WHERE user_id = ? AND weight = ?
-               AND timestamp BETWEEN datetime(?, '-3 minutes') AND datetime(?, '+3 minutes')
+               AND timestamp >= ? AND timestamp <= ?
                LIMIT 1""",
-            (user_id, weight, ts, ts),
+            (user_id, weight, _shift_minutes(ts, -3), _shift_minutes(ts, 3)),
         )
         dup = c.fetchone()
         if dup:
             return f"3 分钟内已有相同体重记录 (ID: {dup['id']}, 时间: {dup['timestamp']})"
     elif value and value > 0 and not is_pred:
+        parsed = _parse_ts(ts)
+        day_start, day_end = _day_bounds(parsed.date() if parsed else None)
         c.execute(
             """SELECT id, timestamp, value FROM records
-               WHERE user_id = ? AND type = ? AND date(timestamp) = date(?)
-               AND is_predicted = 0 AND value > 0 AND systolic_pressure IS NULL AND weight IS NULL
+               WHERE user_id = ? AND type = ?
+               AND timestamp >= ? AND timestamp < ?
+               AND is_predicted = 0 AND value > 0
+               AND systolic_pressure IS NULL AND weight IS NULL
                LIMIT 1""",
-            (user_id, rtype, ts),
+            (user_id, rtype, day_start, day_end),
         )
         dup = c.fetchone()
         if dup:
@@ -224,11 +231,25 @@ def _check_duplicate(conn: sqlite3.Connection, user_id: int, record: dict) -> st
 
 
 def _calculate_and_set_bmi(conn: sqlite3.Connection, user_id: int, weight: float) -> float | None:
-    """根据用户档案身高计算 BMI。与 Flask 端行为一致。"""
+    """根据用户档案身高计算 BMI。与 Flask 端行为一致。
+
+    直接查 ``user_profiles.height``，不走 ``settings.calculate_bmi(user_id=...)``。
+    后者会经由 ``UserManager`` 自行解析数据库路径，在 MCP 进程里可能指向
+    错误（甚至不存在的）数据库，从而算出错误的 BMI。这里复用调用方已有的
+    连接，口径与 ``settings.calculate_bmi`` 完全一致：保留 1 位小数。
+    """
     try:
-        from settings import calculate_bmi
-        bmi = calculate_bmi(float(weight), user_id=user_id)
-        return bmi
+        c = conn.cursor()
+        c.execute("SELECT height FROM user_profiles WHERE user_id = ?", (user_id,))
+        row = c.fetchone()
+        if not row or row[0] is None:
+            return None
+        height_cm = float(row[0])
+        weight_kg = float(weight)
+        if height_cm <= 0 or weight_kg <= 0:
+            return None
+        height_m = height_cm / 100
+        return round(weight_kg / (height_m * height_m), 1)
     except Exception:
         return None
 
@@ -399,6 +420,22 @@ def _try_regex_parse(text: str) -> list[dict] | None:
     return results if results else None
 
 
+def _overwrite_scope(record: dict) -> tuple[str, tuple]:
+    """overwrite 策略下删除旧记录时的「同类」范围条件。
+
+    历史问题：原先只按 ``user_id + 分钟`` 删除，会把同一分钟的其它维度记录
+    一并删掉（例如 08:00 补录体重，会把 08:00 的血糖记录删掉）。
+    这里按记录种类收窄，与 ``_check_duplicate`` 的判定口径保持一致。
+    """
+    if record.get("systolic_pressure"):
+        return " AND systolic_pressure IS NOT NULL", ()
+    if record.get("weight"):
+        return " AND weight IS NOT NULL", ()
+    if record.get("medication_name"):
+        return " AND medication_name = ?", (record.get("medication_name"),)
+    return " AND type = ? AND systolic_pressure IS NULL AND weight IS NULL", (record.get("type", ""),)
+
+
 def _inline_batch_insert(
     conn: sqlite3.Connection,
     records: list[dict],
@@ -433,13 +470,17 @@ def _inline_batch_insert(
                 duplicates_skipped.append(dup_msg)
                 continue
             elif conflict_resolution == "overwrite":
-                # 删除同分钟旧记录（非预测记录）
+                # 删除同分钟的同类旧记录（非预测记录）。
+                # 必须按记录种类收窄：否则同一分钟内的血糖/体重/血压会互相误删。
+                scope_sql, scope_params = _overwrite_scope(r)
                 c = conn.cursor()
                 c.execute(
-                    "DELETE FROM records WHERE user_id = ? AND {} = {} AND is_predicted = 0".format(
-                        date_format_sql('timestamp', '%Y-%m-%d %H:%M'), date_format_sql('?', '%Y-%m-%d %H:%M')
-                    ),
-                    (user_id, timestamp),
+                    "DELETE FROM records WHERE user_id = ? AND {} = {} AND is_predicted = 0"
+                    .format(
+                        date_format_sql('timestamp', '%Y-%m-%d %H:%M'),
+                        date_format_sql('?', '%Y-%m-%d %H:%M'),
+                    ) + scope_sql,
+                    (user_id, timestamp, *scope_params),
                 )
 
         # 3. BMI 计算
@@ -483,12 +524,8 @@ def _user_label(user_id: int) -> str:
 
 
 def _bp_status(systolic: int, diastolic: int) -> str:
-    """血压状态评估。"""
-    if systolic > 140 or diastolic > 90:
-        return "偏高"
-    if systolic > 130 or diastolic > 85:
-        return "警戒"
-    return "正常"
+    """血压状态评估。阈值统一由 ``core.domain`` 提供。"""
+    return domain.classify_bp(systolic, diastolic)
 
 
 def _validate_bp(systolic: int, diastolic: int) -> str | None:
@@ -1064,13 +1101,14 @@ async def today_summary(user_id: int) -> str:
     """查看指定用户今天的全部健康数据摘要。用于验证记录是否成功入库。"""
     conn = _db()
     c = conn.cursor()
+    day_start, day_end = _today_bounds()
     c.execute("""
         SELECT id, type, value, systolic_pressure, diastolic_pressure,
                pulse_rate, spo2, weight, bmi, timestamp, notes
         FROM records
-        WHERE user_id = ? AND date(timestamp) = date('now', 'localtime')
+        WHERE user_id = ? AND timestamp >= ? AND timestamp < ?
         ORDER BY timestamp DESC
-    """, (user_id,))
+    """, (user_id, day_start, day_end))
     rows = c.fetchall()
     conn.close()
 
@@ -1112,15 +1150,16 @@ async def list_today_records(user_id: int) -> str:
     """列出该用户今天的所有健康记录。"""
     conn = _db()
     c = conn.cursor()
+    day_start, day_end = _today_bounds()
     c.execute(
         """
         SELECT type, value, systolic_pressure, diastolic_pressure,
                pulse_rate, spo2, weight, timestamp, notes
         FROM records
-        WHERE user_id = ? AND date(timestamp) = date('now', 'localtime')
+        WHERE user_id = ? AND timestamp >= ? AND timestamp < ?
         ORDER BY timestamp DESC
         """,
-        (user_id,),
+        (user_id, day_start, day_end),
     )
     rows = c.fetchall()
     conn.close()

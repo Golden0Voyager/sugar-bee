@@ -1,24 +1,40 @@
 #!/usr/bin/env python3
-"""Sugar Bee 健康数据只读 MCP server.
+"""Sugar Bee 只读分析 MCP server（12 个 ``sbhealth_*`` 工具）。
 
-供 Octop agent 查询 sugar_bee 中的血糖 / 体重 / 运动 / 血压 / 用药数据。
-所有查询严格按 user_id 过滤，SQLite 以只读模式打开，绝不写入。
+供 Octop / 分析型 agent 查询血糖、体重、运动、血压、用药数据。
+所有查询严格按 user_id 过滤，SQLite 以 ``mode=ro`` 打开，绝不写入。
 
-运行：/root/.octop/venv/bin/python /root/health_tools/sugar_bee_mcp.py
-数据：/opt/sugar_bee/app/db_data/glucose.db（宿主机路径，容器内为 /app/db_data/glucose.db）
+运行方式：
+  # 仓库内
+  uv run python -m mcp_adapter.servers.reader
+  # 根目录入口（部署脚本使用，与本地同名）
+  uv run python mcp_reader.py
+
+环境变量：
+  SB_MCP_DB        数据库路径（默认 /opt/sugar_bee/app/db_data/glucose.db）
+  SB_MCP_USER_ID   默认用户（默认 1）
+  SB_MCP_TS_MODE   时间戳口径 local（默认）/ utc
 """
 
 from __future__ import annotations
 
 import csv
 import os
-import re
-import shutil
 import sqlite3
-from datetime import datetime, timedelta, timezone
+import sys
+from datetime import UTC, datetime
 from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
+
+# 允许以脚本方式直接运行时（python mcp_adapter/servers/reader.py）导入包内核心。
+# 独立部署时需同步 mcp_adapter/core/ 与 utils/timezone.py，
+# 见 docs/mcp-architecture-review.md「部署」一节。
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from mcp_adapter.core import analytics, domain, timefmt  # noqa: E402
 
 DB_PATH = os.environ.get("SB_MCP_DB", "/opt/sugar_bee/app/db_data/glucose.db")
 DEFAULT_USER_ID = int(os.environ.get("SB_MCP_USER_ID", "1"))
@@ -26,59 +42,49 @@ DEFAULT_USER_ID = int(os.environ.get("SB_MCP_USER_ID", "1"))
 mcp = FastMCP(
     "sugar-bee-health",
     instructions=(
-        "查询糖友（user_id=%d）在 Sugar Bee 中记录的健康数据：血糖、体重、"
+        f"查询糖友（user_id={DEFAULT_USER_ID}）在 Sugar Bee 中记录的健康数据：血糖、体重、"
         "运动、血压、用药。全部为只读查询。血糖单位 mmol/L，体重 kg，血压 mmHg，"
         "距离 km。回答时用中文，数据要说明统计口径和时间范围。"
-        % DEFAULT_USER_ID
     ),
 )
 
 
 def _connect() -> sqlite3.Connection:
-    conn = sqlite3.connect("file:%s?mode=ro" % DB_PATH, uri=True)
+    conn = sqlite3.connect(f"file:{DB_PATH}?mode=ro", uri=True)
     conn.row_factory = sqlite3.Row
     return conn
 
 
 def _cutoff(days: int) -> str:
-    """回溯截止时间。数据库 timestamp 存 UTC，必须用 UTC now 比较，
-    否则宿主机在 UTC+8 时会让 cutoff 超前 8 小时，漏掉最近的数据。"""
-    return (
-        datetime.now(timezone.utc) - timedelta(days=max(days, 1))
-    ).strftime("%Y-%m-%d %H:%M:%S")
+    """回溯窗口起点。口径见 core.timefmt（默认按本地墙钟，不再假定 UTC）。"""
+    return timefmt.cutoff(days)
 
 
 def _parse_duration_minutes(text: str | None) -> float | None:
     """把 '41min' / '1h20m' / '45分钟' / '45' 这类时长解析成分钟。"""
-    if not text:
-        return None
-    t = str(text).strip().lower()
-    m = re.match(
-        r"^(?:(\d+(?:\.\d+)?)\s*(?:h|hr|hour|小时|个小时))?"
-        r"(?:(\d+(?:\.\d+)?)\s*(?:m|min|mins|minute|分钟)?)?$",
-        t,
-    )
-    if not m:
-        try:
-            return float(t)
-        except ValueError:
-            return None
-    hours = float(m.group(1) or 0)
-    minutes = float(m.group(2) or 0)
-    if hours == 0 and minutes == 0:
-        return None
-    return hours * 60 + minutes
+    return analytics.duration_minutes(text)
 
 
 def _fmt_ts(ts: str | None) -> str | None:
-    """UTC 时间戳转北京时间（+8h）输出，形如 2026-10-12 16:20。"""
-    if not ts:
-        return None
-    try:
-        dt = datetime.strptime(str(ts)[:19], "%Y-%m-%d %H:%M:%S") + timedelta(hours=8)
-        return dt.strftime("%Y-%m-%d %H:%M")
-    except ValueError:
-        return str(ts)[:16]
+    """时间戳转展示字符串（YYYY-MM-DD HH:MM），口径见 core.timefmt。"""
+    return timefmt.display(ts)
+
+
+# SQLite 日期/小时分组是否需要 UTC→本地平移。
+# 默认 "local"：库里的 timestamp 本身就是本地墙钟，不能再用 SQL 加 8 小时。
+_TS_SHIFT = ", '+8 hours'" if timefmt.ts_mode() == timefmt.UTC else ""
+
+
+def _in_clause(values: tuple[str, ...]) -> str:
+    """生成 IN 子句占位符，避免把类型列表硬编码进每条 SQL。"""
+    return ",".join("?" * len(values))
+
+
+def _type_in_sql(values: tuple[str, ...]) -> str:
+    """把内部常量元组拼成 SQL IN 字面量（取值来自代码常量，不含用户输入）。"""
+    joined = ",".join(f"'{v}'" for v in values)
+    return f"type in ({joined})"
+
 
 
 @mcp.tool()
@@ -94,9 +100,10 @@ def sbhealth_overview(days: int = 30) -> dict:
 
         row = conn.execute(
             "select timestamp, value, type from records "
-            "where user_id=? and timestamp>=? and type in ('CGM','空腹','餐后2小时','睡前','血糖') "
+            "where user_id=? and timestamp>=? and type in ("
+            + _in_clause(domain.GLUCOSE_LATEST_TYPES) + ") "
             "order by timestamp desc limit 1",
-            (DEFAULT_USER_ID, _cutoff(days)),
+            (DEFAULT_USER_ID, _cutoff(days), *domain.GLUCOSE_LATEST_TYPES),
         ).fetchone()
         out["latest_glucose"] = (
             {"time": _fmt_ts(row["timestamp"]), "value": row["value"], "unit": "mmol/L", "type": row["type"]}
@@ -130,9 +137,9 @@ def sbhealth_overview(days: int = 30) -> dict:
 
         row = conn.execute(
             "select count(*) c, max(timestamp) t from records "
-            "where user_id=? and timestamp>=? and type in "
-            "('跑步','走路','健身','运动','晨跑前')",
-            (DEFAULT_USER_ID, _cutoff(days)),
+            "where user_id=? and timestamp>=? and type in ("
+            + _in_clause(domain.EXERCISE_TYPES) + ")",
+            (DEFAULT_USER_ID, _cutoff(days), *domain.EXERCISE_TYPES),
         ).fetchone()
         out["exercise_sessions_in_window"] = row["c"]
         out["last_exercise_time"] = _fmt_ts(row["t"])
@@ -159,9 +166,10 @@ def sbhealth_glucose_summary(days: int = 30) -> dict:
         rows = conn.execute(
             "select timestamp, value, type from records "
             "where user_id=? and timestamp>=? and value>0 and value<40 "
-            "and (unit='mmol/L' or type in ('CGM','空腹','餐后2小时','睡前','血糖','运动后','加餐')) "
+            "and (unit='mmol/L' or type in ("
+            + _in_clause(domain.GLUCOSE_SUMMARY_TYPES) + ")) "
             "order by timestamp",
-            (DEFAULT_USER_ID, _cutoff(days)),
+            (DEFAULT_USER_ID, _cutoff(days), *domain.GLUCOSE_SUMMARY_TYPES),
         ).fetchall()
 
         if not rows:
@@ -170,9 +178,9 @@ def sbhealth_glucose_summary(days: int = 30) -> dict:
         values = [r["value"] for r in rows]
         n = len(values)
         mean = sum(values) / n
-        in_range = sum(1 for v in values if 3.9 <= v <= 10.0)
-        high = sum(1 for v in values if v > 10.0)
-        low = sum(1 for v in values if v < 3.9)
+        in_range = sum(1 for v in values if domain.in_target_range(v))
+        high = sum(1 for v in values if v > domain.TIR_HIGH)
+        low = sum(1 for v in values if v < domain.TIR_LOW)
 
         by_meal: dict[str, dict] = {}
         for r in rows:
@@ -182,7 +190,7 @@ def sbhealth_glucose_summary(days: int = 30) -> dict:
             b["sum"] += r["value"]
             b["max"] = r["value"] if b["max"] is None else max(b["max"], r["value"])
             b["min"] = r["value"] if b["min"] is None else min(b["min"], r["value"])
-        for t, b in by_meal.items():
+        for b in by_meal.values():
             b["mean"] = round(b["sum"] / b["count"], 2)
             del b["sum"]
 
@@ -193,7 +201,7 @@ def sbhealth_glucose_summary(days: int = 30) -> dict:
             "mean_mmol_l": round(mean, 2),
             "min_mmol_l": round(min(values), 2),
             "max_mmol_l": round(max(values), 2),
-            "target_range": "3.9-10.0 mmol/L",
+            "target_range": f"{domain.TIR_LOW:.1f}-{domain.TIR_HIGH:.1f} mmol/L",
             "tir_percent": round(in_range * 100.0 / n, 1),
             "above_target_count": high,
             "below_target_count": low,
@@ -299,9 +307,9 @@ def sbhealth_exercise_summary(days: int = 30) -> dict:
     try:
         rows = conn.execute(
             "select timestamp, type, distance, duration, heart_rate, calories, steps, pace, cadence "
-            "from records where user_id=? and timestamp>=? and type in "
-            "('跑步','走路','健身','运动','晨跑前') order by timestamp desc",
-            (DEFAULT_USER_ID, _cutoff(days)),
+            "from records where user_id=? and timestamp>=? and type in ("
+            + _in_clause(domain.EXERCISE_TYPES) + ") order by timestamp desc",
+            (DEFAULT_USER_ID, _cutoff(days), *domain.EXERCISE_TYPES),
         ).fetchall()
 
         sessions = []
@@ -366,7 +374,7 @@ def sbhealth_blood_pressure(days: int = 30) -> dict:
             return {"user_id": DEFAULT_USER_ID, "window_days": days, "samples": 0}
         sys_v = [r["systolic_pressure"] for r in rows]
         dia_v = [r["diastolic_pressure"] for r in rows]
-        high = sum(1 for r in rows if r["systolic_pressure"] >= 140 or r["diastolic_pressure"] >= 90)
+        high = sum(1 for r in rows if domain.is_high_bp(r["systolic_pressure"], r["diastolic_pressure"]))
         return {
             "user_id": DEFAULT_USER_ID,
             "window_days": days,
@@ -467,31 +475,24 @@ def sbhealth_trend_analysis(days: int = 90) -> dict:
         out: dict = {"window_days": days, "cutoff": cutoff, "note": "时间均为北京时间"}
 
         rows = conn.execute(
-            "select strftime('%Y-%W', timestamp, '+8 hours') as wk, "
+            "select strftime('%Y-%W', timestamp" + _TS_SHIFT + ") as wk, "
             "avg(value) as avg_v, count(*) as n from records "
             "where user_id=? and value is not null and timestamp>=? "
-            "and type in ('CGM','空腹','餐后','睡前','随机') group by wk order by wk",
-            (DEFAULT_USER_ID, cutoff),
+            "and type in (" + _in_clause(domain.GLUCOSE_ANALYSIS_TYPES) + ") "
+            "group by wk order by wk",
+            (DEFAULT_USER_ID, cutoff, *domain.GLUCOSE_ANALYSIS_TYPES),
         ).fetchall()
         if len(rows) >= 2:
-            n = len(rows)
-            xs = list(range(n))
             ys = [r[1] for r in rows]
-            mx = sum(xs) / n
-            my = sum(ys) / n
-            denom = sum((x - mx) ** 2 for x in xs)
-            slope = sum((x - mx) * (y - my) for x, y in zip(xs, ys)) / denom if denom else 0.0
-            f_avg = sum(ys[: n // 2]) / (n // 2)
-            s_avg = sum(ys[n // 2 :]) / (n - n // 2)
+            f_avg, s_avg, change = analytics.half_change(ys)
             out["glucose"] = {
-                "weeks": n,
+                "weeks": len(rows),
                 "weekly_avg_mmol": [round(y, 2) for y in ys],
-                "slope_mmol_per_week": round(slope, 4),
-                "first_half_avg": round(f_avg, 2),
-                "second_half_avg": round(s_avg, 2),
-                "change_mmol": round(s_avg - f_avg, 2),
-                "direction": "上升" if s_avg - f_avg > 0.3
-                else ("下降" if s_avg - f_avg < -0.3 else "基本平稳"),
+                "slope_mmol_per_week": round(analytics.linear_slope(ys), 4),
+                "first_half_avg": f_avg,
+                "second_half_avg": s_avg,
+                "change_mmol": change,
+                "direction": analytics.direction(change),
             }
 
         wrows = conn.execute(
@@ -507,17 +508,16 @@ def sbhealth_trend_analysis(days: int = 90) -> dict:
                 "first_kg": round(wrows[0][1], 1),
                 "last_kg": round(wrows[-1][1], 1),
                 "change_kg": round(delta, 1),
-                "direction": "上升" if delta > 0.5
-                else ("下降" if delta < -0.5 else "基本平稳"),
+                "direction": analytics.direction(delta, tolerance=0.5),
             }
 
         erows = conn.execute(
-            "select strftime('%Y-%m', timestamp, '+8 hours') as ym, count(*) as n, "
+            "select strftime('%Y-%m', timestamp" + _TS_SHIFT + ") as ym, count(*) as n, "
             "sum(distance) as dist from records "
-            "where user_id=? and timestamp>=? and type in "
-            "('跑步','走路','健身','运动','晨跑前') "
+            "where user_id=? and timestamp>=? and type in ("
+            + _in_clause(domain.EXERCISE_TYPES) + ") "
             "group by ym order by ym",
-            (DEFAULT_USER_ID, cutoff),
+            (DEFAULT_USER_ID, cutoff, *domain.EXERCISE_TYPES),
         ).fetchall()
         if erows:
             counts = [r[1] for r in erows]
@@ -548,15 +548,15 @@ def sbhealth_exercise_glucose_correlation(days: int = 90) -> dict:
     conn = _connect()
     try:
         cutoff = _cutoff(days)
-        ex_types = ("跑步", "走路", "健身", "运动", "晨跑前")
-        placeholders = ",".join("?" * len(ex_types))
+        ex_types = domain.EXERCISE_TYPES
+        placeholders = _in_clause(ex_types)
 
         # 每日运动距离
         day_dist = {
             r[0]: (r[1] or 0.0) for r in conn.execute(
-                "select date(timestamp, '+8 hours') as d, sum(distance) from records "
-                "where user_id=? and timestamp>=? and type in (%s) "
-                "group by d" % placeholders,
+                "select date(timestamp" + _TS_SHIFT + ") as d, sum(distance) from records "
+                "where user_id=? and timestamp>=? and type in (" + placeholders + ") "
+                "group by d",
                 (DEFAULT_USER_ID, cutoff, *ex_types),
             )
         }
@@ -564,11 +564,11 @@ def sbhealth_exercise_glucose_correlation(days: int = 90) -> dict:
         # 每日血糖均值
         day_glu = {
             r[0]: r[1] for r in conn.execute(
-                "select date(timestamp, '+8 hours') as d, avg(value) from records "
+                "select date(timestamp" + _TS_SHIFT + ") as d, avg(value) from records "
                 "where user_id=? and timestamp>=? and value is not null "
-                "and type in ('CGM','空腹','餐后','睡前','随机') "
+                "and type in (" + _in_clause(domain.GLUCOSE_ANALYSIS_TYPES) + ") "
                 "group by d",
-                (DEFAULT_USER_ID, cutoff),
+                (DEFAULT_USER_ID, cutoff, *domain.GLUCOSE_ANALYSIS_TYPES),
             )
         }
 
@@ -576,9 +576,9 @@ def sbhealth_exercise_glucose_correlation(days: int = 90) -> dict:
         for d, dist in day_dist.items():
             if d not in day_glu:
                 continue
-            if dist >= 3:
+            if dist >= domain.EXERCISE_KM_HIGH:
                 buckets["high"].append(day_glu[d])
-            elif dist >= 1:
+            elif dist >= domain.EXERCISE_KM_LOW:
                 buckets["mid"].append(day_glu[d])
             else:
                 buckets["low"].append(day_glu[d])
@@ -610,9 +610,8 @@ def sbhealth_exercise_glucose_correlation(days: int = 90) -> dict:
             diff = hi - lo
             out["diff_high_minus_low"] = round(diff, 2)
             out["conclusion"] = (
-                "高运动量日（>=3km）平均血糖 %.2f，低运动量日（<1km）平均血糖 %.2f，"
-                "相差 %s%.2f mmol/L"
-                % (hi, lo, "高 " if diff > 0 else "低 ", abs(diff))
+                f"高运动量日（>=3km）平均血糖 {hi:.2f}，低运动量日（<1km）平均血糖 {lo:.2f}，"
+                f"相差 {'高 ' if diff > 0 else '低 '}{abs(diff):.2f} mmol/L"
             )
         elif len(filled) == 1:
             only = out[filled[0]]
@@ -620,10 +619,8 @@ def sbhealth_exercise_glucose_correlation(days: int = 90) -> dict:
                      "mid_1to3km": "中等运动量（1-3km）",
                      "low_lt1km": "低运动量（<1km）"}[filled[0]]
             out["conclusion"] = (
-                "有血糖记录的 %d 天全部落在%s档，其他档位没有数据，无法做分层对比。"
-                "该档平均血糖 %.2f mmol/L（范围 %.2f~%.2f）。"
-                % (only["days"], label, only["avg_mmol"],
-                   only["min_mmol"], only["max_mmol"])
+                f"有血糖记录的 {only['days']} 天全部落在{label}档，其他档位没有数据，无法做分层对比。"
+                f"该档平均血糖 {only['avg_mmol']:.2f} mmol/L（范围 {only['min_mmol']:.2f}~{only['max_mmol']:.2f}）。"
             )
         else:
             out["conclusion"] = "数据不足，无法比较（需要有血糖记录且运动距离分布在不同档位）"
@@ -651,23 +648,24 @@ def sbhealth_anomaly_alerts(days: int = 30) -> dict:
         for r in conn.execute(
             "select timestamp, value, type from records "
             "where user_id=? and timestamp>=? and value is not null "
-            "and type in ('CGM','空腹','餐后','睡前','随机') order by timestamp",
-            (DEFAULT_USER_ID, cutoff),
+            "and type in (" + _in_clause(domain.GLUCOSE_ANALYSIS_TYPES) + ") "
+            "order by timestamp",
+            (DEFAULT_USER_ID, cutoff, *domain.GLUCOSE_ANALYSIS_TYPES),
         ).fetchall():
             ts, v, t = r
-            if v < 3.9:
+            if v < domain.HYPOGLYCEMIA:
                 alerts.append({"type": "低血糖", "time": _fmt_ts(ts),
-                               "detail": "%.1f mmol/L（%s）" % (v, t)})
-            elif v > 13.9:
+                               "detail": f"{v:.1f} mmol/L（{t}）"})
+            elif v > domain.HYPERGLYCEMIA:
                 alerts.append({"type": "高血糖", "time": _fmt_ts(ts),
-                               "detail": "%.1f mmol/L（%s）" % (v, t)})
+                               "detail": f"{v:.1f} mmol/L（{t}）"})
             if t == "CGM":
                 hour = conn.execute(
-                    "select cast(strftime('%H', ?, '+8 hours') as integer)", (ts,)
+                    "select cast(strftime('%H', ?" + _TS_SHIFT + ") as integer)", (ts,)
                 ).fetchone()[0]
-                if hour in (2, 3, 4, 5) and v > 10.0:
+                if hour in domain.NOCTURNAL_HOURS and v > domain.NOCTURNAL_HIGH:
                     alerts.append({"type": "夜间高血糖", "time": _fmt_ts(ts),
-                                   "detail": "%.1f mmol/L（凌晨 %d 点）" % (v, hour)})
+                                   "detail": f"{v:.1f} mmol/L（凌晨 {hour} 点）"})
 
         for r in conn.execute(
             "select timestamp, systolic_pressure, diastolic_pressure, pulse_rate "
@@ -676,10 +674,11 @@ def sbhealth_anomaly_alerts(days: int = 30) -> dict:
             (DEFAULT_USER_ID, cutoff),
         ).fetchall():
             ts, sys_v, dia_v, pr = r
-            if sys_v >= 140 or dia_v >= 90:
+            if domain.is_high_bp(sys_v, dia_v):
+                pulse = f"，脉搏 {pr}" if pr else ""
                 alerts.append({
                     "type": "血压偏高", "time": _fmt_ts(ts),
-                    "detail": "%d/%d mmHg%s" % (sys_v, dia_v, "，脉搏 %d" % pr if pr else ""),
+                    "detail": f"{sys_v}/{dia_v} mmHg{pulse}",
                 })
 
         counts: dict = {}
@@ -711,7 +710,7 @@ _EXPORT_SPECS = {
     "glucose": (
         "timestamp, value, unit, type, notes",
         ["时间", "血糖值", "单位", "测量类型", "备注"],
-        "type in ('CGM','空腹','餐后','睡前','随机') and value is not null",
+        _type_in_sql(domain.GLUCOSE_ANALYSIS_TYPES) + " and value is not null",
     ),
     "weight": (
         "timestamp, weight, bmi",
@@ -721,7 +720,7 @@ _EXPORT_SPECS = {
     "exercise": (
         "timestamp, type, distance, duration, heart_rate, calories, steps, pace",
         ["时间", "运动类型", "距离km", "时长", "心率", "千卡", "步数", "配速"],
-        "type in ('跑步','走路','健身','运动','晨跑前')",
+        _type_in_sql(domain.EXERCISE_TYPES),
     ),
     "blood_pressure": (
         "timestamp, systolic_pressure, diastolic_pressure, pulse_rate",
@@ -781,7 +780,7 @@ def _csv_cell(v) -> str:
     if v is None:
         return ""
     if isinstance(v, float):
-        return ("%.2f" % v).rstrip("0").rstrip(".")
+        return f"{v:.2f}".rstrip("0").rstrip(".")
     return str(v)
 
 
@@ -812,13 +811,13 @@ def sbhealth_export(
     try:
         real_dir, virtual_dir = _resolve_export_dir(workspace)
         cutoff = _cutoff(days) if days else "0000-01-01 00:00:00"
-        stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        stamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
 
         wanted = list(_EXPORT_SPECS) if data_type == "all" else [data_type]
         unknown = [t for t in wanted if t not in _EXPORT_SPECS]
         if unknown:
             return {
-                "error": "未知维度: %s" % ", ".join(unknown),
+                "error": f"未知维度: {', '.join(unknown)}",
                 "valid_types": list(_EXPORT_SPECS) + ["all"],
             }
 
@@ -826,8 +825,8 @@ def sbhealth_export(
         for key in wanted:
             cols, headers, where = _EXPORT_SPECS[key]
             sql = (
-                "select %s from records where user_id=? and timestamp>=? and %s "
-                "order by timestamp" % (cols, where)
+                f"select {cols} from records where user_id=? and timestamp>=? and {where} "
+                "order by timestamp"
             )
             rows = conn.execute(sql, (DEFAULT_USER_ID, cutoff)).fetchall()
             if not rows:
@@ -836,7 +835,7 @@ def sbhealth_export(
             if truncated:
                 rows = rows[-max_rows:]
 
-            name = "sugar_bee_%s_%s.csv" % (key, stamp)
+            name = f"sugar_bee_{key}_{stamp}.csv"
             path = os.path.join(real_dir, name)
             with open(path, "w", encoding="utf-8-sig", newline="") as fh:
                 w = csv.writer(fh)
@@ -871,14 +870,19 @@ def sbhealth_export(
             "pruned_old_files": _prune_exports(real_dir),
             "read_hint": (
                 "用 read_file 读，path 用上面的 file_path（虚拟路径，不要加 /root 前缀）。"
-                "默认每次返回 100 行，靠 offset 翻页；%d 行约需 %d 次读取，"
+                f"默认每次返回 100 行，靠 offset 翻页；{total_rows} 行约需 "
+                f"{max(1, -(-total_rows // 100))} 次读取，"
                 "建议先只读尾部最新数据，或改用汇总类工具。"
-                % (total_rows, max(1, -(-total_rows // 100)))
             ),
         }
     finally:
         conn.close()
 
 
-if __name__ == "__main__":
+def main() -> None:
+    """stdio 入口（MCP 客户端拉起后即阻塞在此）。"""
     mcp.run()
+
+
+if __name__ == "__main__":
+    main()
