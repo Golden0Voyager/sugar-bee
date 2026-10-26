@@ -13,10 +13,12 @@ import sqlite3
 from unittest.mock import patch
 
 from services.prediction_service import (
+    _slot_for_hour,
     link_prediction_to_real_record,
     predict_morning_fpg,
     predict_post_exercise_glucose,
     predict_remaining_glucose_slots,
+    summarize_slot_history,
 )
 
 USER_ID = 1
@@ -359,3 +361,113 @@ class TestPredictRemaining:
         assert abs(row['value'] - 7.0) < 0.01, "不应被覆盖"
         assert row['notes'] == '已有预测', "notes 不应被修改"
         conn2.close()
+
+
+# ============================================================
+# summarize_slot_history — 个人同时间点历史分布（预测校准用）
+# ============================================================
+
+class TestSummarizeSlotHistory:
+    """summarize_slot_history 函数测试"""
+
+    def _conn(self, rows):
+        """建一张最小 records 表并灌入 (type, value, timestamp, is_predicted)"""
+        conn = sqlite3.connect(':memory:')
+        c = conn.cursor()
+        c.execute(
+            "CREATE TABLE records ("
+            " id INTEGER PRIMARY KEY AUTOINCREMENT,"
+            " user_id INTEGER, type TEXT, value REAL,"
+            " timestamp DATETIME, is_predicted BOOLEAN)")
+        for rtype, value, ts, pred in rows:
+            c.execute(
+                "INSERT INTO records (user_id, type, value, timestamp, is_predicted) "
+                "VALUES (1, ?, ?, ?, ?)", (rtype, value, ts, pred))
+        conn.commit()
+        return conn
+
+    def test_empty_slot_types_returns_empty(self):
+        conn = self._conn([])
+        assert summarize_slot_history(conn.cursor(), 1, '2026-10-26', []) == {}
+        conn.close()
+
+    def test_invalid_target_date_returns_empty(self):
+        conn = self._conn([('午餐后2小时', 9.9, '2026-10-25 14:30:00', 0)])
+        assert summarize_slot_history(conn.cursor(), 1, None, ['午餐后2小时']) == {}
+        assert summarize_slot_history(conn.cursor(), 1, 'not-a-date', ['午餐后2小时']) == {}
+        conn.close()
+
+    def test_no_history_rows_returns_empty(self):
+        conn = self._conn([('晚餐后2小时', 8.8, '2026-10-25 20:00:00', 0)])
+        assert summarize_slot_history(conn.cursor(), 1, '2026-10-26', ['午餐后2小时']) == {}
+        conn.close()
+
+    def test_aggregates_avg_range_and_last(self):
+        conn = self._conn([
+            ('午餐后2小时', 7.1, '2026-10-24 14:30:00', 0),
+            ('午餐后2小时', 9.9, '2026-10-25 14:30:00', 0),
+            ('午餐后2小时', 12.7, '2026-10-23 14:30:00', 0),
+        ])
+        out = summarize_slot_history(conn.cursor(), 1, '2026-10-26', ['午餐后2小时'])
+        assert out['午餐后2小时'] == {
+            'n': 3, 'avg': 9.9, 'min': 7.1, 'max': 12.7, 'last': 9.9,
+        }, "last 取时间上最近的一次，不是数组最后一个"
+        conn.close()
+
+    def test_excludes_predicted_values(self):
+        conn = self._conn([
+            ('午餐后2小时', 9.9, '2026-10-25 14:30:00', 0),
+            ('午餐后2小时', 8.2, '2026-10-26 14:30:00', 1),
+        ])
+        out = summarize_slot_history(conn.cursor(), 1, '2026-10-26', ['午餐后2小时'])
+        assert out['午餐后2小时']['n'] == 1
+        assert out['午餐后2小时']['max'] == 9.9
+        conn.close()
+
+    def test_excludes_rows_outside_window(self):
+        conn = self._conn([
+            ('午餐后2小时', 9.9, '2026-10-25 14:30:00', 0),
+            ('午餐后2小时', 6.0, '2026-01-01 14:30:00', 0),
+        ])
+        out = summarize_slot_history(conn.cursor(), 1, '2026-10-26', ['午餐后2小时'])
+        assert out['午餐后2小时']['n'] == 1, "超出 30 天窗口的旧数据不计入"
+        conn.close()
+
+    def test_multiple_slots_bucketed(self):
+        conn = self._conn([
+            ('午餐后2小时', 9.9, '2026-10-25 14:30:00', 0),
+            ('晚饭前', 6.1, '2026-10-25 17:30:00', 0),
+            ('晚饭前', 6.5, '2026-10-24 17:30:00', 0),
+        ])
+        out = summarize_slot_history(
+            conn.cursor(), 1, '2026-10-26', ['午餐后2小时', '晚饭前', '睡前'])
+        assert set(out) == {'午餐后2小时', '晚饭前'}, "无样本的槽位不应出现"
+        assert out['晚饭前']['n'] == 2
+        assert out['晚饭前']['avg'] == 6.3
+        conn.close()
+
+    def test_generic_postmeal_record_mapped_by_hour(self):
+        """历史里只写「餐后2小时」的记录，按测量时间归到对应餐次"""
+        conn = self._conn([
+            ('餐后2小时', 12.7, '2026-10-24 13:46:00', 0),
+            ('餐后2小时', 7.4, '2026-10-23 10:30:00', 0),
+            ('餐后2小时', 8.9, '2026-10-22 19:30:00', 0),
+        ])
+        out = summarize_slot_history(
+            conn.cursor(), 1, '2026-10-26',
+            ['早餐后2小时', '午餐后2小时', '晚餐后2小时'])
+        assert out['午餐后2小时']['max'] == 12.7, "13:46 的通用餐后记录应归到午餐"
+        assert out['早餐后2小时']['max'] == 7.4
+        assert out['晚餐后2小时']['max'] == 8.9
+        conn.close()
+
+    def test_generic_postmeal_outside_windows_ignored(self):
+        conn = self._conn([('餐后2小时', 9.0, '2026-10-24 17:30:00', 0)])
+        out = summarize_slot_history(conn.cursor(), 1, '2026-10-26', ['午餐后2小时'])
+        assert out == {}, "17:30 不在任何餐后窗口内，不应计入"
+        conn.close()
+
+    def test_slot_for_hour_handles_bad_timestamp(self):
+        assert _slot_for_hour('bad-timestamp') is None
+        assert _slot_for_hour(None) is None
+        assert _slot_for_hour('2026-10-24 13:46:00') == '午餐后2小时'

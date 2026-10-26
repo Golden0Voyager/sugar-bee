@@ -239,7 +239,8 @@ class TestCallChatStream:
 
         result = list(call_chat_stream([{"role": "user", "content": "hi"}]))
         assert result == ["fallback"]
-        assert mock_client.chat.completions.create.call_args[1]['model'] == 'deepseek-ai/DeepSeek-V4-Pro'
+        import settings
+        assert mock_client.chat.completions.create.call_args[1]['model'] == settings.MODELSCOPE_MODELS['chat'][0]
 
     @patch('ai_client.SENSENOVA_API_KEY', 'fake-key')
     @patch('ai_client.MODELSCOPE_API_KEY', 'fake-key')
@@ -262,7 +263,8 @@ class TestCallChatStream:
 
         result = list(call_chat_stream([{"role": "user", "content": "hi"}]))
         assert result == ["modelscope"]
-        assert fallback_client.chat.completions.create.call_args[1]['model'] == 'deepseek-ai/DeepSeek-V4-Pro'
+        import settings
+        assert fallback_client.chat.completions.create.call_args[1]['model'] == settings.MODELSCOPE_MODELS['chat'][0]
 
     @patch('ai_client.SENSENOVA_API_KEY', 'fake-key')
     @patch('ai_client.MODELSCOPE_API_KEY', 'fake-key')

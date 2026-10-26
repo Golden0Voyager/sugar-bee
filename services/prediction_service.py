@@ -381,6 +381,73 @@ def backfill_post_exercise_predictions(db, user_id=1, days=30):
         return results
 
 
+SLOT_HISTORY_DAYS = 30
+
+# 通用「餐后」记录（历史数据里常只写“餐后2小时”）按小时归到具体餐次
+_SLOT_HOUR_WINDOWS = {
+    '早餐后2小时': (8, 12),
+    '午餐后2小时': (12, 17),
+    '晚餐后2小时': (18, 21),
+}
+
+
+def _slot_for_hour(timestamp):
+    """把通用餐后记录按测量时间归到早/午/晚餐槽位，无法判断时返回 None。"""
+    try:
+        hour = int(str(timestamp).split(' ')[1].split(':')[0])
+    except (IndexError, ValueError):
+        return None
+    for slot, (lo, hi) in _SLOT_HOUR_WINDOWS.items():
+        if lo <= hour < hi:
+            return slot
+    return None
+
+
+def summarize_slot_history(cursor, user_id, target_date, slot_types, days=SLOT_HISTORY_DAYS):
+    """统计各时间槽在近 N 天的个人实测分布，用于校准 AI 预测。
+
+    返回 {type: {'n', 'avg', 'min', 'max', 'last'}}，无样本的时间槽不出现。
+    只统计实测值（is_predicted = 0），避免预测值反过来强化自己。
+    除精确匹配时间槽外，也收纳只写了「餐后2小时」的历史记录（按小时归餐次），
+    否则模型会漏掉用户真实出现过的餐后高峰。
+    """
+    if not slot_types:
+        return {}
+    try:
+        since = (datetime.datetime.strptime(target_date, '%Y-%m-%d')
+                 - datetime.timedelta(days=days)).strftime('%Y-%m-%d')
+    except (TypeError, ValueError):
+        return {}
+
+    placeholders = ','.join('?' * len(slot_types))
+    cursor.execute(
+        "SELECT type, value, timestamp FROM records "
+        "WHERE user_id = ? AND value > 0 AND is_predicted = 0 "
+        f"AND (type IN ({placeholders}) OR type LIKE '%餐后%') "
+        "AND DATE(timestamp) >= ? AND DATE(timestamp) < ? "
+        "ORDER BY timestamp ASC",
+        [user_id] + list(slot_types) + [since, target_date])
+
+    buckets = {slot_type: [] for slot_type in slot_types}
+    for rtype, value, timestamp in cursor.fetchall() or []:
+        slot = rtype if rtype in buckets else _slot_for_hour(timestamp)
+        if slot in buckets:
+            buckets[slot].append(value)
+
+    summary = {}
+    for slot_type, values in buckets.items():
+        if not values:
+            continue
+        summary[slot_type] = {
+            'n': len(values),
+            'avg': round(sum(values) / len(values), 1),
+            'min': round(min(values), 1),
+            'max': round(max(values), 1),
+            'last': round(values[-1], 1),
+        }
+    return summary
+
+
 def predict_remaining_glucose_slots(db, user_id=1, target_date=None, force_update=False):
     if not AI_AVAILABLE:
         return []
@@ -429,18 +496,40 @@ def predict_remaining_glucose_slots(db, user_id=1, target_date=None, force_updat
             c.execute(
                 "SELECT COUNT(DISTINCT type) FROM records "
                 "WHERE user_id = ? AND DATE(timestamp) = ? AND value > 0 "
-                "AND is_predicted = 1 AND type IN (%s)" % placeholders,
+                f"AND is_predicted = 1 AND type IN ({placeholders})",
                 [user_id, target_date] + slot_types)
             if c.fetchone()[0] == len(slot_types):
                 return 'all_predicted'
 
+        # 个人历史分布：让模型锚定本人实测区间，而不是向人群均值回归
+        slot_history = summarize_slot_history(
+            c, user_id, target_date, [s['type'] for s in missing_slots])
+
         measured_str = ', '.join([f"{r[0]} mmol/L ({r[1]})" for r in measured])
         missing_str = ', '.join([s['type'] for s in missing_slots])
 
-        prompt = f"""基于今日已测数据预测剩余时间点的血糖值。
+        history_lines = []
+        for slot in missing_slots:
+            h = slot_history.get(slot['type'])
+            if not h:
+                continue
+            history_lines.append(
+                f"- {slot['type']}: 近{SLOT_HISTORY_DAYS}天实测 {h['n']} 次，"
+                f"均值 {h['avg']}，区间 {h['min']}-{h['max']}，最近一次 {h['last']}")
+        history_str = '\n'.join(history_lines) if history_lines else '- 暂无同时间点历史实测'
+
+        prompt = f"""基于今日已测数据 + 个人历史分布预测剩余时间点的血糖值。
 日期: {target_date}
 已测数据: {measured_str}
+个人历史（同一时间点，仅实测值）:
+{history_str}
 需预测: {missing_str}
+
+要求：
+1. 以上述个人历史区间为主要依据，不要向人群均值回归。
+2. 若某时间点的个人历史峰值明显高于均值（例如餐后曾冲到 11 以上），预测值应偏向该点的历史高位，而不是均值。
+3. 若某时间点没有个人历史，按该时点的一般规律估算（餐后2小时较餐前升高约 2.0-2.5，睡前较晚餐后2小时回落 0.5-0.8），不要用今日偏低值简单外推。
+4. 再结合今日已测数据的走势、今日饮食与运动情况做修正。
 
 返回JSON数组（不要 markdown）：
 [{{"type": "时间点类型", "value": float, "reasoning": "string"}}]"""

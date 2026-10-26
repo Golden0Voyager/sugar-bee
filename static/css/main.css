@@ -2536,3 +2536,16 @@
     font-size: 1.05rem !important;
 }
 
+
+/* 血糖图表容器：固定高度，避免响应式布局下画布高度塌陷/抖动 */
+.chart-box {
+    position: relative;
+    width: 100%;
+    height: 340px;
+}
+
+@media (max-width: 768px) {
+    .chart-box {
+        height: 250px;
+    }
+}

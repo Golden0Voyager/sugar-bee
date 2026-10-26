@@ -761,7 +761,11 @@ class TestPredictionRemainingSlotsBranches:
         from services.prediction_service import predict_remaining_glucose_slots
         mock_ai.side_effect = Exception("unexpected")
         mock_c = MagicMock()
-        mock_c.fetchall.side_effect = [[(6.5, '空腹', '2024-06-01 07:15:00')], [('空腹',)]]
+        mock_c.fetchall.side_effect = [
+            [(6.5, '空腹', '2024-06-01 07:15:00')],
+            [('空腹',)],
+            [],  # 近30天同时间点历史
+        ]
         mock_db = MagicMock()
         mock_db.cursor.return_value = mock_c
         result = predict_remaining_glucose_slots(mock_db, user_id=1)

@@ -11,10 +11,10 @@ CONFIG_FILE = "user_config.json"
 # ModelScope 模型配置（国内可用，免费2000次/天，单模型500次/天，OpenAI 兼容接口）
 # 三类任务使用不同模型，有效容量翻3倍（每模型独立500次/天）
 MODELSCOPE_MODELS = {
-    'text': ['deepseek-ai/DeepSeek-V4-Pro'],          # JSON解析/预测
+    'text': ['deepseek-ai/DeepSeek-V4.1-Flash-1017'],          # JSON解析/预测
     'vision': ['Qwen/Qwen3-VL-235B-A22B-Instruct', 'Qwen/Qwen3.5-397B-A17B', 'Qwen/Qwen3.5-122B-A10B', 'Qwen/Qwen3-VL-8B-Thinking'],  # 截图识别，能力优先降级
     'report': ['Qwen/Qwen3.5-397B-A17B'],      # 报告分析
-    'chat': ['deepseek-ai/DeepSeek-V4-Pro'],   # 健康助手 fallback（ModelScope 可用）
+    'chat': ['deepseek-ai/DeepSeek-V4.1-Flash-1017'],   # 健康助手 fallback（ModelScope 可用）
     'extra_body': {'enable_thinking': False},        # 仅对 text 任务生效（Qwen3 标准模型需关闭思考模式）
 }
 MODELSCOPE_BASE_URL = 'https://api-inference.modelscope.cn/v1'
