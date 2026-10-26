@@ -361,6 +361,7 @@ class TestPredictionRemainingSlotsContinue:
         mock_c.fetchall.side_effect = [
             [(6.5, '空腹', '2024-06-11 07:15:00')],  # measured records
             [('空腹',)],                               # measured types
+            [],                                        # 近30天同时间点历史
         ]
         mock_c.fetchone.return_value = None
         mock_db = MagicMock()

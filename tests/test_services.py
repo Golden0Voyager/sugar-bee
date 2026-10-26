@@ -319,8 +319,14 @@ class TestPredictRemainingSlots:
         ])
         partial_3col = [(6.5, '空腹', '2024-06-01 07:15:00'), (7.2, '早餐后2小时', '2024-06-01 11:00:00')]
         partial_1col = [('空腹',), ('早餐后2小时',)]
+        # 第三次 fetchall：近30天同时间点历史实测 (type, value, timestamp)
+        slot_history = [
+            ('午餐后2小时', 8.4, '2024-05-30 14:30:00'),
+            ('午餐后2小时', 12.7, '2024-05-31 14:30:00'),
+            ('晚饭前', 6.3, '2024-05-31 17:30:00'),
+        ]
         mock_c = MagicMock()
-        mock_c.fetchall.side_effect = [partial_3col, partial_1col]
+        mock_c.fetchall.side_effect = [partial_3col, partial_1col, slot_history]
         # fetchone 共被调用 3 次：先是一次 COUNT(DISTINCT type) 查旧预测占位（返回 (0,)
         # 表示无占位），随后每条预测各查一次是否已存在（返回 None 表示不存在）。
         mock_c.fetchone.side_effect = [(0,), None, None]
@@ -330,6 +336,12 @@ class TestPredictRemainingSlots:
         assert isinstance(result, list)
         assert len(result) == 2
         mock_db.commit.assert_called()
+
+        # prompt 里要带上个人历史区间，否则模型会向人群均值回归
+        prompt = mock_ai.call_args[0][0]
+        assert '个人历史' in prompt
+        assert '8.4' in prompt and '12.7' in prompt
+        assert '不要向人群均值回归' in prompt
 
 
 class TestBackfillPredictions:

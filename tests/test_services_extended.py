@@ -228,7 +228,8 @@ class TestPredictRemainingSlotsExtended:
         records_3col = [(6.5, '空腹', '2024-06-01 07:15:00')]
         types_1col = [('空腹',)]
         mock_c = MagicMock()
-        mock_c.fetchall.side_effect = [records_3col, types_1col]
+        # 第三次 fetchall：近30天同时间点历史（此处无历史样本）
+        mock_c.fetchall.side_effect = [records_3col, types_1col, []]
         # fetchone 两次：COUNT(DISTINCT type) 查旧预测占位返回 (0,)，
         # 随后「晚饭前」查是否已存在返回 None（不存在）；999.0 那条在范围校验就被过滤，不查库。
         mock_c.fetchone.side_effect = [(0,), None]
@@ -246,7 +247,8 @@ class TestPredictRemainingSlotsExtended:
         records_3col = [(6.5, '空腹', '2024-06-01 07:15:00')]
         types_1col = [('空腹',)]
         mock_c = MagicMock()
-        mock_c.fetchall.side_effect = [records_3col, types_1col]
+        # 第三次 fetchall：近30天同时间点历史（此处无历史样本）
+        mock_c.fetchall.side_effect = [records_3col, types_1col, []]
         # COUNT(DISTINCT type) 查旧预测占位：返回 (0,) 表示无占位，流程继续往下走
         mock_c.fetchone.return_value = (0,)
         mock_db = MagicMock()
@@ -264,7 +266,8 @@ class TestPredictRemainingSlotsExtended:
         records_3col = [(6.5, '空腹', '2024-06-01 07:15:00')]
         types_1col = [('空腹',)]
         mock_c = MagicMock()
-        mock_c.fetchall.side_effect = [records_3col, types_1col]
+        # 第三次 fetchall：近30天同时间点历史（此处无历史样本）
+        mock_c.fetchall.side_effect = [records_3col, types_1col, []]
         # COUNT(DISTINCT type) 查旧预测占位：返回 (0,) 表示无占位，流程继续往下走
         mock_c.fetchone.return_value = (0,)
         mock_db = MagicMock()
@@ -290,7 +293,8 @@ class TestPredictRemainingSlotsExtended:
         ]
         types_1col = [('空腹',), ('早餐后2小时',), ('午餐后2小时',), ('晚饭前',), ('晚餐后2小时',), ('睡前',)]
         mock_c = MagicMock()
-        mock_c.fetchall.side_effect = [records_3col, types_1col]
+        # 第三次 fetchall：近30天同时间点历史
+        mock_c.fetchall.side_effect = [records_3col, types_1col, [('睡前', 6.8, '2024-05-31 22:00:00')]]
         # COUNT(DISTINCT type) 查旧预测占位：返回 (0,) 表示无占位，流程继续往下走
         mock_c.fetchone.return_value = (0,)
         mock_db = MagicMock()
