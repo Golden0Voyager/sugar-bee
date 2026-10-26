@@ -1160,10 +1160,14 @@
             </ul>
             <div class="tab-content" id="glucoseTabContent">
                 <div class="tab-pane fade show active" id="trend-chart-pane" role="tabpanel">
-                    <canvas id="glucoseChart" height="80"></canvas>
+                    <div class="chart-box">
+                        <canvas id="glucoseChart" role="img" aria-label="血糖趋势折线图：空腹、餐后2小时、运动后、睡前血糖随时间变化"></canvas>
+                    </div>
                 </div>
                 <div class="tab-pane fade" id="cgm-chart-pane" role="tabpanel">
-                    <canvas id="cgmChart" height="80"></canvas>
+                    <div class="chart-box">
+                        <canvas id="cgmChart" role="img" aria-label="CGM 连续血糖曲线"></canvas>
+                    </div>
                 </div>
             </div>
         </div>
@@ -3754,6 +3758,28 @@
         return '其他';
     }
 
+    // 血糖 Y 轴范围：下限 3 起步（保证 3.9 低血糖警戒线与目标带下沿完整可见），
+    // 上限 12 起步按数据抬升 —— 保证不同时间窗比例尺可比，同时避免超限值被裁掉
+    function glucoseYRange(values) {
+        let lo = Infinity, hi = -Infinity;
+        (values || []).forEach(v => {
+            const n = typeof v === 'number' ? v : (v && typeof v.y === 'number' ? v.y : NaN);
+            if (!Number.isFinite(n) || n <= 0) return;
+            if (n < lo) lo = n;
+            if (n > hi) hi = n;
+        });
+        // 上限向上取偶数，且至少比最高值高 1 mmol/L，避免圆点贴边被裁
+        const yMax = Number.isFinite(hi) ? Math.max(12, Math.ceil((hi + 1) / 2) * 2) : 12;
+        // 下限常规 3；跌破 3 时继续下探，最多到 2
+        const yMin = Number.isFinite(lo) && lo < 3 ? Math.max(2, Math.floor(lo) - 1) : 3;
+        return { yMin, yMax };
+    }
+
+    // 异常点判定：超过餐后 1 小时上限 11.1 或低于 3.9 低血糖线
+    function isOutlierGlucose(value) {
+        return typeof value === 'number' && (value > 11.1 || value < 3.9);
+    }
+
     // Initialize glucose trend chart (支持按天数筛选+日偏移)
     function initGlucoseChart(days = 14, offset = 0) {
         // 销毁旧图表
@@ -3878,7 +3904,9 @@
         let xMin, xMax;
         if (days) {
             xMin = cutoffDate.getTime();
-            xMax = endDate.getTime();
+            // 多天视图末端裁到"现在"：endDate 是明天 0 点，直接当轴上限会多画一个
+            // 没有数据的日期刻度（如 10-27）。单天视图保留前后半天留白，不裁。
+            xMax = days > 1 ? Math.min(endDate.getTime(), Date.now()) : endDate.getTime();
         } else {
             // "全部"范围：min取timelineData中最早日期对齐到0点，max取今天24点
             xMax = endDate.getTime();
@@ -3902,6 +3930,7 @@
             // 没有数据时仍显示空图表（带网格和参考线）
             const ctx = document.getElementById('glucoseChart').getContext('2d');
             const now = endDate;
+            const emptyY = glucoseYRange([]);
             const rangeStart = cutoffDate || new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
             // 根据时间范围决定x轴单位
             const hoursRange = days ? days * 24 : 14 * 24;
@@ -3912,7 +3941,7 @@
                 data: { datasets: [] },
                 options: {
                     responsive: true,
-                    maintainAspectRatio: true,
+                    maintainAspectRatio: false,
                     plugins: {
                         legend: { display: false },
                         annotation: {
@@ -3935,7 +3964,7 @@
                             grid: { color: 'rgba(0,0,0,0.05)' }
                         },
                         y: {
-                            beginAtZero: false, min: 4, max: 12,
+                            beginAtZero: false, min: emptyY.yMin, max: emptyY.yMax,
                             title: { display: !IS_MOBILE, text: '血糖值 (mmol/L)', font: { size: IS_MOBILE ? 11 : 14, weight: 'bold' } },
                             ticks: { stepSize: 1, callback: v => Number.isInteger(v) ? v : '', font: { size: IS_MOBILE ? 9 : 12, weight: 'bold' } },
                             grid: { color: 'rgba(0,0,0,0.05)' }
@@ -3956,7 +3985,7 @@
         const datasets = {
             '空腹': { label: 'FPG (空腹/餐前)', data: [], borderColor: '#1A73E8', backgroundColor: '#1A73E8' },  // Google Blue
             '餐后2小时': { label: 'PPG-2h (餐后2小时)', data: [], borderColor: '#F4511E', backgroundColor: '#F4511E' },  // Deep Orange 600
-            '运动后': { label: 'Post-Ex (运动后)', data: [], borderColor: '#00897B', backgroundColor: '#00897B', hidden: true },  // Teal 600
+            '运动后': { label: 'Post-Ex (运动后)', data: [], borderColor: '#0097A7', backgroundColor: '#0097A7', hidden: true },  // Cyan 700：避开目标区间的绿色，防止误读为"达标"
             '睡前': { label: 'BT (睡前)', data: [], borderColor: '#8E24AA', backgroundColor: '#8E24AA', hidden: true },  // Purple 600
             '其他': { label: '其他', data: [], borderColor: '#757575', backgroundColor: '#757575' }  // Grey 600
         };
@@ -3974,18 +4003,39 @@
         // Build Chart.js datasets array
         const chartDatasets = [];
 
+        // 跨天断线：相邻两点间隔超过阈值时插入空值，
+        // 避免用一条长直线暗示"几天内缓慢上升"（实际中间根本没有测量）
+        const gapLimitMs = (days && days <= 1 ? 10 : 36) * 60 * 60 * 1000;
+        const breakGaps = (points) => {
+            if (points.length < 2) return points;
+            const out = [points[0]];
+            for (let i = 1; i < points.length; i++) {
+                if (points[i].x - points[i - 1].x > gapLimitMs) {
+                    out.push({ x: points[i - 1].x + gapLimitMs / 2, y: null });
+                }
+                out.push(points[i]);
+            }
+            return out;
+        };
+
         for (const [key, ds] of Object.entries(datasets)) {
             if (ds.data.length > 0) {
+                // 异常点（>11.1 或 <3.9）用红色大圆点突出，正常点沿用序列色
+                const isOut = (c) => c.raw && isOutlierGlucose(c.raw.y);
+                const pointR = (c) => (isOut(c) ? 7 : 5);
+                const hoverR = (c) => (isOut(c) ? 10 : 8);
+                const pointFill = (c) => (isOut(c) ? '#EA4335' : ds.backgroundColor);
                 chartDatasets.push({
                     label: ds.label,
-                    data: ds.data,
+                    data: breakGaps(ds.data),
                     borderColor: ds.borderColor,
                     backgroundColor: ds.backgroundColor,
                     borderWidth: 3,
                     tension: 0,  // 折线，让波动更清晰
-                    pointRadius: 5,
-                    pointHoverRadius: 8,
-                    pointBackgroundColor: ds.backgroundColor,
+                    spanGaps: false,  // 缺测处断线，不连成假趋势
+                    pointRadius: pointR,
+                    pointHoverRadius: hoverR,
+                    pointBackgroundColor: pointFill,
                     pointBorderColor: '#fff',
                     pointBorderWidth: 2,
                     pointHoverBorderWidth: 3,
@@ -3996,23 +4046,15 @@
         }
 
         // 计算实际数据的最小值和最大值
-        let minValue = Infinity;
-        let maxValue = -Infinity;
-        allRecords.forEach(r => {
-            if (r.value < minValue) minValue = r.value;
-            if (r.value > maxValue) maxValue = r.value;
-        });
-
-        // 统一Y轴范围，确保不同时间区间比例尺一致
-        const yMin = 4;
-        const yMax = 12;
+        // Y轴范围：统一比例尺 + 按数据自适应上限（避免 >12 的点被裁掉）
+        const { yMin, yMax } = glucoseYRange(allRecords.map(r => r.value));
 
         glucoseChart = new Chart(ctx, {
             type: 'line',
             data: { datasets: chartDatasets },
             options: {
                 responsive: true,
-                maintainAspectRatio: true,
+                maintainAspectRatio: false,
                 layout: {
                     padding: { bottom: 28 }
                 },
@@ -4158,8 +4200,8 @@
                                 const m = d.getMinutes();
                                 const dateStr = String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
 
-                                // >7天：按天显示日期
-                                if (!days || days > 7) return dateStr;
+                                // >7天：按天显示日期（只在 0 点标注，末端补齐的刻度不重复标日期）
+                                if (!days || days > 7) return h === 0 ? dateStr : null;
                                 // ≤1天：显示时间（水平居中）
                                 if (days <= 1) return String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
                                 // ≤3天：每3小时
@@ -4326,7 +4368,9 @@
         let xMin, xMax;
         if (days) {
             xMin = cutoffDate.getTime();
-            xMax = endDate.getTime();
+            // 多天视图末端裁到"现在"：endDate 是明天 0 点，直接当轴上限会多画一个
+            // 没有数据的日期刻度（如 10-27）。单天视图保留前后半天留白，不裁。
+            xMax = days > 1 ? Math.min(endDate.getTime(), Date.now()) : endDate.getTime();
         } else {
             xMax = endDate.getTime();
             if (timelineData.length > 0) {
@@ -4356,12 +4400,13 @@
         };
 
         const ctx = document.getElementById('cgmChart').getContext('2d');
+        const cgmY = glucoseYRange(cgmRecords.map(r => r.y));
         cgmChartInstance = new Chart(ctx, {
             type: 'line',
             data: { datasets: [dataset] },
             options: {
                 responsive: true,
-                maintainAspectRatio: true,
+                maintainAspectRatio: false,
                 layout: { padding: { bottom: 28 } },
                 interaction: { mode: 'nearest', axis: 'x', intersect: false },
                 plugins: {
@@ -4448,7 +4493,7 @@
                                 const h = d.getHours();
                                 const m = d.getMinutes();
                                 const dateStr = String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
-                                if (!days || days > 7) return dateStr;
+                                if (!days || days > 7) return h === 0 ? dateStr : null;
                                 if (days <= 1) return String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
                                 if (days <= 3) {
                                     if (h % 3 !== 0) return null;
@@ -4467,7 +4512,7 @@
                     },
                     y: {
                         beginAtZero: false,
-                        min: 4, max: 12,
+                        min: cgmY.yMin, max: cgmY.yMax,
                         title: { display: !IS_MOBILE, text: '血糖值 (mmol/L)', font: { size: IS_MOBILE ? 11 : 14, weight: 'bold' } },
                         ticks: { stepSize: 1, callback: v => Number.isInteger(v) ? v : '', font: { size: IS_MOBILE ? 9 : 12, weight: 'bold' } },
                         grid: {
