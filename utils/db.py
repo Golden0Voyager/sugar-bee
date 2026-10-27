@@ -596,7 +596,14 @@ def _init_db_postgres():
                 max_pace TEXT,
                 user_id INTEGER DEFAULT 1,
                 external_id TEXT,
-                source TEXT
+                source TEXT,
+                body_fat_rate {double_type()},
+                body_fat_mass {double_type()},
+                muscle_mass {double_type()},
+                skeletal_muscle_mass {double_type()},
+                protein_mass {double_type()},
+                visceral_fat {double_type()},
+                basal_metabolism INTEGER
             )
         ''')
 
@@ -706,6 +713,18 @@ def _init_db_postgres():
         for col_name in ('app_name', 'app_emoji', 'app_tagline', 'persona'):
             with contextlib.suppress(Exception):
                 c.execute(f'ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS {col_name} TEXT')
+
+        # 体成分字段:对已存在的线上库补列(CREATE TABLE IF NOT EXISTS 对老库无效)
+        for col_name, col_type in [
+            ("body_fat_rate", "DOUBLE PRECISION"),
+            ("body_fat_mass", "DOUBLE PRECISION"),
+            ("muscle_mass", "DOUBLE PRECISION"),
+            ("skeletal_muscle_mass", "DOUBLE PRECISION"),
+            ("protein_mass", "DOUBLE PRECISION"),
+            ("visceral_fat", "DOUBLE PRECISION"),
+            ("basal_metabolism", "INTEGER"),
+        ]:
+            c.execute(f"ALTER TABLE records ADD COLUMN IF NOT EXISTS {col_name} {col_type}")
 
         c.execute(f'''
             CREATE TABLE IF NOT EXISTS chat_messages (
@@ -864,7 +883,14 @@ def _init_db_sqlite():
             ("max_pace", "TEXT"),
             ("user_id", "INTEGER DEFAULT 1"),
             ("external_id", "TEXT"),
-            ("source", "TEXT")
+            ("source", "TEXT"),
+            ("body_fat_rate", "REAL"),
+            ("body_fat_mass", "REAL"),
+            ("muscle_mass", "REAL"),
+            ("skeletal_muscle_mass", "REAL"),
+            ("protein_mass", "REAL"),
+            ("visceral_fat", "REAL"),
+            ("basal_metabolism", "INTEGER"),
         ]
 
         for col_name, col_type in mig_cols:
