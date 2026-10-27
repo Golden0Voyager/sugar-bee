@@ -140,3 +140,37 @@ def test_same_weight_within_3min_still_conflicts(client_authenticated):
                'weight': 70.45, 'body_fat_rate': 21.7, 'visceral_fat': 9, 'muscle_mass': 52.3}
     assert client_authenticated.post('/add', json=payload).status_code == 200
     assert client_authenticated.post('/add', json=payload).status_code == 409
+
+
+def test_body_comp_rules_in_prompt():
+    """提示词必须点名 7 个字段并强调易混淆项。"""
+    import glucose_parser
+    prompt = glucose_parser.build_parse_prompt() if hasattr(glucose_parser, "build_parse_prompt") else None
+    if prompt is None:
+        # 提示词内联在 parse_glucose_input 里时,直接读源码做锚点断言
+        from pathlib import Path
+        prompt = Path(glucose_parser.__file__).read_text(encoding="utf-8")
+    for field in settings.BODY_COMP_FIELDS:
+        assert field in prompt, f"提示词缺少 {field}"
+    for phrase in ("体脂率", "体脂量", "骨骼肌量", "内脏脂肪", "基础代谢"):
+        assert phrase in prompt
+    # 秤面自带的状态不得进入 JSON schema(status 只能由 settings 算)
+    schema = prompt.split("JSON 结构要求")[1]
+    for key in ("status", "status_label", "rating"):
+        assert f'"{key}"' not in schema, f"schema 不应包含 {key}"
+    # 提示词必须明确「状态由本系统计算」,否则模型会把秤面评价一起抄回来
+    assert "由本系统计算" in prompt
+
+
+def test_parsed_body_comp_survives_postprocess():
+    """_postprocess_records 不得丢弃新字段。"""
+    import glucose_parser
+    raw = [{
+        "value": 0, "unit": "mmol/L", "type": "体重记录", "datetime": "2026-10-27 07:15:00",
+        "weight": 70.45, "body_fat_rate": 21.7, "visceral_fat": 9, "muscle_mass": 52.3,
+        "basal_metabolism": 1562,
+    }]
+    out = glucose_parser._postprocess_records(raw, "")
+    assert out[0]["body_fat_rate"] == 21.7
+    assert out[0]["visceral_fat"] == 9
+    assert out[0]["muscle_mass"] == 52.3
