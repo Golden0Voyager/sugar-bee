@@ -2537,15 +2537,9 @@
 }
 
 
-/* 血糖图表容器：固定高度，避免响应式布局下画布高度塌陷/抖动 */
+/* 图表容器:高度跟随全局图表比例(与 Chart.defaults.aspectRatio 同源),使血糖/CGM 图与血压、心率、体重图高度口径一致。比例由 index.html 写入 CSS 变量 --chart-aspect-ratio。 */
 .chart-box {
     position: relative;
     width: 100%;
-    height: 340px;
-}
-
-@media (max-width: 768px) {
-    .chart-box {
-        height: 250px;
-    }
+    aspect-ratio: var(--chart-aspect-ratio, 2);
 }
