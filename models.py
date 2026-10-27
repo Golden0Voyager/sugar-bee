@@ -61,6 +61,13 @@ class Record(Base):
     user_id = Column(Integer, default=1)
     external_id = Column(Text)
     source = Column(Text)
+    body_fat_rate = Column(Float)
+    body_fat_mass = Column(Float)
+    muscle_mass = Column(Float)
+    skeletal_muscle_mass = Column(Float)
+    protein_mass = Column(Float)
+    visceral_fat = Column(Float)
+    basal_metabolism = Column(Integer)
 
     __table_args__ = (
         Index('idx_records_user_ts', 'user_id', 'timestamp', unique=False),
