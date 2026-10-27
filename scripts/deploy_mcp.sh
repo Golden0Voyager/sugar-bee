@@ -68,10 +68,9 @@ NEED=(
   mcp_adapter/core/domain.py mcp_adapter/core/timefmt.py mcp_adapter/core/analytics.py
   utils/timezone.py utils/db.py utils/sql_dialect.py core/config.py
 )
-# settings.py 必须一起传：writer.py 里有 5 处 `from settings import ...`
-# （check_glucose_compliance / EMOJI_USER_MAP / USER_EMOJI_MAP）。
-# 它是纯常量模块，只依赖 utils.timezone，不 import Flask，可以安全独立部署。
-[ "$ONLY" != "reader" ] && NEED+=(settings.py)
+# settings.py：writer.py 直接导入；branding.py：writer.py 经 utils.db 间接导入。
+# 两者都是纯常量/函数模块，可以安全独立部署。
+[ "$ONLY" != "reader" ] && NEED+=(settings.py branding.py)
 [ "$ONLY" != "writer" ] && NEED+=(mcp_adapter/servers/reader.py mcp_reader.py)
 [ "$ONLY" != "reader" ] && NEED+=(mcp_adapter/servers/writer.py mcp_writer.py)
 for f in "${NEED[@]}"; do
@@ -85,7 +84,7 @@ for p in ['mcp_adapter/core/domain.py','mcp_adapter/core/timefmt.py',
           'mcp_adapter/core/analytics.py','mcp_adapter/servers/reader.py',
           'mcp_adapter/servers/writer.py','utils/timezone.py','utils/db.py',
           'utils/sql_dialect.py','core/config.py','mcp_writer.py','mcp_reader.py',
-          'settings.py']:
+          'settings.py','branding.py']:
     ast.parse(pathlib.Path(p).read_text(encoding='utf-8'))
 print('syntax ok')
 " ) || die x "本地语法检查失败，已中止"
@@ -122,9 +121,11 @@ rsync "${RSYNC_OPTS[@]}" -e "$RSYNC_SSH" \
   "$REPO_ROOT/core/config.py" "$SSH_USER@$SSH_HOST:$REMOTE_DIR/core/config.py" \
   || die x "同步 core/config.py 失败"
 
-[ "$ONLY" != "reader" ] && { rsync "${RSYNC_OPTS[@]}" -e "$RSYNC_SSH" \
-  "$REPO_ROOT/settings.py" "$SSH_USER@$SSH_HOST:$REMOTE_DIR/settings.py" \
-  || die x "同步 settings.py 失败"; }
+[ "$ONLY" != "reader" ] && { for f in settings.py branding.py; do
+  rsync "${RSYNC_OPTS[@]}" -e "$RSYNC_SSH" \
+    "$REPO_ROOT/$f" "$SSH_USER@$SSH_HOST:$REMOTE_DIR/$f" \
+    || die x "同步 $f 失败"
+done; }
 
 [ "$ONLY" != "writer" ] && { rsync "${RSYNC_OPTS[@]}" -e "$RSYNC_SSH" \
   "$REPO_ROOT/mcp_reader.py" "$SSH_USER@$SSH_HOST:$REMOTE_DIR/mcp_reader.py" \
