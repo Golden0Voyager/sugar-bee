@@ -46,7 +46,10 @@ BMI 不来自截图,继续由本系统用 `user_profiles.height` 计算(现有 `
 
 ## 约束
 
-- `records` 表新增列必须走 `utils/db.py` 的 `mig_cols` ALTER TABLE 列表,SQLite 与 Postgres 双端一致。
+- `records` 表新增列必须**双端都能迁移**。现状:SQLite 侧有 `utils/db.py` 的 `mig_cols`
+  ALTER 列表;Postgres 侧(`_init_db_postgres`)只有 `CREATE TABLE IF NOT EXISTS`,**没有**
+  records 的 ALTER 通道(全文件仅 line 732 一处 `ALTER TABLE records`,在 SQLite 分支)。
+  所以只改 `mig_cols` 对**已存在的线上库无效**,需要补 PG 侧的等价迁移(见「实施要点」)。
 - 体成分字段挂在**已有的** `type='体重记录'` 那一行上(该行 `value=0`),不新增记录类型。
 - 阈值只在**一处**定义(Python),前端不得复制一份;现有 `AGENTS.md` 已把这条列为 gotcha
   (`getBadgeForRate()` Python/JS 双份的历史教训)。
@@ -188,11 +191,47 @@ BMI 不来自截图,继续由本系统用 `user_profiles.height` 计算(现有 `
 展示层:某一项为空则该项色块隐藏;三项核心全空则不显示体成分行与趋势卡。
 不做「缺项补 0」。
 
+### M8. 阈值如何到前端(单一来源)+ 「标准线」画哪条
+
+阈值只在 Python 定义,但要画到折线图上。做法照抄现有 `stats.glucose_targets`
+(`index.html` 里 `{{ stats.glucose_targets | tojson }}` 的用法):由
+`dashboard_service` 把三个指标的阈值一并放进 `stats`,`initBodyCompChart` 直接读。
+
+线的语义**按指标方向区分**(不是所有指标都画「上限」):
+
+| 指标 | 参考线 | 取值 |
+|------|--------|------|
+| 体脂率 | **上限**虚线(超过即偏高) | 当前用户的性别/年龄档上限 |
+| 内脏脂肪 | **上限**虚线 | 常数 9 |
+| 肌肉量 | **下限**虚线(低于即偏低) | `占比下限 × 最新体重`,换算成 kg |
+
+> 肌肉量的判定本是比例,图上要画一条 kg 线就必须定一个参照体重;取**最新体重**这一个基准。
+> 这是显示层的近似,判定本身仍走比例,不因这条线的位置改变。
+
+### M9. 行与卡的显示口径统一
+
+「体重管理」里的体成分行、以及「体成分趋势」卡,**共用同一个显示条件**:
+三项核心(体脂率 / 内脏脂肪 / 肌肉量)中**至少一项有值**才显示。
+只有非核心字段(如蛋白量)有值时,两者都**不显示**,避免出现三个页签全空的卡。
+
+### M10. 「更多指标(仅最新值)」的口径
+
+按**逐字段**取最新:每项指标各自最近一次有值的记录(例如蛋白量上次记录是 3 周前,就显示那次的值)。
+理由:秤面截图经常不完整,逐字段取能最大化利用已有数据。实现上是一次
+`ORDER BY timestamp DESC` 扫描取每列第一个非空值,不新增接口。
+若你更想要「只显示最近一条体成分记录里有的字段」,说一声,改 `dashboard_service` 一处即可。
+
 ## 实施要点(给实现者)
 
 ### 后端
 
-1. `utils/db.py`:`mig_cols` 追加 M4 的 7 列(**同时**要改 `models.py` 的 `records` 定义)。
+1. `utils/db.py`:
+   - SQLite 分支:`mig_cols` 追加 M4 的 7 列。
+   - Postgres 分支:`_init_db_postgres` 的 `CREATE TABLE IF NOT EXISTS records` 里追加同样 7 列
+     (**只对新库生效**),并**新增**一段对已有库生效的迁移,形如
+     `ALTER TABLE records ADD COLUMN IF NOT EXISTS <col> <type>`(`IF NOT EXISTS` 幂等,
+     重复启动安全)。这是本轮**必须**补的一段——否则线上库不会出现新列,`SELECT *` 直接报错。
+   - `models.py` 的 `records` 定义同步追加 7 列(Alembic 当前 `upgrade()` 为空 `pass`,不是有效通道)。
 2. `glucose_parser.py`:
    - 提示词新增「体成分识别规则」:`体重识别规则` 一节旁并列,说明秤面各数字的归属,
      特别强调 **体脂率(%)与体脂量(kg)不是一回事**、**肌肉量与骨骼肌量不是一回事**、
@@ -212,7 +251,7 @@ BMI 不来自截图,继续由本系统用 `user_profiles.height` 计算(现有 `
    放在体重趋势卡之后。
 3. 新增 `initBodyCompChart(days, offset)` 与 `changeBodyCompRange` / `bodyCompNav`,
    照抄体重图的时间筛选与 `ensureTimelineData` 懒加载逻辑;页签切换只换 `datasets`。
-4. 卡片自隐条件:`timelineData` 中没有任何体成分字段。
+4. 显示/自隐条件:与体成分行一致,见 M9(三项核心至少一项有值)。
 
 ### 测试
 
