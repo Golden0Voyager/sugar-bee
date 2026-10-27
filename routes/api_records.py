@@ -103,7 +103,7 @@ def get_user_stats(db, user_id=None):
             WHERE user_id = ? AND is_predicted = 0
             AND value > 0 AND systolic_pressure IS NULL
             AND type NOT LIKE '%血压%'
-            AND type NOT IN ('跑步', '运动', '体重记录')
+            AND type NOT IN ('跑步', '运动', '体重记录', '体重')
             ORDER BY timestamp DESC LIMIT 1""", (user_id,))
         row = c.fetchone()
         if row:

@@ -1115,7 +1115,10 @@
         {% endif %}
     </div>
 
-    <!-- 血糖监测综合卡片（趋势图 + 预测状态） -->
+    <!-- 血糖监测综合卡片（趋势图 + 预测状态）
+         没开血糖模块的用户（基础版）不渲染：否则会看到一张只有目标区间的空图表，
+         看起来像"我的血糖数据丢了"。 -->
+    {% if 'glucose' in active_modules %}
     <div class="card mb-4" id="glucoseMonitorCard">
         <div class="card-body">
             <!-- 标题栏 -->
@@ -1211,8 +1214,10 @@
             </div>
         </div>
     </div>
+    {% endif %}{# end glucoseMonitorCard #}
 
     <!-- Blood Pressure Chart Section - Material Design -->
+    {% if 'blood_pressure' in active_modules %}
     <div class="card mb-4" id="bloodPressureChartCard">
         <div class="card-body">
             <div class="d-flex justify-content-between align-items-center mb-3">
@@ -1286,8 +1291,10 @@
             </div>
         </div>
     </div>
+    {% endif %}{# end bloodPressureChartCard #}
 
     <!-- Weight/BMI Chart Section - Material Design -->
+    {% if 'weight' in active_modules %}
     <div class="card mb-4" id="weightChartCard">
         <div class="card-body">
             <div class="d-flex justify-content-between align-items-center mb-3">
@@ -1344,6 +1351,7 @@
             <canvas id="weightChart" height="60"></canvas>
         </div>
     </div>
+    {% endif %}{# end weightChartCard #}
 
     <!-- Calendar View - Material Design -->
     <div class="card">
@@ -4168,6 +4176,8 @@
 
     // Initialize glucose trend chart (支持按天数筛选+日偏移)
     function initGlucoseChart(days = 14, offset = 0) {
+        // 没开血糖模块时这张卡片整个不渲染，直接跳过
+        if (!document.getElementById('glucoseChart')) return;
         // 销毁旧图表
         if (glucoseChart) {
             glucoseChart.destroy();
@@ -4955,6 +4965,8 @@
     let bpChartInstance = null;
     let pulseChartInstance = null;
     function initBloodPressureChart(days = 30, offset = 0) {
+        // 没开血压模块时这张卡片整个不渲染，直接跳过
+        if (!document.getElementById('bloodPressureChart')) return;
         // 销毁旧图表
         if (bpChartInstance) { bpChartInstance.destroy(); bpChartInstance = null; }
         if (pulseChartInstance) { pulseChartInstance.destroy(); pulseChartInstance = null; }
@@ -5317,6 +5329,8 @@
     // Initialize weight/BMI trend chart
     let weightChartInstance = null;
     function initWeightChart(days = 30, offset = 0) {
+        // 没开体重模块时这张卡片整个不渲染，直接跳过
+        if (!document.getElementById('weightChart')) return;
         if (weightChartInstance) { weightChartInstance.destroy(); weightChartInstance = null; }
 
         // endDate 对齐到当天24:00（次日0点），确保x轴以完整天为单位
@@ -5536,6 +5550,21 @@
         return red;  // 超标
     }
 
+    // 非血糖记录的类型：这些记录也带 value，但数值不是 mmol/L，
+    // 混进达标率计算会把「血糖 68」这种假数据算出来。
+    // 名单跟 services/timeline_service.py 里统计 avg_glucose 的黑名单保持一致。
+    const NON_GLUCOSE_TYPES = new Set([
+        '跑步', '运动', '走路', '骑行', '游泳', '健身',
+        '早餐', '午餐', '晚餐', '加餐',
+        '体重记录', '体重', '血压', '血压测量'
+    ]);
+
+    function isGlucoseEntry(e) {
+        if (!(e.value > 0) || e.is_predicted || e.systolic_pressure) return false;
+        if (e.type && e.type.includes('血压')) return false;
+        return !NON_GLUCOSE_TYPES.has(e.type);
+    }
+
     function generateCalendarEvents() {
         const events = [];
 
@@ -5551,7 +5580,7 @@
                 let normalCount = 0;
                 let glucoseCount = 0;
                 entries.forEach(e => {
-                    if (e.value > 0 && !e.is_predicted && !e.systolic_pressure) {
+                    if (isGlucoseEntry(e)) {
                         glucoseCount++;
                         const result = checkGlucoseCompliance(e.value, e.type);
                         if (result.isCompliant) {

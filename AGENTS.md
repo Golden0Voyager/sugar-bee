@@ -195,6 +195,8 @@ ignore = ["E501", "E402", "E702"]  # E402/E702 for test files
   - 解码失败抛 `ReportFileError`，路由统一转 400 + 「请上传体检报告照片或 PDF」，不要让它冒成 500
   - 渲染后的图片一律按 `image/jpeg` 往下传，别再用上传时的 mime（PDF 的 mime 传下去模型会报错）
 
+- **首页趋势卡片必须跟着模块开关走**（历史 bug）：`glucoseMonitorCard` / `bloodPressureChartCard` / `weightChartCard` 曾经无条件渲染，没开血糖的家人打开首页会看到一张只有绿色目标区间、一条数据都没有的「血糖趋势」图，像是自己的记录丢了。三张卡片现在都包在 `{% if 'xxx' in active_modules %}` 里；对应的 `initGlucoseChart` / `initBloodPressureChart` / `initWeightChart` 开头有 `if (!document.getElementById('xxx')) return;` 兜底——卡片不渲染时它们会被 JS 调用到（`changeBPRange` 等），缺这行就是 TypeError。血压/体重还有一层「没数据就 `display:none`」的 JS 兜底，但那只管有没有数据，管不了模块关没关
+- **`avg_glucose` 的黑名单要跟着新维度补**：`services/timeline_service.py` 用「value>0 且没有 systolic_pressure 且 type 不在黑名单」判断一条记录是不是血糖，黑名单漏一个类型就会把别的维度当血糖算（`体重` 漏过一次，日历上出现「血糖68 (0%)」）。前端 `generateCalendarEvents` 里的 `NON_GLUCOSE_TYPES` / `isGlucoseEntry` 是同一份规则，改一边要改另一边
 - Frontend badge logic (`getBadgeForRate()`) must stay in sync: Python in `settings.py`, JS in `index.html`
 - Glucose targets vary by type (fasting/post-1h/post-2h/pre-sleep/post-exercise) — see `settings.py` `GLUCOSE_TARGETS`
 - Adding new data dimensions to `records` requires a new `ALTER TABLE` migration in `init_db()`

@@ -70,7 +70,7 @@ def build_timeline(cursor, user_id, days=90):
                 day_group['stats']['cal_in'] += calories
 
         value = r.get('value') or 0
-        if value > 0 and not r.get('systolic_pressure') and not r.get('is_predicted') and r['type'] not in ['跑步', '运动', '走路', '骑行', '游泳', '健身', '早餐', '午餐', '晚餐', '加餐', '体重记录'] and '血压' not in r['type']:
+        if value > 0 and not r.get('systolic_pressure') and not r.get('is_predicted') and r['type'] not in ['跑步', '运动', '走路', '骑行', '游泳', '健身', '早餐', '午餐', '晚餐', '加餐', '体重记录', '体重'] and '血压' not in r['type']:
             day_group['stats']['avg_glucose'] += value
             day_group['stats']['glucose_count'] += 1
 

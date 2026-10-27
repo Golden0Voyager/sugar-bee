@@ -567,6 +567,58 @@ class TestTimelineServiceDaysNone:
         assert stats['is_deficit'] is True
         assert stats['net_calories'] == -1400
 
+
+class TestTimelineGlucoseCountingIgnoresOtherDimensions:
+    """只有血糖记录的 value 才是 mmol/L，别的维度不能混进 avg_glucose。
+
+    历史 bug：黑名单里只有 `体重记录`，设备同步（Apple Health / 手环）推上来的
+    `体重` 记录没被挡住，于是「体重 68」被当成血糖，日历上冒出
+    「💪 血糖68 (0%)」这种徽章，达标率也跟着算错。
+    """
+
+    @patch('services.timeline_service.settings.calculate_bmr')
+    @patch('services.timeline_service.settings.load_config')
+    def test_weight_only_day_has_no_glucose(self, mock_config, mock_bmr):
+        from services.timeline_service import build_timeline
+        mock_bmr.return_value = 1600
+        mock_config.return_value = {'default_meals': {}}
+        mock_c = MagicMock()
+        mock_c.fetchall.side_effect = [
+            [
+                {'id': 1, 'value': 68.0, 'type': '体重', 'timestamp': '2024-06-01 07:00:00',
+                 'is_predicted': 0, 'is_verified': 0},
+            ],
+            [],
+        ]
+        sorted_dates, _ = build_timeline(mock_c, user_id=1, days=7)
+        stats = sorted_dates[0]['data']['stats']
+        assert stats['glucose_count'] == 0
+        assert stats['avg_glucose'] == 0
+
+    @patch('services.timeline_service.settings.calculate_bmr')
+    @patch('services.timeline_service.settings.load_config')
+    def test_weight_does_not_dilute_real_glucose(self, mock_config, mock_bmr):
+        """同一天有血糖 + 体重时，只算血糖那条。"""
+        from services.timeline_service import build_timeline
+        mock_bmr.return_value = 1600
+        mock_config.return_value = {'default_meals': {}}
+        mock_c = MagicMock()
+        mock_c.fetchall.side_effect = [
+            [
+                {'id': 1, 'value': 6.4, 'type': '空腹', 'timestamp': '2024-06-01 07:00:00',
+                 'is_predicted': 0, 'is_verified': 0},
+                {'id': 2, 'value': 68.0, 'type': '体重', 'timestamp': '2024-06-01 07:05:00',
+                 'is_predicted': 0, 'is_verified': 0},
+                {'id': 3, 'value': 70.0, 'type': '体重记录', 'timestamp': '2024-06-01 07:06:00',
+                 'weight': 70.0, 'is_predicted': 0, 'is_verified': 0},
+            ],
+            [],
+        ]
+        sorted_dates, _ = build_timeline(mock_c, user_id=1, days=7)
+        stats = sorted_dates[0]['data']['stats']
+        assert stats['glucose_count'] == 1
+        assert stats['avg_glucose'] == 6.4
+
     @patch('services.timeline_service.settings.calculate_bmr')
     @patch('services.timeline_service.settings.load_config')
     def test_glucose_zero_count_no_division(self, mock_config, mock_bmr):
