@@ -130,6 +130,7 @@ def save_report():
         c.execute("""
             INSERT INTO checkup_reports (user_id, checkup_date, institution, summary)
             VALUES (?, ?, ?, ?)
+            RETURNING id
         """, (user_id, checkup_date, institution, summary))
         report_id = c.lastrowid
 
