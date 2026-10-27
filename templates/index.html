@@ -10154,7 +10154,8 @@
         }
     }
 
-    async function deleteBoneRecord(id) {        if (!confirm('删除这条骨密度记录？')) return;
+    async function deleteBoneRecord(id) {
+        if (!confirm('删除这条骨密度记录？')) return;
         try {
             const res = await apiCall(`/api/bone/delete/${id}`, { method: 'POST' }, { showLoading: false });
             _boneData = res.data;

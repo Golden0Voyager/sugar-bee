@@ -780,7 +780,8 @@ def _init_db_postgres():
 
         # 设备绑定表（Apple Health 同步）
         c.execute(f'''
-            CREATE TABLE IF NOT EXISTS device_bindings (                id {serial_pk_sql()},
+            CREATE TABLE IF NOT EXISTS device_bindings (
+                id {serial_pk_sql()},
                 user_id INTEGER NOT NULL,
                 bind_code TEXT,
                 code_expires_at {timestamp_type()},
