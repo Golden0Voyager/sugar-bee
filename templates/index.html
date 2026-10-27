@@ -2035,6 +2035,9 @@
     Chart.defaults.scale.title.font = { size: IS_MOBILE ? 11 : 14, family: "'Noto Sans SC', sans-serif", weight: 'bold' };
     Chart.defaults.scale.ticks.maxTicksLimit = IS_MOBILE ? 6 : null;
     Chart.defaults.aspectRatio = IS_MOBILE ? 1.1 : 2;
+    // 把同一比例交给 CSS:.chart-box(血糖/CGM 图容器)用它算高度,
+    // 保证与血压、心率、体重图(走 maintainAspectRatio)的高度口径一致。
+    document.documentElement.style.setProperty('--chart-aspect-ratio', Chart.defaults.aspectRatio);
     Chart.defaults.layout.padding = { top: 4, right: IS_MOBILE ? 0 : 4, bottom: IS_MOBILE ? 8 : 12, left: IS_MOBILE ? 0 : 4 };
 
     // Injected from server (初始 90 天，按需加载更多)
