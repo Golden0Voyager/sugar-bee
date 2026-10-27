@@ -68,3 +68,9 @@ static/shortcuts/
 
 # WorkBuddy 工作记录（每日工作日志、项目长期记忆）
 .workbuddy-ai/
+
+# 子项目开发用的 git worktree(branch-slug 目录)
+.worktrees/
+
+# superpowers 技能产物(brainstorming 草稿/state)
+.superpowers/
