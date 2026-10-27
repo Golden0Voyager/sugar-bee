@@ -64,6 +64,24 @@ def _validate_record_data(r: dict) -> list[str]:
     if weight and weight > 0 and (weight < 20.0 or weight > 300.0):
         warnings.append(f"体重 {weight} 超出正常范围（20-300 kg）")
 
+    # 体成分校验(字段名随 BODY_COMP_FIELDS 走,缺失/None 不产警告)
+    body_comp_ranges = {
+        'body_fat_rate': ('体脂率', 3, 60),
+        'body_fat_mass': ('体脂量', 0.5, 100),
+        'muscle_mass': ('肌肉量', 1, 100),
+        'skeletal_muscle_mass': ('骨骼肌量', 0.5, 60),
+        'protein_mass': ('蛋白量', 0.5, 30),
+        'visceral_fat': ('内脏脂肪', 1, 30),
+        'basal_metabolism': ('基础代谢', 500, 4000),
+    }
+    for field in settings.BODY_COMP_FIELDS:
+        value = r.get(field)
+        if value is None:
+            continue
+        label, low, high = body_comp_ranges[field]
+        if value < low or value > high:
+            warnings.append(f"{label} {value} 超出正常范围({low}-{high})")
+
     return warnings
 
 def get_user_stats(db, user_id=None):
