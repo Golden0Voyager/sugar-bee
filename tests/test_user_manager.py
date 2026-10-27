@@ -55,7 +55,11 @@ def um(module_db_path, monkeypatch):
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         target_weight REAL,
         birth_month INTEGER,
-        birth_day INTEGER
+        birth_day INTEGER,
+        app_name TEXT,
+        app_emoji TEXT,
+        app_tagline TEXT,
+        persona TEXT
     )''')
     c.execute('''CREATE TABLE IF NOT EXISTS user_auth_providers (
         id INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -4,6 +4,7 @@ import traceback
 
 from flask import Blueprint, current_app, jsonify, request, session
 
+import branding
 import settings
 from user_manager import UserManager
 from utils.auth import login_required
@@ -15,7 +16,7 @@ from utils.timezone import now as app_now
 user_manager = UserManager()
 bp_user = Blueprint('user', __name__)
 
-ALL_MODULES = ['glucose', 'blood_pressure', 'exercise', 'weight', 'medication']
+ALL_MODULES = branding.ALL_MODULES
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in {'png', 'jpg', 'jpeg', 'gif'}
@@ -116,18 +117,67 @@ def get_user_modules():
 @bp_user.route('/api/user/modules', methods=['POST'])
 @login_required
 def update_user_modules():
-    """更新当前用户的启用模块"""
+    """更新当前用户的启用模块。
+
+    注意：`enabled_modules` 存空数组的语义是「不限制 = 全部启用」，和「一个都不要」
+    正好相反。所以这里必须挡住空数组——否则前端传 [] 想关掉所有模块，读回来却是
+    全部模块都开着。校验规则和 `/api/user/branding` 保持一致。
+    """
     try:
         data = request.json or {}
         modules = data.get('enabled_modules', [])
         if not isinstance(modules, list):
             return api_error("enabled_modules 必须是数组", status_code=400, error_type='validation_error')
         valid = [m for m in modules if m in ALL_MODULES]
+        if not valid:
+            return api_error("请至少保留一个功能模块", status_code=400, error_type='validation_error')
         user_manager.set_enabled_modules(user_manager.get_current_user_id(), valid)
         return api_success(data={'enabled_modules': valid}, message="模块设置已更新")
     except Exception as e:
         traceback.print_exc()
         return api_error(str(e), status_code=500)
+
+@bp_user.route('/api/user/branding', methods=['GET'])
+@login_required
+def get_user_branding():
+    """返回当前用户的应用品牌配置 + 可选场景模板（首次引导与设置页共用）"""
+    try:
+        user = user_manager.get_user(user_manager.get_current_user_id()) or {}
+        return api_success(data={
+            'branding': branding.resolve_branding(user),
+            'personas': branding.persona_options(),
+            'all_modules': ALL_MODULES,
+            'limits': {
+                'name_max_len': branding.NAME_MAX_LEN,
+                'tagline_max_len': branding.TAGLINE_MAX_LEN,
+            },
+        })
+    except Exception as e:
+        traceback.print_exc()
+        return api_error(str(e), status_code=500)
+
+
+@bp_user.route('/api/user/branding', methods=['POST'])
+@login_required
+def update_user_branding():
+    """保存应用名称 / 图标 / 标语 / 使用场景（可同时提交模块开关）"""
+    try:
+        payload, error = branding.build_branding_payload(request.json or {})
+        if error:
+            return api_error(error, status_code=400, error_type='validation_error')
+        user_id = user_manager.get_current_user_id()
+        user_manager.update_user_profile_partial(user_id, payload)
+        # 保存后回读整条档案再解析：payload 里没有的字段（比如没提交 enabled_modules）
+        # 若直接拿来 resolve，会被当成「空 = 未限制」，响应里的模块列表就是假的。
+        saved = user_manager.get_user(user_id) or {}
+        return api_success(
+            data={'branding': branding.resolve_branding(saved)},
+            message='应用名称已更新',
+        )
+    except Exception as e:
+        traceback.print_exc()
+        return api_error(str(e), status_code=500)
+
 
 @bp_user.route('/upload_avatar', methods=['POST'])
 @login_required

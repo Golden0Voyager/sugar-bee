@@ -8,65 +8,65 @@ from unittest.mock import MagicMock, patch
 class TestTriggerPredictionTypes:
     """trigger_prediction 的各种 type 参数"""
 
-    def test_trigger_fpg(self, client_authenticated):
+    def test_trigger_fpg(self, client_glucose):
         with patch('routes.api_prediction.get_db') as mock_get_db, \
              patch('routes.api_prediction.predict_morning_fpg') as mock_fpg:
             mock_get_db.return_value = MagicMock()
-            result = client_authenticated.post('/trigger_prediction', json={'type': '空腹'})
+            result = client_glucose.post('/trigger_prediction', json={'type': '空腹'})
             assert result.status_code == 200
             mock_fpg.assert_called_once()
 
-    def test_trigger_post_exercise(self, client_authenticated):
+    def test_trigger_post_exercise(self, client_glucose):
         with patch('routes.api_prediction.get_db') as mock_get_db, \
              patch('routes.api_prediction.predict_morning_fpg'), \
              patch('routes.api_prediction.predict_post_exercise_glucose') as mock_ex:
             mock_get_db.return_value = MagicMock()
             mock_ex.return_value = 5.5
-            result = client_authenticated.post('/trigger_prediction', json={'type': '运动后', 'date': '2024-06-01'})
+            result = client_glucose.post('/trigger_prediction', json={'type': '运动后', 'date': '2024-06-01'})
             assert result.status_code == 200
             assert result.json['data']['results'][0]['value'] == 5.5
 
-    def test_trigger_remaining_no_measured(self, client_authenticated):
+    def test_trigger_remaining_no_measured(self, client_glucose):
         with patch('routes.api_prediction.get_db') as mock_get_db, \
              patch('routes.api_prediction.predict_remaining_glucose_slots') as mock_slots:
             mock_get_db.return_value = MagicMock()
             mock_slots.return_value = 'no_measured'
-            result = client_authenticated.post('/trigger_prediction', json={'type': '剩余时间点'})
+            result = client_glucose.post('/trigger_prediction', json={'type': '剩余时间点'})
             assert result.status_code == 200
 
-    def test_trigger_remaining_all_measured(self, client_authenticated):
+    def test_trigger_remaining_all_measured(self, client_glucose):
         with patch('routes.api_prediction.get_db') as mock_get_db, \
              patch('routes.api_prediction.predict_remaining_glucose_slots') as mock_slots:
             mock_get_db.return_value = MagicMock()
             mock_slots.return_value = 'all_measured'
-            result = client_authenticated.post('/trigger_prediction', json={'type': '剩余时间点'})
+            result = client_glucose.post('/trigger_prediction', json={'type': '剩余时间点'})
             assert result.status_code == 200
 
-    def test_trigger_remaining_empty_list(self, client_authenticated):
+    def test_trigger_remaining_empty_list(self, client_glucose):
         with patch('routes.api_prediction.get_db') as mock_get_db, \
              patch('routes.api_prediction.predict_remaining_glucose_slots') as mock_slots:
             mock_get_db.return_value = MagicMock()
             mock_slots.return_value = []
-            result = client_authenticated.post('/trigger_prediction', json={'type': '剩余时间点'})
+            result = client_glucose.post('/trigger_prediction', json={'type': '剩余时间点'})
             assert result.status_code == 200
 
-    def test_trigger_429_error(self, client_authenticated):
+    def test_trigger_429_error(self, client_glucose):
         with patch('routes.api_prediction.get_db') as mock_get_db, \
              patch('routes.api_prediction.predict_morning_fpg') as mock_fpg:
             mock_get_db.return_value = MagicMock()
             mock_fpg.side_effect = Exception("429 RESOURCE_EXHAUSTED retry in 30")
-            result = client_authenticated.post('/trigger_prediction', json={'type': '空腹'})
+            result = client_glucose.post('/trigger_prediction', json={'type': '空腹'})
             assert result.status_code == 429
             assert 'retry_after' in result.json.get('details', {})
 
-    def test_trigger_remaining_with_results(self, client_authenticated):
+    def test_trigger_remaining_with_results(self, client_glucose):
         with patch('routes.api_prediction.get_db') as mock_get_db, \
              patch('routes.api_prediction.predict_remaining_glucose_slots') as mock_slots:
             mock_get_db.return_value = MagicMock()
             mock_slots.return_value = [
                 {'type': '午餐后2小时', 'value': 7.0, 'reasoning': '预测'},
             ]
-            result = client_authenticated.post('/trigger_prediction', json={
+            result = client_glucose.post('/trigger_prediction', json={
                 'type': 'remaining', 'force_update': True
             })
             assert result.status_code == 200

@@ -100,10 +100,46 @@ def link_prediction_to_real_record(db, real_record_id, user_id, record_date, rec
         return None
 
 
+def glucose_module_enabled(c, user_id):
+    """判断该用户是否开启了血糖模块。
+
+    ``enabled_modules`` 为空表示「全部启用」（历史兼容），此时返回 True。
+    血糖预测只服务于血糖模块——非血糖用户既没有血糖数据，也不该在时间线上
+    凭空出现一条 AI 编出来的血糖值。
+
+    只有在**能确认**配置里明确不含 glucose 时才返回 False；读不到、格式不认识
+    一律放行，避免因为一处配置异常把真正的血糖用户也挡住。
+    """
+    try:
+        c.execute('SELECT enabled_modules FROM user_profiles WHERE user_id = ?', (user_id,))
+        row = c.fetchone()
+    except Exception:
+        # 表/字段不存在时按「全部启用」处理，保持旧行为
+        return True
+    if not row:
+        return True
+    raw = row[0]
+    if not raw:
+        return True
+    try:
+        modules = json.loads(raw) if isinstance(raw, str) else raw
+    except (ValueError, TypeError):
+        return True
+    if not isinstance(modules, (list, tuple)):
+        return True
+    if not modules:
+        return True
+    return 'glucose' in modules
+
+
 def predict_morning_fpg(db, user_id=1):
     """
     自动预测当天早晨空腹血糖 (FPG)
     基于前一天综合数据：血糖波动、饮食热量、能量平衡、近期趋势、用药情况
+
+    调用方必须先确认血糖模块已开启（用 :func:`glucose_module_enabled`）。
+    所有真实入口（首页后台任务、/trigger_prediction、backfill）都已校验；
+    这里不再重复查库，避免和调用方的查询混在一起。
     """
     if not AI_AVAILABLE:
         return None
@@ -315,6 +351,7 @@ def predict_morning_fpg(db, user_id=1):
 
 
 def predict_post_exercise_glucose(db, user_id=1, target_date=None, force_update=False):
+    """运动后血糖预测。调用方必须先确认血糖模块已开启。"""
     if not AI_AVAILABLE:
         return None
     if target_date is None:
@@ -363,6 +400,10 @@ def backfill_post_exercise_predictions(db, user_id=1, days=30):
     """批量回溯补全过去 N 天的运动后血糖预测"""
     results = {'success': 0, 'skipped': 0, 'error': 0}
     try:
+        # 血糖模块没开就不要回溯——否则会给非血糖用户补出一堆假血糖
+        if not glucose_module_enabled(db.cursor(), user_id):
+            results['skipped'] = days
+            return results
         now = app_now()
         for i in range(days):
             target_date = (now - datetime.timedelta(days=i)).strftime('%Y-%m-%d')
@@ -449,6 +490,7 @@ def summarize_slot_history(cursor, user_id, target_date, slot_types, days=SLOT_H
 
 
 def predict_remaining_glucose_slots(db, user_id=1, target_date=None, force_update=False):
+    """预测今日剩余时间点血糖。调用方必须先确认血糖模块已开启。"""
     if not AI_AVAILABLE:
         return []
     if target_date is None:

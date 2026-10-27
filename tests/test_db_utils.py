@@ -976,3 +976,112 @@ class TestPgPathsMocked:
         c.fetchall()
         _ = c.lastrowid
         _ = c.any_attr
+
+
+class TestModuleBackfillMigration:
+    """一次性数据迁移：老账号的模块白名单补齐骨密度 / 体检。
+
+    背景：enabled_modules 非空时是白名单，老账号存的是升级前的列表，
+    里面没有新增模块，不补的话升级后新功能入口直接消失。
+    """
+
+    @staticmethod
+    def _init(tmp_path, monkeypatch):
+        """建库并清掉迁移标记，模拟「升级前的旧库」。"""
+        import core.config as config
+
+        db_path = str(tmp_path / 'migrate.db')
+        monkeypatch.setenv('SUGAR_BEE_DB_PATH', db_path)
+        monkeypatch.setattr(config, 'DB_TYPE', 'sqlite')
+        import utils.db as db_mod
+
+        db_mod.init_db()
+
+        conn = sqlite3.connect(db_path)
+        conn.execute('DELETE FROM app_migrations')
+        conn.commit()
+        conn.close()
+        return db_path
+
+    @staticmethod
+    def _set_modules(db_path, user_id, modules):
+        conn = sqlite3.connect(db_path)
+        conn.execute(
+            'INSERT OR REPLACE INTO user_profiles (user_id, name, enabled_modules) VALUES (?, ?, ?)',
+            (user_id, f'u{user_id}', modules),
+        )
+        conn.commit()
+        conn.close()
+
+    @staticmethod
+    def _get_modules(db_path, user_id):
+        conn = sqlite3.connect(db_path)
+        raw = conn.execute(
+            'SELECT enabled_modules FROM user_profiles WHERE user_id = ?', (user_id,)
+        ).fetchone()
+        conn.close()
+        import json
+
+        return json.loads(raw[0]) if raw and raw[0] else []
+
+    def _rerun(self, monkeypatch, db_path):
+        """再跑一次 init_db（模拟服务重启）。"""
+        import core.config as config
+        import utils.db as db_mod
+
+        monkeypatch.setenv('SUGAR_BEE_DB_PATH', db_path)
+        monkeypatch.setattr(config, 'DB_TYPE', 'sqlite')
+        db_mod.init_db()
+
+    def test_old_whitelist_gets_new_modules(self, tmp_path, monkeypatch):
+        db_path = self._init(tmp_path, monkeypatch)
+        self._set_modules(db_path, 1, '["glucose", "blood_pressure"]')
+
+        self._rerun(monkeypatch, db_path)
+
+        modules = self._get_modules(db_path, 1)
+        assert modules == ['glucose', 'blood_pressure', 'bone_density', 'checkup']
+        # 原有模块不能被冲掉
+        assert 'glucose' in modules
+
+    def test_empty_whitelist_untouched(self, tmp_path, monkeypatch):
+        """空列表语义是「全部启用」，不需要也不能往里塞具体模块。"""
+        db_path = self._init(tmp_path, monkeypatch)
+        self._set_modules(db_path, 2, '[]')
+
+        self._rerun(monkeypatch, db_path)
+
+        assert self._get_modules(db_path, 2) == []
+
+    def test_idempotent_and_respects_later_opt_out(self, tmp_path, monkeypatch):
+        """只跑一次：用户之后主动关掉骨密度，重启不能又被打回。"""
+        db_path = self._init(tmp_path, monkeypatch)
+        self._set_modules(db_path, 3, '["glucose"]')
+        self._rerun(monkeypatch, db_path)
+        assert 'bone_density' in self._get_modules(db_path, 3)
+
+        # 用户主动关掉
+        self._set_modules(db_path, 3, '["glucose"]')
+        self._rerun(monkeypatch, db_path)
+
+        assert self._get_modules(db_path, 3) == ['glucose']
+
+    def test_marker_recorded(self, tmp_path, monkeypatch):
+        db_path = self._init(tmp_path, monkeypatch)
+        self._rerun(monkeypatch, db_path)
+
+        conn = sqlite3.connect(db_path)
+        row = conn.execute(
+            'SELECT name FROM app_migrations WHERE name = ?',
+            ('backfill_new_modules_v1',),
+        ).fetchone()
+        conn.close()
+        assert row is not None
+
+    def test_user_already_having_modules_unchanged(self, tmp_path, monkeypatch):
+        db_path = self._init(tmp_path, monkeypatch)
+        self._set_modules(db_path, 4, '["glucose", "bone_density", "checkup"]')
+
+        self._rerun(monkeypatch, db_path)
+
+        assert self._get_modules(db_path, 4) == ['glucose', 'bone_density', 'checkup']

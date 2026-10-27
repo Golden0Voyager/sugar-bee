@@ -17,7 +17,7 @@ from unittest.mock import MagicMock, patch
 class TestPredictionTriggerPostExerciseSkipped:
     """trigger_prediction: post_exercise 返回 None → skipped (line 54)"""
 
-    def test_post_exercise_not_available(self, client_authenticated):
+    def test_post_exercise_not_available(self, client_glucose):
         with patch('routes.api_prediction.get_db') as mock_get_db, \
              patch('routes.api_prediction.predict_morning_fpg'), \
              patch('routes.api_prediction.predict_post_exercise_glucose', return_value=None), \
@@ -25,7 +25,7 @@ class TestPredictionTriggerPostExerciseSkipped:
             mock_db = MagicMock()
             mock_get_db.return_value = mock_db
 
-            result = client_authenticated.post('/trigger_prediction', json={
+            result = client_glucose.post('/trigger_prediction', json={
                 'type': 'all'
             })
             assert result.status_code == 200

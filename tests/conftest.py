@@ -135,6 +135,30 @@ def client_authenticated(client, app):
 
 
 @pytest.fixture
+def client_glucose(client_authenticated, app):
+    """已登录 + 显式开启血糖模块的测试客户端。
+
+    `client_authenticated` 建出来的 `_test` 用户走的是新用户默认模板
+    `branding.BASE_MODULES`（不含 glucose）。血糖预测类接口现在会先校验模块开关
+    ——没开血糖的家人不该被 AI 塞一条「空腹血糖」——所以凡是测 `/trigger_prediction`
+    这类血糖专属能力的用例，都必须显式声明「这个用户开了血糖」，否则会被 400 拦掉。
+    """
+    import branding
+    from core.config import get_db_name
+    from user_manager import UserManager
+
+    conn = sqlite3.connect(get_db_name())
+    try:
+        row = conn.execute("SELECT id FROM app_users WHERE username = ?", ('_test',)).fetchone()
+    finally:
+        conn.close()
+
+    assert row, 'client_authenticated 应该已经创建了 _test 用户'
+    UserManager().set_enabled_modules(row[0], list(branding.ALL_MODULES))
+    return client_authenticated
+
+
+@pytest.fixture
 def isolate_db(monkeypatch, db_info):
     """把数据库指向 db_info 创建的临时 SQLite 文件，并初始化表。
 

@@ -7,17 +7,20 @@ from __future__ import annotations
 
 import contextlib
 import datetime
+import json
 import sqlite3
 from typing import Any
 
 from flask import g
 
+import branding
 from core import config
 from utils.sql_dialect import (
     bool_default,
     bool_type,
     current_timestamp_default,
     double_type,
+    ph,
     serial_pk_sql,
     timestamp_type,
 )
@@ -461,6 +464,92 @@ def init_db():
         _init_db_sqlite()
 
 
+# 一次性数据迁移的标记名（写进 app_migrations 表，确保只跑一次）
+MIGRATION_NEW_MODULES = 'backfill_new_modules_v1'
+# 这些模块是「模块白名单」扩容后新增的，老账号的 JSON 里不会有
+BACKFILL_MODULES = ('bone_density', 'checkup')
+
+
+def _apply_module_backfill(c):
+    """给老账号的模块白名单补上新增模块（骨密度 / 体检），只执行一次。
+
+    ``enabled_modules`` 为空表示「全部启用」，无需处理；非空才是白名单。
+    老账号的白名单是升级前存的，里面没有新增模块，不补的话升级后看不到新功能，
+    用户会以为功能丢了。
+
+    用 ``app_migrations`` 记一笔而不是每次启动都跑，否则用户主动关掉
+    骨密度后，下次重启又会被打开。
+    """
+    c.execute('CREATE TABLE IF NOT EXISTS app_migrations (name TEXT PRIMARY KEY, applied_at TEXT)')
+    if c.execute(
+        f"SELECT 1 FROM app_migrations WHERE name = '{MIGRATION_NEW_MODULES}'"
+    ).fetchone():
+        return
+
+    rows = c.execute('SELECT user_id, enabled_modules FROM user_profiles').fetchall()
+    for row in rows:
+        user_id, raw = row[0], row[1]
+        modules = branding.normalize_modules(raw)
+        if not modules:
+            # 空 = 全部启用，或数据损坏 → 保持原样，不动
+            continue
+        added = [m for m in BACKFILL_MODULES if m not in modules]
+        if not added:
+            continue
+        merged = modules + added
+        placeholder = ph()
+        c.execute(
+            f'UPDATE user_profiles SET enabled_modules = {placeholder} '
+            f'WHERE user_id = {placeholder}',
+            (json.dumps(merged), user_id),
+        )
+
+    c.execute(
+        f"INSERT INTO app_migrations (name, applied_at) VALUES "
+        f"('{MIGRATION_NEW_MODULES}', CURRENT_TIMESTAMP)"
+    )
+
+
+MIGRATION_DROP_STRAY_PREDICTIONS = 'drop_stray_predictions_v1'
+
+
+def _apply_prediction_cleanup(c):
+    """删掉「没开血糖模块」的用户名下由 AI 预测生成的血糖记录（只执行一次）。
+
+    历史 bug：首页每次加载都会给当前用户跑空腹血糖预测，却没判断血糖模块是否开启，
+    于是给不测血糖的家人凭空插了一条「空腹 6.x mmol/L」，还带一段 AI 解释。
+
+    只删 ``is_predicted = 1`` 的记录——这些全部由 AI 生成，用户从未录入；
+    用户自己的数据（包括真实血糖）一条都不动。
+    """
+    c.execute('CREATE TABLE IF NOT EXISTS app_migrations (name TEXT PRIMARY KEY, applied_at TEXT)')
+    if c.execute(
+        f"SELECT 1 FROM app_migrations WHERE name = '{MIGRATION_DROP_STRAY_PREDICTIONS}'"
+    ).fetchone():
+        return
+
+    placeholder = ph()
+    removed = 0
+    for row in c.execute('SELECT user_id, enabled_modules FROM user_profiles').fetchall():
+        user_id, raw = row[0], row[1]
+        modules = branding.normalize_modules(raw)
+        # 空列表＝全部启用，包含血糖，不动
+        if not modules or 'glucose' in modules:
+            continue
+        cur = c.execute(
+            f'DELETE FROM records WHERE user_id = {placeholder} AND is_predicted = 1',
+            (user_id,),
+        )
+        removed += cur.rowcount or 0
+
+    c.execute(
+        f"INSERT INTO app_migrations (name, applied_at) VALUES "
+        f"('{MIGRATION_DROP_STRAY_PREDICTIONS}', CURRENT_TIMESTAMP)"
+    )
+    if removed:
+        print(f'[migrate] 已清理非血糖用户的 AI 预测记录 {removed} 条')
+
+
 def _init_db_postgres():
     """PostgreSQL schema 初始化（一次性创建完整表结构）。"""
     import psycopg2
@@ -605,9 +694,18 @@ def _init_db_postgres():
                 updated_at {timestamp_type()} {current_timestamp_default()},
                 target_weight {double_type()},
                 birth_month INTEGER,
-                birth_day INTEGER
+                birth_day INTEGER,
+                app_name TEXT,
+                app_emoji TEXT,
+                app_tagline TEXT,
+                persona TEXT
             )
         ''')
+
+        # 品牌个性化字段：老库补列（PostgreSQL 9.6+ 支持 ADD COLUMN IF NOT EXISTS）
+        for col_name in ('app_name', 'app_emoji', 'app_tagline', 'persona'):
+            with contextlib.suppress(Exception):
+                c.execute(f'ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS {col_name} TEXT')
 
         c.execute(f'''
             CREATE TABLE IF NOT EXISTS chat_messages (
@@ -634,10 +732,55 @@ def _init_db_postgres():
         ''')
         c.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_auth_provider_uid ON user_auth_providers(provider, provider_uid)')
 
+        # 骨密度检查记录（低频检查，独立于 records 主表）
+        c.execute(f'''
+            CREATE TABLE IF NOT EXISTS bone_density_records (
+                id {serial_pk_sql()},
+                user_id INTEGER NOT NULL,
+                measure_date TEXT NOT NULL,
+                site TEXT,
+                t_score {double_type()},
+                z_score {double_type()},
+                bmd {double_type()},
+                institution TEXT,
+                notes TEXT,
+                created_at {timestamp_type()} {current_timestamp_default()}
+            )
+        ''')
+        c.execute('CREATE INDEX IF NOT EXISTS idx_bone_user_date ON bone_density_records(user_id, measure_date)')
+
+        # 体检报告（一次体检一份）+ 明细指标
+        c.execute(f'''
+            CREATE TABLE IF NOT EXISTS checkup_reports (
+                id {serial_pk_sql()},
+                user_id INTEGER NOT NULL,
+                checkup_date TEXT NOT NULL,
+                institution TEXT,
+                summary TEXT,
+                created_at {timestamp_type()} {current_timestamp_default()}
+            )
+        ''')
+        c.execute('CREATE INDEX IF NOT EXISTS idx_checkup_user_date ON checkup_reports(user_id, checkup_date)')
+
+        c.execute(f'''
+            CREATE TABLE IF NOT EXISTS checkup_items (
+                id {serial_pk_sql()},
+                report_id INTEGER NOT NULL,
+                user_id INTEGER NOT NULL,
+                category TEXT,
+                name TEXT NOT NULL,
+                value TEXT,
+                unit TEXT,
+                ref_range TEXT,
+                status TEXT,
+                created_at {timestamp_type()} {current_timestamp_default()}
+            )
+        ''')
+        c.execute('CREATE INDEX IF NOT EXISTS idx_checkup_items_report ON checkup_items(report_id)')
+
         # 设备绑定表（Apple Health 同步）
         c.execute(f'''
-            CREATE TABLE IF NOT EXISTS device_bindings (
-                id {serial_pk_sql()},
+            CREATE TABLE IF NOT EXISTS device_bindings (                id {serial_pk_sql()},
                 user_id INTEGER NOT NULL,
                 bind_code TEXT,
                 code_expires_at {timestamp_type()},
@@ -663,6 +806,11 @@ def _init_db_postgres():
                     'health_analyses', 'chat_messages', 'app_users', 'user_auth_providers'):
             with contextlib.suppress(Exception):
                 c.execute(f"SELECT setval('{tbl}_id_seq', COALESCE((SELECT MAX(id) FROM {tbl}), 1))")
+
+        # 一次性数据迁移：老账号补新增模块（骨密度 / 体检）
+        _apply_module_backfill(c)
+        # 一次性数据迁移：清理非血糖用户被 AI 塞进来的假血糖记录
+        _apply_prediction_cleanup(c)
 
         conn.commit()
     except Exception as e:
@@ -807,7 +955,11 @@ def _init_db_sqlite():
             target_ranges TEXT,
             enabled_modules TEXT,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)''')
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            app_name TEXT,
+            app_emoji TEXT,
+            app_tagline TEXT,
+            persona TEXT)''')
 
         # 用户档案表迁移：目标体重（按用户存储，避免全局污染）
         with contextlib.suppress(sqlite3.OperationalError):
@@ -818,6 +970,11 @@ def _init_db_sqlite():
             with contextlib.suppress(sqlite3.OperationalError):
                 c.execute(f"ALTER TABLE user_profiles ADD COLUMN {col_name} {col_type}")
 
+        # 用户档案表迁移：品牌个性化（应用名 / 图标 / 标语 / 使用场景）
+        for col_name in ("app_name", "app_emoji", "app_tagline", "persona"):
+            with contextlib.suppress(sqlite3.OperationalError):
+                c.execute(f"ALTER TABLE user_profiles ADD COLUMN {col_name} TEXT")
+
         # 用户表迁移
         with contextlib.suppress(sqlite3.OperationalError):
             c.execute("ALTER TABLE app_users ADD COLUMN password_hash TEXT")
@@ -825,6 +982,43 @@ def _init_db_sqlite():
         for col in ['phone TEXT', 'email TEXT']:
             with contextlib.suppress(sqlite3.OperationalError):
                 c.execute(f"ALTER TABLE app_users ADD COLUMN {col}")
+
+        # 骨密度检查记录（低频检查，独立于 records 主表）
+        c.execute('''CREATE TABLE IF NOT EXISTS bone_density_records (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            measure_date TEXT NOT NULL,
+            site TEXT,
+            t_score REAL,
+            z_score REAL,
+            bmd REAL,
+            institution TEXT,
+            notes TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP)''')
+        c.execute('CREATE INDEX IF NOT EXISTS idx_bone_user_date ON bone_density_records(user_id, measure_date)')
+
+        # 体检报告 + 明细指标
+        c.execute('''CREATE TABLE IF NOT EXISTS checkup_reports (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            checkup_date TEXT NOT NULL,
+            institution TEXT,
+            summary TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP)''')
+        c.execute('CREATE INDEX IF NOT EXISTS idx_checkup_user_date ON checkup_reports(user_id, checkup_date)')
+
+        c.execute('''CREATE TABLE IF NOT EXISTS checkup_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            report_id INTEGER NOT NULL,
+            user_id INTEGER NOT NULL,
+            category TEXT,
+            name TEXT NOT NULL,
+            value TEXT,
+            unit TEXT,
+            ref_range TEXT,
+            status TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP)''')
+        c.execute('CREATE INDEX IF NOT EXISTS idx_checkup_items_report ON checkup_items(report_id)')
 
         # 聊天记录表
         c.execute('''CREATE TABLE IF NOT EXISTS chat_messages (
@@ -869,6 +1063,11 @@ def _init_db_sqlite():
         c.execute('CREATE INDEX IF NOT EXISTS idx_records_bp ON records(user_id, systolic_pressure, timestamp DESC)')
         c.execute('CREATE INDEX IF NOT EXISTS idx_analyses_user ON health_analyses(user_id, created_at DESC)')
         c.execute('CREATE INDEX IF NOT EXISTS idx_medlogs_plan ON medication_logs(plan_id, log_date)')
+
+        # 一次性数据迁移：老账号补新增模块（骨密度 / 体检）
+        _apply_module_backfill(c)
+        # 一次性数据迁移：清理非血糖用户被 AI 塞进来的假血糖记录
+        _apply_prediction_cleanup(c)
 
         conn.commit()
     except Exception as e:

@@ -8,11 +8,11 @@
 
 # CLAUDE.md
 
-本文件为 Claude Code 在 Sugar Bee（蜜蜂控糖）项目中的操作指南。
+本文件为 Claude Code 在 Sugar Bee（蜜蜂健康）项目中的操作指南。
 
 ## 项目概述
 
-蜜蜂控糖 — 面向家庭场景的 2 型糖尿病血糖与健康数据管理 Web 应用。支持多用户无密码快速切换、AI 自然语言/拍照录入、综合健康分析、血糖预测、自动备份。
+蜜蜂健康 — 面向家庭场景的慢病管理与健康数据记录 Web 应用（血压/血糖/体重/运动/餐食/骨密度/体检）。支持多用户无密码快速切换、AI 自然语言/拍照录入、综合健康分析、血糖预测、自动备份。
 
 - **后端**：Flask + SQLite（开发），模块化 Blueprint 路由
 - **前端**：单文件 `templates/index.html`（Jinja2 + Bootstrap 5 + Material Design）

@@ -95,7 +95,8 @@ class TestIndexRoute:
             result = client_authenticated.get('/')
             assert result.status_code == 200
             args, kwargs = mocks['render_template'].call_args
-            assert kwargs['enabled_modules'] == ['glucose', 'blood_pressure', 'exercise', 'weight', 'medication']
+            assert kwargs['enabled_modules'] == ['glucose', 'blood_pressure', 'exercise', 'weight',
+                                                 'medication', 'diet', 'bone_density', 'checkup']
 
 
 # ============================================================
@@ -606,7 +607,7 @@ def test_login_page_loads(client):
     """测试登录页面能正常加载"""
     response = client.get('/login')
     assert response.status_code == 200
-    assert '蜜蜂控糖' in response.data.decode('utf-8')
+    assert '蜜蜂健康' in response.data.decode('utf-8')
 
 
 # ============================================================

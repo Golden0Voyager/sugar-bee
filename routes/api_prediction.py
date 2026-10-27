@@ -37,6 +37,15 @@ def trigger_prediction():
     try:
         db = get_db()
         current_user_id = user_manager.get_current_user_id()
+
+        # 血糖预测只服务于血糖模块：没开血糖模块的用户不该生成血糖记录
+        if not user_manager.is_module_enabled(current_user_id, 'glucose'):
+            return api_error(
+                '未开启血糖模块，无需预测',
+                status_code=400,
+                error_type='module_disabled',
+            )
+
         data = request.json or {}
         prediction_type = data.get('type', 'all')
         target_date = data.get('date', app_today_str())

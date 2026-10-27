@@ -1,6 +1,15 @@
-# AGENTS.md — Sugar Bee (蜜蜂控糖)
+# AGENTS.md — Sugar Bee (蜜蜂健康)
 
 > 本文档是面向通用 Agent 的快速参考。项目级约束、提交规范与 Claude Code 专用指南见 [`CLAUDE.md`](CLAUDE.md)。
+
+## 与用户沟通的方式（Agent 请遵守）
+
+用户不是专业程序员，请按下面方式对话，不要改这条约束：
+
+- **默认用中文**回复；代码、命令、日志、字段名沿用仓库原样，不必翻译。
+- **少用术语**。必须用时，先用一句大白话说明它是什么，再带上原词（例如「索引（index，相当于书的目录）」）。
+- **由浅入深**：先给结论和类比，再讲细节；不要一上来就罗列实现细节或大量文件路径。
+- 结尾说明「改了什么、我验证了什么、你还需要做什么」，不要假设用户能读懂 diff。
 
 ## Quick Reference
 
@@ -51,10 +60,16 @@ Monolithic Flask app (`app.py`) with Blueprint modules for routing. Single-page 
 | File | Role |
 |---|---|
 | `app.py` | Flask app, route `/`, backup, Garmin sync, Blueprint registration |
-| `routes/` | 9 Blueprint modules: auth, user, records, chat, dashboard, health, meds, prediction, admin |
+| `routes/` | 11 Blueprint modules: auth, user, records, chat, dashboard, health, meds, prediction, admin, bone, checkup |
 | `ai_client.py` | AI call layer — Gemini chain → OpenAI-compatible providers (Modelscope, Volc), fallback to ZhipuAI |
 | `glucose_parser.py` | AI natural language/image → structured health records |
+| `checkup_parser.py` | 体检报告照片 → 结构化指标（视觉模型只抄录，状态按参考范围自算） |
+| `bone_density.py` | 骨密度领域逻辑：T 值 WHO 分级、部位归一化、趋势汇总、入参校验 |
+| `bone_parser.py` | 骨密度（DXA）报告照片 → 多部位 T/Z/BMD（视觉模型只抄录，一次报告出多条） |
+| `routes/api_bone.py` | 骨密度记录 CRUD + `/api/bone/parse` 报告识别，独立表 `bone_density_records` |
+| `routes/api_checkup.py` | 体检历史（`/api/checkup/parse` 只解析、`/save` 落库、`/list`、`/<id>`、`/delete`） |
 | `user_manager.py` | Multi-user management, password auth, profile CRUD, provider bindings |
+| `branding.py` | 应用品牌个性化：场景模板（persona）、自定义应用名/图标/标语、模块建议与校验 |
 | `settings.py` | Glucose targets (Chinese Diabetes Guideline 2024), badge system, AI model config, BMI calc |
 | `core/config.py` | `DB_NAME` (env `SUGAR_BEE_DB_PATH`), `AVATAR_FOLDER` |
 | `utils/db.py` | `get_db()`, `close_db()`, `init_db()` — SQLite via Flask `g` |
@@ -156,6 +171,23 @@ ignore = ["E501", "E402", "E702"]  # E402/E702 for test files
 **Note**: CI uses `pip` (not `uv`) — intentional for GitHub Actions compatibility.
 
 ## Gotchas
+
+- **功能模块与品牌**：模块白名单唯一来源是 `branding.ALL_MODULES`（glucose / blood_pressure / exercise / weight / medication / diet / bone_density / checkup），前端 `index.html` 的 Jinja `ALL_MODULES`、`MODULE_LABELS` 和 JS `ACTIVE_MODULES` 必须同步
+- 新用户默认 `branding.BASE_MODULES`（慢病管理基础版：血压/用药/体重/运动/餐食/骨密度/体检），血糖按首次引导场景显式开启；`enabled_modules` 为空仍视为「全部启用」（历史兼容）
+- **`enabled_modules` 空数组 = 全部启用**，不是「一个都不要」。所有读它的地方必须用同一套语义：`app.py` 首页和 `/api/user/modules` 都是 `or ALL_MODULES`；`/api/user/branding` 返回的是原始值（`[]`），前端 `initOnboarding()` 必须自己补上 `raw.length ? raw : data.all_modules`。写它的两个接口都禁止空数组（`build_branding_payload` 和 `/api/user/modules` POST），否则「关掉全部」会被读成「全部打开」
+- 应用名/图标/标语/场景存于 `user_profiles`（`app_name` / `app_emoji` / `app_tagline` / `persona`），展示前统一走 `branding.resolve_branding()` 回落默认品牌；`app_name` 为空即「未完成初始化」，前端会弹首次引导
+- **场景模板只管功能，不管名字**：所有模板默认应用名都是「蜜蜂健康」、默认图标都是 🐝，模板之间只有功能模块和标语不同。`PERSONAS` 里的 `icon` 只用于选择卡片上的小图标（让选项看起来不一样），不会被写进用户品牌设置；`emoji` / `name_suggestions` 由 `persona_options()` 统一注入。历史行为是每个模板各起各的名字（我的血压本 / 我的运动日志），一家人的界面看起来像六个不同应用，已废弃
+- **场景模板固定 4 个**（`daily_health` 日常健康 / `glucose_care` 多维控糖 / `fitness` 运动健身 / `family_care` 为家人记录）：血糖是唯一不在 `BASE_MODULES` 里的模块，所以模板差异主要落在「要不要血糖」上。加模板前先想清楚——曾经有 6 个，其中「全部功能」和「控糖」模块完全相同（纯重复），已删。`tests/test_branding.py` 会卡住模板数量、顺序和模块组合重复
+- **设置页点场景只换模块**：`applyPersona(persona, prefix)` 里只有 `prefix === 'onboarding'` 才用默认值填名字/图标/标语，设置页只改模块勾选，不能覆盖用户已经改好的名字
+- **扩容模块白名单要配一次性数据迁移**：`enabled_modules` 非空即白名单，老账号存的旧列表里没有新模块，不补的话升级后新功能入口直接消失。做法是在 `utils/db.py` 的 `_apply_module_backfill()` 里加模块名，并把 `MIGRATION_NEW_MODULES` 换个新标记名（标记存 `app_migrations` 表，只跑一次，否则用户主动关掉后重启又被打回）
+- **首次引导不能套用模板覆盖老配置**：`initOnboarding()` 里若 `branding.enabled_modules` 非空就沿用其勾选，只在新账号时才 `applyPersona()`。默认模板 `daily_health` 不含血糖，套用会把血糖用户的血糖模块冲掉
+- **两段式引导**：先「品牌初始化」(`onboardingModal`)，再「新手使用引导」(`tutorialModal`，教怎么记、怎么测才准)。后者由 `maybeShowTutorial()` 触发，标记存 `localStorage['sbTutorialSeen:<userId>']`（按用户隔离，同设备换人要再教一次），右上角菜单「📖 使用引导」可随时重看
+- **引导文案要跟着模块走**：`tutorialModal` 里的示例和「怎么测才准」各段都用 `{% if 'xxx' in active_modules %}` 包着。妈妈/岳母没有血糖模块，讲「长按血糖格子」等于讲了个不存在的功能。`tests/test_tutorial.py` 会校验这层条件
+- **AI 生成类功能必须先过模块门禁**（历史 bug）：血糖预测曾挂在首页后台线程上无条件跑，给不测血糖的家人凭空插「空腹 6.x mmol/L」+ 一段 AI 解释，在「每日详情」里看着像他自己测的。现在三层都要挡：
+  1. 入口层：`app.py` 首页 `if 'glucose' not in enabled_modules` 就不起线程；`/trigger_prediction` 直接 400 `module_disabled`；`backfill_post_exercise_predictions` 开头短路
+  2. 渲染层：`renderDayDetails` 和日视图时间轴的循环里 `if (r.is_predicted && !ACTIVE_MODULES.has('glucose')) return;` —— 只藏「预测」徽章不够，数值/类型/AI 解释会一起漏出来
+  3. 数据层：`utils/db.py::_apply_prediction_cleanup()` 一次性删掉非血糖用户的历史 `is_predicted = 1` 记录（只删 AI 生成的，用户真实数据一条不动）
+  门禁**不要放进 `predict_morning_fpg` 内部**：那些函数被大量测试用精确的 `fetchone.side_effect` 序列驱动，内部多一次查询会把序列整体错位
 
 - Frontend badge logic (`getBadgeForRate()`) must stay in sync: Python in `settings.py`, JS in `index.html`
 - Glucose targets vary by type (fasting/post-1h/post-2h/pre-sleep/post-exercise) — see `settings.py` `GLUCOSE_TARGETS`
