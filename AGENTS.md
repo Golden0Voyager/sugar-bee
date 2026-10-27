@@ -69,6 +69,7 @@ Monolithic Flask app (`app.py`) with Blueprint modules for routing. Single-page 
 | `utils/report_files.py` | 报告上传解码：base64 → 模型图片列表，PDF 服务端渲染成 JPEG，多文件合并，`MAX_IMAGES` 上限 |
 | `routes/api_bone.py` | 骨密度记录 CRUD + `/api/bone/parse` 报告识别，独立表 `bone_density_records` |
 | `routes/api_checkup.py` | 体检历史（`/api/checkup/parse` 只解析、`/save` 落库、`/list`、`/<id>`、`/delete`） |
+| `static/css/main.css` | 全局样式；`.dropdown-item` 是 flex，两行式菜单项要用 `.item-stacked` 改回 block |
 | `user_manager.py` | Multi-user management, password auth, profile CRUD, provider bindings |
 | `branding.py` | 应用品牌个性化：场景模板（persona）、自定义应用名/图标/标语、模块建议与校验 |
 | `settings.py` | Glucose targets (Chinese Diabetes Guideline 2024), badge system, AI model config, BMI calc |
@@ -195,6 +196,8 @@ ignore = ["E501", "E402", "E702"]  # E402/E702 for test files
   - 解码失败抛 `ReportFileError`，路由统一转 400 + 「请上传体检报告照片或 PDF」，不要让它冒成 500
   - 渲染后的图片一律按 `image/jpeg` 往下传，别再用上传时的 mime（PDF 的 mime 传下去模型会报错）
 
+- **`{% set active_modules %}` 必须放在模板最顶部**（`<body>` 之后第一件事）：右上角头像菜单里的入口也要按模块显示，Jinja 的 `{% set %}` 只对之后的内容生效，放到页面中间会让菜单渲染时 `active_modules` 还是 undefined，条件恒为假、入口静默消失
+- **低频功能入口在头像菜单里**：骨密度 / 体检历史一年才做一次，不占首页版面，入口是头像菜单里「💊 药物管理」下面那两项（带「最近一次」摘要，靠 `boneEntrySummary` / `checkupEntrySummary` 两个 id 填充）。药物管理本身也做了 `medication` 模块判断——运动健身模板没有用药，不该出现这个入口
 - **首页趋势卡片必须跟着模块开关走**（历史 bug）：`glucoseMonitorCard` / `bloodPressureChartCard` / `weightChartCard` 曾经无条件渲染，没开血糖的家人打开首页会看到一张只有绿色目标区间、一条数据都没有的「血糖趋势」图，像是自己的记录丢了。三张卡片现在都包在 `{% if 'xxx' in active_modules %}` 里；对应的 `initGlucoseChart` / `initBloodPressureChart` / `initWeightChart` 开头有 `if (!document.getElementById('xxx')) return;` 兜底——卡片不渲染时它们会被 JS 调用到（`changeBPRange` 等），缺这行就是 TypeError。血压/体重还有一层「没数据就 `display:none`」的 JS 兜底，但那只管有没有数据，管不了模块关没关
 - **`avg_glucose` 的黑名单要跟着新维度补**：`services/timeline_service.py` 用「value>0 且没有 systolic_pressure 且 type 不在黑名单」判断一条记录是不是血糖，黑名单漏一个类型就会把别的维度当血糖算（`体重` 漏过一次，日历上出现「血糖68 (0%)」）。前端 `generateCalendarEvents` 里的 `NON_GLUCOSE_TYPES` / `isGlucoseEntry` 是同一份规则，改一边要改另一边
 - **能量统计只在真记了饮食或运动时显示**（历史 bug）：后端恒按 `净热量 = 摄入 - (基础代谢 + 运动消耗)` 算，什么都没记的一天 `净热量 = 0 - 基础代谢` 也恒为负，于是日历徽章和每日详情天天写着「👍 减糖减脂 1417」，等于说「你躺着就减了 1417 大卡」。三个渲染点（`generateCalendarEvents` 的能量徽章、`showDayStats` 的 chips 行、`renderDayDetails` 的统计行）统一用 `hasEnergyData(stats)` = `cal_in > 0 || cal_out_exercise > 0` 把关，`tests/test_home_energy_badge.py` 会卡住调用点数量

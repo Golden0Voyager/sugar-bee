@@ -186,3 +186,9 @@ class TestTutorialModuleAwareness:
         assert "'bone_density' in active_modules" in window
         assert "'checkup' in active_modules" in window
 
+    def test_low_frequency_copy_points_at_avatar_menu(self):
+        """骨密度/体检已从首页卡片移到头像菜单，文案不能还说「从首页的卡片进去」。"""
+        step4 = self._step_html(4)
+        assert '头像菜单' in step4
+        assert '首页的卡片' not in step4
+

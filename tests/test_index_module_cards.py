@@ -115,3 +115,48 @@ class TestChartInitGuards:
             assert f"if (!document.getElementById('{canvas}')) return;" in head, (
                 f'{fn} 缺少 canvas 存在性检查'
             )
+
+
+# 头像菜单里的入口（首页已不再放卡片）
+MENU_MEDS = '💊 药物管理'
+MENU_BONE = 'onclick="openBoneModal()"'
+MENU_CHECKUP = 'onclick="openCheckupModal()"'
+
+
+class TestLowFrequencyEntriesInUserMenu:
+    """骨密度 / 体检历史一年才用一次，入口收进右上角头像菜单，不占首页版面。"""
+
+    def test_home_no_longer_has_entry_cards(self, client_authenticated):
+        _set_modules('_test', branding.ALL_MODULES)
+        html = _home_html(client_authenticated)
+        assert 'entry-card' not in html
+        assert 'onclick="openBoneModal()"' in html  # 但入口还在，只是挪进菜单了
+
+    def test_menu_items_present(self, client_authenticated):
+        _set_modules('_test', branding.ALL_MODULES)
+        html = _home_html(client_authenticated)
+        assert MENU_BONE in html
+        assert MENU_CHECKUP in html
+
+    def test_menu_order_below_medication(self, client_authenticated):
+        """药物管理 → 骨密度 → 体检历史。"""
+        _set_modules('_test', branding.ALL_MODULES)
+        html = _home_html(client_authenticated)
+        meds = html.index(MENU_MEDS)
+        assert meds < html.index(MENU_BONE) < html.index(MENU_CHECKUP)
+
+    def test_entries_follow_their_modules(self, client_authenticated):
+        """运动健身模板没有用药/骨密度/体检，三个入口都不该出现。"""
+        _set_modules('_test', ['exercise', 'weight', 'diet'])
+        html = _home_html(client_authenticated)
+        assert MENU_MEDS not in html
+        assert MENU_BONE not in html
+        assert MENU_CHECKUP not in html
+
+    def test_summary_placeholders_kept_for_js(self, client_authenticated):
+        """菜单项里的摘要占位符要留着——JS 靠这两个 id 填「最近一次」信息。"""
+        _set_modules('_test', branding.ALL_MODULES)
+        html = _home_html(client_authenticated)
+        assert 'id="boneEntrySummary"' in html
+        assert 'id="checkupEntrySummary"' in html
+

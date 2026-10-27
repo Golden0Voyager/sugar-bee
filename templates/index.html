@@ -27,6 +27,11 @@
 </head>
 <body>
 
+{# 模块白名单必须在最前面算好：右上角头像菜单里的入口也要按模块显示，
+   放到后面会导致菜单渲染时 active_modules 还没定义，条件恒为假。 #}
+{% set ALL_MODULES = ['glucose', 'blood_pressure', 'exercise', 'weight', 'medication', 'diet', 'bone_density', 'checkup'] %}
+{% set active_modules = enabled_modules if enabled_modules else ALL_MODULES %}
+
 <div class="container py-4">
     <!-- Top Header -->
     <div class="d-flex justify-content-between align-items-center mb-4">
@@ -104,11 +109,29 @@
                             📷 更换头像
                         </a>
                     </li>
+                    {% if 'medication' in active_modules %}
                     <li>
                         <a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#medicationPlanModal">
                             💊 药物管理
                         </a>
                     </li>
+                    {% endif %}
+                    {% if 'bone_density' in active_modules %}
+                    <li>
+                        <a class="dropdown-item item-stacked py-2" href="#" onclick="openBoneModal()" data-bs-dismiss="dropdown">
+                            <span>🦴 骨密度</span>
+                            <span class="text-muted" style="display: block; font-size: 0.75rem; margin-top: 2px;" id="boneEntrySummary">暂无记录</span>
+                        </a>
+                    </li>
+                    {% endif %}
+                    {% if 'checkup' in active_modules %}
+                    <li>
+                        <a class="dropdown-item item-stacked py-2" href="#" onclick="openCheckupModal()" data-bs-dismiss="dropdown">
+                            <span>📋 体检历史</span>
+                            <span class="text-muted" style="display: block; font-size: 0.75rem; margin-top: 2px;" id="checkupEntrySummary">暂无记录</span>
+                        </a>
+                    </li>
+                    {% endif %}
                     <li>
                         <a class="dropdown-item" href="#" onclick="openTutorial()" data-bs-dismiss="dropdown">
                             📖 使用引导
@@ -209,8 +232,7 @@
     </div>
 
     <!-- ========== 功能模块开关（全部启用时 enabled_modules 为空列表，兜底为全部启用） ========== -->
-    {% set ALL_MODULES = ['glucose', 'blood_pressure', 'exercise', 'weight', 'medication', 'diet', 'bone_density', 'checkup'] %}
-    {% set active_modules = enabled_modules if enabled_modules else ALL_MODULES %}
+    {# ALL_MODULES / active_modules 在文件顶部已算好 #}
     {# tab 按钮顺序（与下方 tab 按钮渲染顺序一致），用于计算第一个启用的模块以决定 active 状态 #}
     {% set BUTTON_ORDER = ['glucose', 'exercise', 'blood_pressure', 'weight'] %}
     {% set first_active = namespace(module='') %}
@@ -956,37 +978,7 @@
     </div>
     {% endif %}{# end stats card (active_modules > 0) #}
 
-    <!-- ========== 检查类记录入口（骨密度 / 体检历史，低频，单独弹窗） ========== -->
-    {% if 'bone_density' in active_modules or 'checkup' in active_modules %}
-    <div class="row g-2 mb-4">
-        {% if 'bone_density' in active_modules %}
-        <div class="col-6">
-            <div class="card h-100 entry-card" role="button" onclick="openBoneModal()">
-                <div class="card-body py-3 px-3">
-                    <div class="d-flex align-items-center gap-2 mb-1">
-                        <span style="font-size:1.3rem;">🦴</span>
-                        <span class="fw-semibold">骨密度</span>
-                    </div>
-                    <div class="small text-muted" id="boneEntrySummary">暂无记录</div>
-                </div>
-            </div>
-        </div>
-        {% endif %}
-        {% if 'checkup' in active_modules %}
-        <div class="col-6">
-            <div class="card h-100 entry-card" role="button" onclick="openCheckupModal()">
-                <div class="card-body py-3 px-3">
-                    <div class="d-flex align-items-center gap-2 mb-1">
-                        <span style="font-size:1.3rem;">📋</span>
-                        <span class="fw-semibold">体检历史</span>
-                    </div>
-                    <div class="small text-muted" id="checkupEntrySummary">暂无记录</div>
-                </div>
-            </div>
-        </div>
-        {% endif %}
-    </div>
-    {% endif %}
+    <!-- 骨密度 / 体检历史的入口已移到右上角头像菜单（低频功能，不占首页版面） -->
 
     <!-- 预测对比图模态框 -->
     <div class="modal fade" id="predictionComparisonModal" tabindex="-1">
@@ -2346,7 +2338,7 @@
                     </div>
                     {% if 'bone_density' in active_modules or 'checkup' in active_modules %}
                     <div class="tutorial-tip mb-3">
-                        <div class="mb-0">🦴📋 <strong>骨密度、体检报告</strong>一年才做一次，从首页的卡片进去，拍照就能存。</div>
+                        <div class="mb-0">🦴📋 <strong>骨密度、体检报告</strong>一年才做一次，藏在右上角头像菜单里（药物管理下面），拍照就能存。</div>
                     </div>
                     {% endif %}
                     <div class="alert alert-success mb-0 small">
@@ -10181,7 +10173,7 @@
             const g = l.grade || {};
             box.textContent = `${l.measure_date} · T 值 ${l.t_score}${g.label ? ' · ' + g.label : ''}`;
         } else {
-            box.textContent = '暂无记录，点这里添加';
+            box.textContent = '暂无记录';
         }
     }
 
@@ -10236,7 +10228,7 @@
             const r = reports[0];
             box.textContent = `最近 ${r.checkup_date} · ${r.item_count} 项`;
         } else {
-            box.textContent = '暂无记录，点这里上传报告';
+            box.textContent = '暂无记录';
         }
     }
 
