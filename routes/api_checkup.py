@@ -1,9 +1,8 @@
 """体检历史 API（模块 checkup）。
 
-流程：前端上传报告照片 → ``/api/checkup/parse`` 只解析不落库 → 用户确认/修改
+流程：前端上传报告照片/PDF → ``/api/checkup/parse`` 只解析不落库 → 用户确认/修改
 → ``/api/checkup/save`` 落库。两步分开是为了让用户能纠正 AI 抄错的数值。
 """
-import base64
 import traceback
 
 from flask import Blueprint, request
@@ -12,6 +11,7 @@ import checkup_parser
 from user_manager import UserManager
 from utils.auth import login_required
 from utils.db import get_db
+from utils.report_files import ReportFileError, to_model_images
 from utils.responses import api_error, api_success
 from utils.timezone import today as app_today
 
@@ -55,29 +55,23 @@ def _report_detail(db, user_id, report_id):
 @bp_checkup.route('/api/checkup/parse', methods=['POST'])
 @login_required
 def parse_report():
-    """解析体检报告照片，返回结构化指标（不落库）。"""
+    """解析体检报告（照片或 PDF，最多 3 页），返回结构化指标（不落库）。"""
     try:
         data = request.json or {}
         images_b64 = data.get('images') or []
-        mime_type = data.get('mime_type', 'image/jpeg')
         if not images_b64:
-            return api_error('请上传体检报告照片', status_code=400, error_type='validation_error')
+            return api_error('请上传体检报告照片或 PDF', status_code=400, error_type='validation_error')
 
-        images_data = []
-        for img in images_b64[:3]:
-            try:
-                raw = base64.b64decode(str(img).split(',')[-1])
-            except Exception:
-                return api_error('图片数据无法识别，请重新上传', status_code=400, error_type='validation_error')
-            if not raw:
-                # b64decode 对 '@@@' 这类垃圾串不报错、只返回空字节，需显式拦掉
-                return api_error('图片数据无法识别，请重新上传', status_code=400, error_type='validation_error')
-            images_data.append(raw)
+        try:
+            # PDF 在这里被渲染成图片，之后一律按图片送模型
+            images_data = to_model_images(images_b64)
+        except ReportFileError as exc:
+            return api_error(str(exc), status_code=400, error_type='validation_error')
 
-        result = checkup_parser.parse_checkup_report(images_data, mime_type)
+        result = checkup_parser.parse_checkup_report(images_data, 'image/jpeg')
         if not result['items']:
             return api_error(
-                '没有从图片中识别出体检指标，可以换一张更清晰的照片，或稍后手工录入',
+                '没有从报告里识别出体检指标，可以换一张更清晰的照片，或稍后手工录入',
                 status_code=422, error_type='parse_empty',
             )
         if not result['checkup_date']:

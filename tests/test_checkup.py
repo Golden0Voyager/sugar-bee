@@ -291,3 +291,128 @@ class TestCheckupApi:
         monkeypatch.setattr(api_checkup, '_report_list', boom)
         # delete 内部不调用 _report_list，改用 patch db 提交失败更复杂，这里直接验证正常路径之外的分支
         assert client_authenticated.post(f'/api/checkup/delete/{rid}').status_code == 200
+
+
+class TestCheckupPdfAndMultiFile:
+    """体检报告上传：PDF 与多文件。
+
+    医院导出的体检报告常是 PDF，而视觉模型只吃图片，所以 PDF 必须在服务端
+    渲染成图片。用户也常一次拍好几页，前端要能多选。
+    """
+
+    @staticmethod
+    def _pdf_data_url(pages=2):
+        import io
+
+        from reportlab.lib.pagesizes import A4
+        from reportlab.pdfgen import canvas
+
+        buf = io.BytesIO()
+        c = canvas.Canvas(buf, pagesize=A4)
+        for i in range(pages):
+            c.setFont('Helvetica', 16)
+            c.drawString(80, 700, f'Report page {i + 1}')
+            c.showPage()
+        c.save()
+        return 'data:application/pdf;base64,' + base64.b64encode(buf.getvalue()).decode()
+
+    def test_parse_pdf(self, client_authenticated, monkeypatch):
+        """PDF 会被渲染成图片再交给解析器，不再是「不支持的文件类型」。"""
+        captured = {}
+
+        def fake_parse(images, mime):
+            captured['count'] = len(images)
+            captured['mime'] = mime
+            captured['magic'] = images[0][:2]
+            return {'checkup_date': '2026-03-01', 'institution': '市医院',
+                    'items': [{'category': '血脂', 'name': '总胆固醇', 'value': '5.6',
+                               'unit': 'mmol/L', 'ref_range': '3.1-5.2', 'status': 'high'}]}
+
+        monkeypatch.setattr('checkup_parser.parse_checkup_report', fake_parse)
+        resp = client_authenticated.post('/api/checkup/parse', json={'images': [self._pdf_data_url(2)]})
+
+        assert resp.status_code == 200
+        assert captured['count'] == 2, 'PDF 两页应渲染成两张图'
+        assert captured['mime'] == 'image/jpeg'
+        assert captured['magic'] == b'\xff\xd8', '渲染结果应是 JPEG'
+
+    def test_parse_multiple_images(self, client_authenticated, monkeypatch):
+        captured = {}
+
+        def fake_parse(images, mime):
+            captured['count'] = len(images)
+            return {'checkup_date': '', 'institution': '',
+                    'items': [{'category': '血糖', 'name': '空腹血糖', 'value': '5.4',
+                               'unit': 'mmol/L', 'ref_range': '3.9-6.1', 'status': 'normal'}]}
+
+        monkeypatch.setattr('checkup_parser.parse_checkup_report', fake_parse)
+        resp = client_authenticated.post('/api/checkup/parse', json={'images': [FAKE_IMAGE] * 3})
+
+        assert resp.status_code == 200
+        assert captured['count'] == 3
+
+    def test_parse_caps_at_three(self, client_authenticated, monkeypatch):
+        """选了 5 个文件也只送 3 张，避免请求体过大。"""
+        captured = {}
+
+        def fake_parse(images, mime):
+            captured['count'] = len(images)
+            return {'checkup_date': '', 'institution': '',
+                    'items': [{'category': '血糖', 'name': '空腹血糖', 'value': '5.4',
+                               'unit': 'mmol/L', 'ref_range': '3.9-6.1', 'status': 'normal'}]}
+
+        monkeypatch.setattr('checkup_parser.parse_checkup_report', fake_parse)
+        resp = client_authenticated.post('/api/checkup/parse', json={'images': [FAKE_IMAGE] * 5})
+
+        assert resp.status_code == 200
+        assert captured['count'] == 3
+
+    def test_corrupt_pdf_rejected(self, client_authenticated):
+        bad = 'data:application/pdf;base64,' + base64.b64encode(b'%PDF-1.4 broken').decode()
+        resp = client_authenticated.post('/api/checkup/parse', json={'images': [bad]})
+        assert resp.status_code == 400
+        assert resp.get_json()['error_type'] == 'validation_error'
+
+    def test_missing_file_message_mentions_pdf(self, client_authenticated):
+        resp = client_authenticated.post('/api/checkup/parse', json={'images': []})
+        assert resp.status_code == 400
+        assert 'PDF' in resp.get_json()['message']
+
+
+class TestBonePdfAndMultiFile:
+    """骨密度报告同样支持 PDF 与多文件（共用 utils/report_files）。"""
+
+    @staticmethod
+    def _pdf_data_url(pages=2):
+        import io
+
+        from reportlab.lib.pagesizes import A4
+        from reportlab.pdfgen import canvas
+
+        buf = io.BytesIO()
+        c = canvas.Canvas(buf, pagesize=A4)
+        for i in range(pages):
+            c.setFont('Helvetica', 16)
+            c.drawString(80, 700, f'DXA page {i + 1}')
+            c.showPage()
+        c.save()
+        return 'data:application/pdf;base64,' + base64.b64encode(buf.getvalue()).decode()
+
+    def test_parse_pdf(self, client_authenticated, monkeypatch):
+        captured = {}
+
+        def fake_parse(images, mime):
+            captured['count'] = len(images)
+            return {'measure_date': '2026-03-01',
+                    'measurements': [{'site': '腰椎L1-L4', 't_score': -1.2, 'z_score': -0.8}]}
+
+        monkeypatch.setattr('bone_parser.parse_bone_report', fake_parse)
+        resp = client_authenticated.post('/api/bone/parse', json={'images': [self._pdf_data_url(2)]})
+
+        assert resp.status_code == 200
+        assert captured['count'] == 2
+
+    def test_corrupt_pdf_rejected(self, client_authenticated):
+        bad = 'data:application/pdf;base64,' + base64.b64encode(b'%PDF-1.4 broken').decode()
+        resp = client_authenticated.post('/api/bone/parse', json={'images': [bad]})
+        assert resp.status_code == 400

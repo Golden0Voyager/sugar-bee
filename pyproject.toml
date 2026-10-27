@@ -38,6 +38,7 @@ dependencies = [
     # Garmin 同步是线上功能（services/garmin_service.py），必须属生产依赖。
     # 此前误放在 [dependency-groups] dev，`uv export --no-dev` 会被排除，导致部署缺包。
     "garminconnect>=0.3.0",
+    "pypdfium2>=5.14.0",
 ]
 
 [dependency-groups]

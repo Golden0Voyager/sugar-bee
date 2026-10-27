@@ -2,7 +2,6 @@
 
 低频检查（半年到一年一次），接口只做增删查与报告识别，不做预测。
 """
-import base64
 import traceback
 
 from flask import Blueprint, request
@@ -12,6 +11,7 @@ import bone_parser
 from user_manager import UserManager
 from utils.auth import login_required
 from utils.db import get_db
+from utils.report_files import ReportFileError, to_model_images
 from utils.responses import api_error, api_success
 from utils.timezone import today as app_today
 
@@ -46,28 +46,22 @@ def list_bone_records():
 @bp_bone.route('/api/bone/parse', methods=['POST'])
 @login_required
 def parse_bone_image():
-    """识别骨密度报告照片，返回多条测量值（不落库，等用户确认）。"""
+    """识别骨密度报告（照片或 PDF，最多 3 页），返回多条测量值（不落库，等用户确认）。"""
     try:
         data = request.json or {}
         images_b64 = data.get('images') or []
         if not images_b64:
-            return api_error('请上传骨密度报告照片', status_code=400, error_type='validation_error')
+            return api_error('请上传骨密度报告照片或 PDF', status_code=400, error_type='validation_error')
 
-        images_data = []
-        for img in images_b64[:3]:
-            try:
-                raw = base64.b64decode(str(img).split(',')[-1])
-            except Exception:
-                return api_error('图片数据无法识别，请重新上传', status_code=400, error_type='validation_error')
-            if not raw:
-                # b64decode 对 '@@@' 这类垃圾串不报错、只返回空字节，需显式拦掉
-                return api_error('图片数据无法识别，请重新上传', status_code=400, error_type='validation_error')
-            images_data.append(raw)
+        try:
+            images_data = to_model_images(images_b64)
+        except ReportFileError as exc:
+            return api_error(str(exc), status_code=400, error_type='validation_error')
 
-        result = bone_parser.parse_bone_report(images_data, data.get('mime_type', 'image/jpeg'))
+        result = bone_parser.parse_bone_report(images_data, 'image/jpeg')
         if not result['measurements']:
             return api_error(
-                '没有从照片中识别出 T 值，可以换一张更清晰的照片，或手工录入',
+                '没有从报告里识别出 T 值，可以换一张更清晰的照片，或手工录入',
                 status_code=422, error_type='parse_empty',
             )
         if not result['measure_date']:

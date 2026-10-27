@@ -63,9 +63,10 @@ Monolithic Flask app (`app.py`) with Blueprint modules for routing. Single-page 
 | `routes/` | 11 Blueprint modules: auth, user, records, chat, dashboard, health, meds, prediction, admin, bone, checkup |
 | `ai_client.py` | AI call layer — Gemini chain → OpenAI-compatible providers (Modelscope, Volc), fallback to ZhipuAI |
 | `glucose_parser.py` | AI natural language/image → structured health records |
-| `checkup_parser.py` | 体检报告照片 → 结构化指标（视觉模型只抄录，状态按参考范围自算） |
+| `checkup_parser.py` | 体检报告图片（照片或 PDF 页）→ 结构化指标（视觉模型只抄录，状态按参考范围自算） |
 | `bone_density.py` | 骨密度领域逻辑：T 值 WHO 分级、部位归一化、趋势汇总、入参校验 |
-| `bone_parser.py` | 骨密度（DXA）报告照片 → 多部位 T/Z/BMD（视觉模型只抄录，一次报告出多条） |
+| `bone_parser.py` | 骨密度（DXA）报告图片（照片或 PDF 页）→ 多部位 T/Z/BMD（视觉模型只抄录，一次报告出多条） |
+| `utils/report_files.py` | 报告上传解码：base64 → 模型图片列表，PDF 服务端渲染成 JPEG，多文件合并，`MAX_IMAGES` 上限 |
 | `routes/api_bone.py` | 骨密度记录 CRUD + `/api/bone/parse` 报告识别，独立表 `bone_density_records` |
 | `routes/api_checkup.py` | 体检历史（`/api/checkup/parse` 只解析、`/save` 落库、`/list`、`/<id>`、`/delete`） |
 | `user_manager.py` | Multi-user management, password auth, profile CRUD, provider bindings |
@@ -188,6 +189,11 @@ ignore = ["E501", "E402", "E702"]  # E402/E702 for test files
   2. 渲染层：`renderDayDetails` 和日视图时间轴的循环里 `if (r.is_predicted && !ACTIVE_MODULES.has('glucose')) return;` —— 只藏「预测」徽章不够，数值/类型/AI 解释会一起漏出来
   3. 数据层：`utils/db.py::_apply_prediction_cleanup()` 一次性删掉非血糖用户的历史 `is_predicted = 1` 记录（只删 AI 生成的，用户真实数据一条不动）
   门禁**不要放进 `predict_morning_fpg` 内部**：那些函数被大量测试用精确的 `fetchone.side_effect` 序列驱动，内部多一次查询会把序列整体错位
+- **报告上传走 `utils/report_files.py`，不要直接塞 base64 给视觉模型**（历史 bug：只支持单张 jpg，PDF 直接被拒）。两个入口 `/api/checkup/parse` 和 `/api/bone/parse` 都先调 `to_model_images(images_b64)`：
+  - 视觉模型只吃图片，所以 PDF 在服务端用 pypdfium2 渲染成 JPEG（`PDF_DPI=150`、`PDF_MAX_PAGES=3`，多了截断）
+  - 单次请求最多 `MAX_IMAGES=3` 张（照片 + PDF 页合并计算），前后端都用这个数，改上限要同步 `index.html` 的 `REPORT_MAX_FILES`
+  - 解码失败抛 `ReportFileError`，路由统一转 400 + 「请上传体检报告照片或 PDF」，不要让它冒成 500
+  - 渲染后的图片一律按 `image/jpeg` 往下传，别再用上传时的 mime（PDF 的 mime 传下去模型会报错）
 
 - Frontend badge logic (`getBadgeForRate()`) must stay in sync: Python in `settings.py`, JS in `index.html`
 - Glucose targets vary by type (fasting/post-1h/post-2h/pre-sleep/post-exercise) — see `settings.py` `GLUCOSE_TARGETS`

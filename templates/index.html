@@ -2056,9 +2056,12 @@
             </div>
             <div class="modal-body">
                 <div class="border rounded-3 p-3 bg-light mb-3">
-                    <div class="fw-semibold mb-1">拍照识别报告</div>
-                    <p class="small text-muted mb-2">DXA 报告单拍清楚一点，会自动拆成腰椎/髋部等多个部位。</p>
-                    <input type="file" id="boneFile" class="form-control form-control-sm" accept="image/*">
+                    <div class="fw-semibold mb-1">上传骨密度报告</div>
+                    <p class="small text-muted mb-2">DXA 报告单，照片或 PDF 都行，可多选；一次最多识别 3 页。</p>
+                    <input type="file" id="boneFile" class="form-control form-control-sm"
+                           accept="image/*,.pdf,application/pdf" multiple
+                           onchange="showReportFileHint('boneFile', 'boneFileHint')">
+                    <div class="small text-muted mt-1" id="boneFileHint"></div>
                     <button class="btn btn-primary btn-sm w-100 mt-2" id="boneParseBtn" onclick="parseBoneImage()">
                         <i class="bi bi-magic me-1"></i>识别报告
                     </button>
@@ -2148,9 +2151,12 @@
             </div>
             <div class="modal-body">
                 <div class="border rounded-3 p-3 bg-light mb-3">
-                    <div class="fw-semibold mb-1">上传体检报告照片</div>
-                    <p class="small text-muted mb-2">拍清楚一点，会自动拆成指标；识别后可以逐项改。</p>
-                    <input type="file" id="checkupFile" class="form-control form-control-sm" accept="image/*">
+                    <div class="fw-semibold mb-1">上传体检报告</div>
+                    <p class="small text-muted mb-2">照片或 PDF 都行，可多选；一次最多识别 3 页，识别后可以逐项改。</p>
+                    <input type="file" id="checkupFile" class="form-control form-control-sm"
+                           accept="image/*,.pdf,application/pdf" multiple
+                           onchange="showReportFileHint('checkupFile', 'checkupFileHint')">
+                    <div class="small text-muted mt-1" id="checkupFileHint"></div>
                     <button class="btn btn-primary btn-sm w-100 mt-2" id="checkupParseBtn" onclick="parseCheckupImage()">
                         <i class="bi bi-magic me-1"></i>识别报告
                     </button>
@@ -10012,19 +10018,15 @@
     }
 
     async function parseBoneImage() {
-        const input = document.getElementById('boneFile');
-        if (!input || !input.files || !input.files[0]) {
-            showToast('请先选择一张报告照片', 'error');
-            return;
-        }
+        const images = await collectReportImages('boneFile');
+        if (!images) return;
         const btn = document.getElementById('boneParseBtn');
         const original = btn ? btn.innerHTML : '';
         if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>识别中...'; }
         try {
-            const dataUrl = await readFileAsDataUrl(input.files[0]);
             const res = await apiCall('/api/bone/parse', {
                 method: 'POST',
-                body: JSON.stringify({ images: [dataUrl], mime_type: input.files[0].type || 'image/jpeg' })
+                body: JSON.stringify({ images })
             }, { showLoading: false });
             showBonePreview(res.data);
         } catch (e) {
@@ -10077,8 +10079,7 @@
     function cancelBonePreview() {
         _bonePreviewItems = [];
         document.getElementById('bonePreview').classList.add('d-none');
-        const input = document.getElementById('boneFile');
-        if (input) input.value = '';
+        clearReportFileInput('boneFile', 'boneFileHint');
     }
 
     async function saveBonePreview() {
@@ -10200,20 +10201,52 @@
         });
     }
 
-    async function parseCheckupImage() {
-        const input = document.getElementById('checkupFile');
-        if (!input || !input.files || !input.files[0]) {
-            showToast('请先选择一张报告照片', 'error');
-            return;
+    // ========== 报告上传（体检 / 骨密度共用） ==========
+    // 后端会把 PDF 渲染成图片再送模型，单个请求最多 3 张图（PDF 按页算），
+    // 所以这里限制 3 个文件，避免用户选了 10 个却只识别了前 3 个还不知道。
+    const REPORT_MAX_FILES = 3;
+
+    function showReportFileHint(inputId, hintId) {
+        const input = document.getElementById(inputId);
+        const hint = document.getElementById(hintId);
+        if (!hint) return;
+        const files = [...((input && input.files) || [])];
+        if (!files.length) { hint.textContent = ''; return; }
+        const shown = files.slice(0, REPORT_MAX_FILES).map(f => f.name).join('、');
+        hint.textContent = files.length > REPORT_MAX_FILES
+            ? `已选 ${files.length} 个，只识别前 ${REPORT_MAX_FILES} 个：${shown}`
+            : `已选 ${files.length} 个：${shown}`;
+    }
+
+    /** 读取用户选中的报告文件（图片或 PDF），返回 data URL 数组。 */
+    async function collectReportImages(inputId) {
+        const input = document.getElementById(inputId);
+        const files = [...((input && input.files) || [])];
+        if (!files.length) {
+            showToast('请先选择报告照片或 PDF', 'error');
+            return null;
         }
+        const picked = files.slice(0, REPORT_MAX_FILES);
+        return await Promise.all(picked.map(readFileAsDataUrl));
+    }
+
+    function clearReportFileInput(inputId, hintId) {
+        const input = document.getElementById(inputId);
+        if (input) input.value = '';
+        const hint = document.getElementById(hintId);
+        if (hint) hint.textContent = '';
+    }
+
+    async function parseCheckupImage() {
+        const images = await collectReportImages('checkupFile');
+        if (!images) return;
         const btn = document.getElementById('checkupParseBtn');
         const original = btn ? btn.innerHTML : '';
         if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>识别中...'; }
         try {
-            const dataUrl = await readFileAsDataUrl(input.files[0]);
             const res = await apiCall('/api/checkup/parse', {
                 method: 'POST',
-                body: JSON.stringify({ images: [dataUrl], mime_type: input.files[0].type || 'image/jpeg' })
+                body: JSON.stringify({ images })
             }, { showLoading: false });
             showCheckupPreview(res.data);
         } catch (e) {
@@ -10254,8 +10287,7 @@
         _checkupViewingId = null;
         setCheckupPreviewMode('edit');
         document.getElementById('checkupPreview').classList.add('d-none');
-        const input = document.getElementById('checkupFile');
-        if (input) input.value = '';
+        clearReportFileInput('checkupFile', 'checkupFileHint');
     }
 
     async function saveCheckupReport() {
