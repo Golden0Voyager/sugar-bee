@@ -72,3 +72,18 @@ def test_body_comp_threshold_helpers():
     assert settings.get_body_fat_upper_bound("male", 30) == 19
     assert settings.get_muscle_mass_ratio_min("male") == 0.70
     assert settings.get_muscle_mass_ratio_min("female") == 0.64
+
+
+def test_validate_body_comp_ranges():
+    from routes.api_records import _validate_record_data
+    ok = _validate_record_data({'weight': 70.45, 'body_fat_rate': 21.7, 'visceral_fat': 9,
+                                'muscle_mass': 52.3, 'basal_metabolism': 1562})
+    assert ok == []
+
+    bad = _validate_record_data({'weight': 70.45, 'body_fat_rate': 200, 'body_fat_mass': 0.1,
+                                 'visceral_fat': 99, 'muscle_mass': 900,
+                                 'skeletal_muscle_mass': 0.2, 'protein_mass': 99,
+                                 'basal_metabolism': 99999})
+    joined = "; ".join(bad)
+    for field in ('体脂率', '体脂量', '内脏脂肪', '肌肉量', '骨骼肌量', '蛋白量', '基础代谢'):
+        assert field in joined, f"缺少 {field} 的越界警告"
