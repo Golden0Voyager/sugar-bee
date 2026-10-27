@@ -35,7 +35,7 @@ class TestAuthRoutes:
     def test_login_page_get(self, client):
         resp = client.get('/login')
         assert resp.status_code == 200
-        assert '蜜蜂控糖' in resp.data.decode('utf-8')
+        assert '蜜蜂健康' in resp.data.decode('utf-8')
 
     def test_login_page_already_logged_in(self, client_authenticated):
         resp = client_authenticated.get('/login')

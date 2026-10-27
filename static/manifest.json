@@ -1,7 +1,7 @@
 {
-  "name": "蜜蜂控糖 - 家庭血糖健康追踪",
-  "short_name": "蜜蜂控糖",
-  "description": "勤劳控糖，甜蜜生活",
+  "name": "蜜蜂健康 - 家庭健康记录",
+  "short_name": "蜜蜂健康",
+  "description": "记录全家人的健康",
   "start_url": "/",
   "display": "standalone",
   "orientation": "portrait",

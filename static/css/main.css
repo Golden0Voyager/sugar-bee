@@ -1190,6 +1190,12 @@
             text-align: center;
             transition: transform 0.15s ease;
         }
+        /* 两行式下拉项：标题 + 最近一次摘要（骨密度 / 体检历史）
+           必须显式改回 block —— .dropdown-item 是 flex，两个 span 会挤成一行 */
+        .dropdown-item.item-stacked {
+            display: block;
+            line-height: 1.3;
+        }
         .dropdown-item.text-danger:hover {
             background: linear-gradient(135deg, #dc3545, #e74c5e);
         }
@@ -2542,4 +2548,45 @@
     position: relative;
     width: 100%;
     aspect-ratio: var(--chart-aspect-ratio, 2);
+}
+
+/* ========== 新手使用引导 ========== */
+.tutorial-example {
+    background: #EEF2FF;
+    color: #4338CA;
+    font-weight: 500;
+    padding: 7px 12px;
+    border-radius: 999px;
+    font-size: .85rem;
+}
+
+.tutorial-tip {
+    background: #F8FAFC;
+    border: 1px solid #E2E8F0;
+    border-radius: 10px;
+    padding: 12px 14px;
+    font-size: .92rem;
+    line-height: 1.65;
+}
+
+.tutorial-tip ul li {
+    margin-bottom: 4px;
+}
+
+.tutorial-tip ul li:last-child {
+    margin-bottom: 0;
+}
+
+#tutorialModal .modal-title {
+    font-size: 1.05rem;
+}
+
+/* 老人模式：引导文字放大，保证看得清 */
+body.elderly-mode .tutorial-tip {
+    font-size: 1.05rem;
+    line-height: 1.75;
+}
+
+body.elderly-mode .tutorial-example {
+    font-size: 1rem;
 }

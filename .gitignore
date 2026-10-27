@@ -48,6 +48,8 @@ backups/
 .ruff_cache/
 .mypy_cache/
 .pytest_cache/
+# 测试用的可写 TMPDIR（本机 pytest 需要，见 AGENTS.md）
+.pytest_tmp/
 
 # Coverage
 htmlcov/

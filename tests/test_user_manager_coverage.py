@@ -47,7 +47,8 @@ def real_um():
             default_meals TEXT, target_ranges TEXT, enabled_modules TEXT,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            target_weight REAL, birth_month INTEGER, birth_day INTEGER
+            target_weight REAL, birth_month INTEGER, birth_day INTEGER,
+            app_name TEXT, app_emoji TEXT, app_tagline TEXT, persona TEXT
         )
     ''')
     c.execute("INSERT INTO app_users (username, display_name) VALUES ('test', 'Test')")

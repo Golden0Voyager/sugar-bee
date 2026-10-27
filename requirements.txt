@@ -178,6 +178,8 @@ pyjwt==2.15.1
     # via
     #   mcp
     #   sugar-bee
+pypdfium2==5.14.0
+    # via sugar-bee
 python-dateutil==2.9.0.post0
     # via pandas
 python-dotenv==1.2.2

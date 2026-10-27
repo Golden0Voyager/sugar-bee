@@ -12,7 +12,7 @@ from flask import Flask, render_template, session
 import settings
 
 load_dotenv(override=True)
-
+import branding  # noqa: E402
 from core.config import AVATAR_FOLDER, get_db_name  # noqa: E402
 from services import (  # noqa: E402
     build_timeline,
@@ -139,21 +139,31 @@ def index():
                         _prediction_fail_count.pop(user_id, None)
 
         import time as _time
-        with _prediction_lock:
-            already_running = current_user_id in _prediction_running
-            if not already_running:
-                last_run = _prediction_last_run.get(current_user_id, 0)
-                fail_n = _prediction_fail_count.get(current_user_id, 0)
-                cooldown = _PREDICTION_COOLDOWN_SUCCESS if fail_n == 0 else min(
-                    _PREDICTION_COOLDOWN_FAIL_BASE * (2 ** (fail_n - 1)),
-                    _PREDICTION_COOLDOWN_FAIL_MAX,
-                )
-                if _time.time() - last_run < cooldown:
-                    already_running = True
-                else:
-                    _prediction_running.add(current_user_id)
-                    _prediction_last_run[current_user_id] = _time.time()
-                    _prediction_fail_count.pop(current_user_id, None)
+
+        # 3. 获取当前用户启用的功能模块（空/None 视为全部启用）
+        user = user_manager.get_user(current_user_id)
+        enabled_modules = (user.get('enabled_modules') if user else None) or branding.ALL_MODULES
+
+        # 血糖预测只服务于血糖模块：没开血糖的用户连后台线程都不启动，
+        # 否则 AI 会给他凭空生成一条「空腹血糖」写进时间线。
+        if 'glucose' not in enabled_modules:
+            already_running = True
+        else:
+            with _prediction_lock:
+                already_running = current_user_id in _prediction_running
+                if not already_running:
+                    last_run = _prediction_last_run.get(current_user_id, 0)
+                    fail_n = _prediction_fail_count.get(current_user_id, 0)
+                    cooldown = _PREDICTION_COOLDOWN_SUCCESS if fail_n == 0 else min(
+                        _PREDICTION_COOLDOWN_FAIL_BASE * (2 ** (fail_n - 1)),
+                        _PREDICTION_COOLDOWN_FAIL_MAX,
+                    )
+                    if _time.time() - last_run < cooldown:
+                        already_running = True
+                    else:
+                        _prediction_running.add(current_user_id)
+                        _prediction_last_run[current_user_id] = _time.time()
+                        _prediction_fail_count.pop(current_user_id, None)
 
         if not already_running:
             threading.Thread(target=_run_predictions, args=(current_user_id,), daemon=True).start()
@@ -166,11 +176,8 @@ def index():
         # 补全 stats 中的时间轴数据（如果需要）
         stats['current_days'] = 90
 
-        # 3. 获取当前用户启用的功能模块（空/None 视为全部启用）
-        user = user_manager.get_user(current_user_id)
-        enabled_modules = (user.get('enabled_modules') if user else None) or [
-            'glucose', 'blood_pressure', 'exercise', 'weight', 'medication'
-        ]
+        # 3.1 应用品牌个性化（应用名/图标/标语/使用场景），未自定义时回落默认品牌
+        brand = branding.resolve_branding(user)
 
         # 4. 是否为绑定 Garmin 的用户（控制运动卡片上的"同步 Garmin"按钮显示）
         garmin_uid = int(os.environ.get('GARMIN_USER_ID', 0) or 0)
@@ -178,6 +185,7 @@ def index():
 
         return render_template('index.html', records=records, stats=stats, timeline=sorted_dates,
                                enabled_modules=enabled_modules, is_garmin_user=is_garmin_user,
+                               brand=brand,
                                user_emoji_map=settings.USER_EMOJI_MAP)
     except Exception as e:
         traceback.print_exc()
@@ -311,7 +319,9 @@ def start_background_tasks():
 # ========== 蓝图注册 ==========
 from routes.api_admin import bp_admin  # noqa: E402
 from routes.api_auth import bp_auth  # noqa: E402
+from routes.api_bone import bp_bone  # noqa: E402
 from routes.api_chat import bp_chat  # noqa: E402
+from routes.api_checkup import bp_checkup  # noqa: E402
 from routes.api_dashboard import bp_dashboard  # noqa: E402
 from routes.api_health import bp_health  # noqa: E402
 from routes.api_health_sync import bp_health_sync  # noqa: E402
@@ -332,6 +342,8 @@ app.register_blueprint(bp_dashboard)
 app.register_blueprint(bp_prediction)
 app.register_blueprint(bp_internal)
 app.register_blueprint(bp_health_sync)
+app.register_blueprint(bp_bone)
+app.register_blueprint(bp_checkup)
 
 # 为敏感端点添加请求限速（在 Blueprint 注册后配置，避免循环导入）
 # Flask Blueprint view_functions 使用 "blueprint.endpoint" 格式

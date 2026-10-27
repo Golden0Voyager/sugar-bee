@@ -10,6 +10,7 @@ from contextlib import contextmanager
 from flask import session
 from werkzeug.security import check_password_hash, generate_password_hash
 
+import branding
 from core import config
 from utils.db import ConnectionWrapper, get_raw_conn, put_raw_conn
 from utils.sql_dialect import insert_or_ignore_sql
@@ -56,7 +57,8 @@ class UserManager:
         SELECT u.id, u.username, u.display_name, u.avatar, u.is_active,
                u.phone, u.email,
                p.name, p.birth_year, p.birth_month, p.birth_day, p.height, p.weight, p.gender, p.target_weight,
-               p.default_meals, p.target_ranges, p.enabled_modules
+               p.default_meals, p.target_ranges, p.enabled_modules,
+               p.app_name, p.app_emoji, p.app_tagline, p.persona
         FROM app_users u
         LEFT JOIN user_profiles p ON u.id = p.user_id
     """
@@ -73,6 +75,9 @@ class UserManager:
                     user[field] = default
             else:
                 user[field] = default
+        # 品牌个性化字段：缺列（旧库未迁移）时补空值，避免模板取值报错
+        for field in ('app_name', 'app_emoji', 'app_tagline', 'persona'):
+            user.setdefault(field, None)
         return user
 
     def get_all_users(self):
@@ -109,7 +114,11 @@ class UserManager:
         return module_name in user['enabled_modules']
 
     def create_user(self, username, display_name, profile_data, password=None):
-        """创建新用户"""
+        """创建新用户
+
+        未显式指定 enabled_modules 时使用「基础模板」（血压/体重/运动/餐食），
+        血糖等模块留给首次引导时按场景选择——避免新成员一登录就被血糖面板淹没。
+        """
         with _db_conn(self.db_path) as conn:
             c = conn.cursor()
 
@@ -121,11 +130,16 @@ class UserManager:
             """, (username, display_name, password_hash))
             user_id = c.lastrowid
 
+            enabled_modules = profile_data.get('enabled_modules')
+            if enabled_modules is None:
+                enabled_modules = list(branding.BASE_MODULES)
+
             # 插入配置
             c.execute("""
                 INSERT INTO user_profiles (
-                    user_id, name, birth_year, height, weight, gender, enabled_modules
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    user_id, name, birth_year, height, weight, gender, enabled_modules,
+                    app_name, app_emoji, app_tagline, persona
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 user_id,
                 profile_data.get('name'),
@@ -133,7 +147,11 @@ class UserManager:
                 profile_data.get('height'),
                 profile_data.get('weight'),
                 profile_data.get('gender'),
-                json.dumps(profile_data.get('enabled_modules', []))
+                json.dumps(enabled_modules),
+                profile_data.get('app_name'),
+                profile_data.get('app_emoji'),
+                profile_data.get('app_tagline'),
+                profile_data.get('persona'),
             ))
 
             conn.commit()
@@ -186,14 +204,16 @@ class UserManager:
         避免 saveUserSettings 这类只提交部分字段的请求误清空 default_meals /
         target_ranges / enabled_modules / target_weight 等。
         支持 key:name, birth_year, height, weight, gender, target_weight,
-        default_meals, target_ranges (别名 target), enabled_modules。
+        default_meals, target_ranges (别名 target), enabled_modules,
+        app_name, app_emoji, app_tagline, persona。
         JSON 字段会自动 dumps。
         """
         if not partial_data:
             return
 
         json_fields = {'default_meals', 'target_ranges', 'enabled_modules'}
-        scalar_fields = {'name', 'birth_year', 'birth_month', 'birth_day', 'height', 'weight', 'gender', 'target_weight'}
+        scalar_fields = {'name', 'birth_year', 'birth_month', 'birth_day', 'height', 'weight', 'gender', 'target_weight',
+                         'app_name', 'app_emoji', 'app_tagline', 'persona'}
         aliases = {'target': 'target_ranges'}
 
         set_clauses = []

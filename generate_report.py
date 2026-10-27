@@ -307,7 +307,7 @@ def build_pdf(output_path):
     story.append(HRFlowable(width="60%", thickness=0.5, color=C_GRAY,
                              spaceAfter=3*mm, hAlign="CENTER"))
     story.append(Paragraph(
-        "本报告由蜜蜂控糖系统自动生成，仅供参考，不构成医疗建议。<br/>"
+        "本报告由蜜蜂健康系统自动生成，仅供参考，不构成医疗建议。<br/>"
         "用药调整请务必咨询主治医生。", st["footer"]))
     story.append(Paragraph("2026年2月23日", st["footer"]))
 

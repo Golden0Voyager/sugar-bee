@@ -455,7 +455,7 @@ class TestRecordsRoutes:
 class TestPredictionRoutesExtended:
     """api_prediction 更多路由测试"""
 
-    def test_trigger_prediction_all(self, client_authenticated):
+    def test_trigger_prediction_all(self, client_glucose):
         with patch('routes.api_prediction.get_db') as mock_get_db, \
              patch('routes.api_prediction.predict_morning_fpg') as mock_fpg, \
              patch('routes.api_prediction.predict_post_exercise_glucose') as mock_ex, \
@@ -465,27 +465,27 @@ class TestPredictionRoutesExtended:
             mock_ex.return_value = 5.5
             mock_slots.return_value = [{'type': '午餐后2小时', 'value': 7.0}]
 
-            result = client_authenticated.post('/trigger_prediction', json={'type': 'all'})
+            result = client_glucose.post('/trigger_prediction', json={'type': 'all'})
             assert result.status_code == 200
             assert mock_fpg.called
 
-    def test_trigger_prediction_fpg_only(self, client_authenticated):
+    def test_trigger_prediction_fpg_only(self, client_glucose):
         with patch('routes.api_prediction.get_db') as mock_get_db, \
              patch('routes.api_prediction.predict_morning_fpg'):
             mock_db = MagicMock()
             mock_get_db.return_value = mock_db
 
-            result = client_authenticated.post('/trigger_prediction', json={'type': '空腹'})
+            result = client_glucose.post('/trigger_prediction', json={'type': '空腹'})
             assert result.status_code == 200
 
-    def test_trigger_prediction_rate_limited(self, client_authenticated):
+    def test_trigger_prediction_rate_limited(self, client_glucose):
         with patch('routes.api_prediction.get_db') as mock_get_db, \
              patch('routes.api_prediction.predict_morning_fpg') as mock_fpg:
             mock_fpg.side_effect = Exception("429 RESOURCE_EXHAUSTED retry in 30")
             mock_db = MagicMock()
             mock_get_db.return_value = mock_db
 
-            result = client_authenticated.post('/trigger_prediction', json={'type': '空腹'})
+            result = client_glucose.post('/trigger_prediction', json={'type': '空腹'})
             assert result.status_code == 429
 
     def test_prediction_comparison_with_type(self, client_authenticated):
