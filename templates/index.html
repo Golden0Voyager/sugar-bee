@@ -5565,6 +5565,18 @@
         return !NON_GLUCOSE_TYPES.has(e.type);
     }
 
+    /**
+     * 当天有没有「能量」相关的记录：记了吃的，或者记了运动。
+     *
+     * 两个都没有时不能算净热量——后端恒按 `净热量 = 0 - 基础代谢` 计算，
+     * 结果永远是负的，于是什么也没记的一天也会显示「减糖减脂 1417」，
+     * 像是在说「你今天躺着就减了 1417 大卡」。宁可不显示。
+     */
+    function hasEnergyData(stats) {
+        if (!stats) return false;
+        return (stats.cal_in || 0) > 0 || (stats.cal_out_exercise || 0) > 0;
+    }
+
     function generateCalendarEvents() {
         const events = [];
 
@@ -5612,7 +5624,8 @@
             }
 
             // 2. 能量状态 Badge（减糖减脂 vs 脂糖累积）
-            if (stats.net_calories !== 0) {
+            // 只有真记了饮食或运动才显示，否则「0 摄入 - 基础代谢」会天天报减脂
+            if (hasEnergyData(stats)) {
                 let energyIcon, energyBg, energyText, displayText;
                 if (stats.is_deficit) {
                     // 消耗 > 摄入（健康）
@@ -5779,9 +5792,12 @@
         let html = `<div id="dayStatsHeader">`;
 
         // ── 1. 概要统计 Chips ──
-        const energyClass = stats.is_deficit ? 'chip-deficit' : 'chip-surplus';
-        const energyLabel = stats.is_deficit ? '⚖️ 能量缺口' : '⚖️ 能量盈余';
-        html += `
+        // 没记饮食也没记运动时整行不显示：那三格全是 0 或基础代谢，
+        // 只有「能量缺口」那一格有数，反而是假的（0 摄入 - 基础代谢）
+        if (hasEnergyData(stats)) {
+            const energyClass = stats.is_deficit ? 'chip-deficit' : 'chip-surplus';
+            const energyLabel = stats.is_deficit ? '⚖️ 能量缺口' : '⚖️ 能量盈余';
+            html += `
             <div class="day-stats-row">
                 <div class="stat-chip">
                     <span class="chip-val">${stats.cal_in}</span>
@@ -5801,6 +5817,7 @@
                 </div>
             </div>
         `;
+        }
 
         // ── 2. CGM 汇总卡片 ──
         if (cgmEntries.length > 0) {
@@ -6054,7 +6071,9 @@
         const entries = dayData.data.entries;
 
         // 1. Render Stats Header
-        let statsHtml = `
+        // 没记饮食也没记运动时整行不显示，理由同 renderDayDetails 的 chips
+        if (hasEnergyData(stats)) {
+            container.innerHTML += `
             <div class="d-flex gap-2 mb-3 small text-muted justify-content-center bg-light p-2 rounded">
                 ${ACTIVE_MODULES.has('diet') ? `<span>🥗 饮食摄入 ${stats.cal_in}</span>
                 <span class="border-start mx-1"></span>` : ''}
@@ -6067,7 +6086,7 @@
                 </span>
             </div>
         `;
-        container.innerHTML += statsHtml;
+        }
 
         // 2. Render Timeline Items - 显示真实记录 + 未验证的预测，排除已验证的预测
         entries.filter(r => !r.is_predicted || !r.is_verified).forEach(r => {
