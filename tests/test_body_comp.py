@@ -99,8 +99,13 @@ def test_add_weight_record_with_body_composition(client_authenticated):
     rid = resp.get_json()['data']['id']
 
     got = client_authenticated.get(f'/record/{rid}').get_json()
+    # 7 个字段逐个断言:三个相邻 REAL 列(body_fat_mass / skeletal_muscle_mass / protein_mass)
+    # 过去没有落库断言,互换位置也不会有测试变红
     assert got['body_fat_rate'] == 21.7
+    assert got['body_fat_mass'] == 15.3
     assert got['muscle_mass'] == 52.3
+    assert got['skeletal_muscle_mass'] == 27.0
+    assert got['protein_mass'] == 13.8
     assert got['visceral_fat'] == 9
     assert got['basal_metabolism'] == 1562
 
@@ -108,21 +113,25 @@ def test_add_weight_record_with_body_composition(client_authenticated):
 def test_batch_add_weight_record_with_body_composition(client_authenticated, db_info):
     resp = client_authenticated.post('/batch_add', json={'records': [{
         'value': 0, 'type': '体重记录', 'datetime': '2026-10-27 07:15:00', 'weight': 70.45,
-        'body_fat_rate': 21.7, 'visceral_fat': 9, 'muscle_mass': 52.3,
+        'body_fat_rate': 21.7, 'body_fat_mass': 15.3, 'muscle_mass': 52.3,
+        'skeletal_muscle_mass': 27.0, 'protein_mass': 13.8, 'visceral_fat': 9, 'basal_metabolism': 1562,
     }]})
     assert resp.status_code == 200
     assert resp.get_json()['data']['inserted'] == 1
 
-    # /batch_add 不回传 id，直接读回临时库确认字段真的落库(否则 INSERT 少列也能通过)
+    # /batch_add 不回传 id，直接读回临时库确认字段真的落库(否则 INSERT 少列也能通过)。
+    # 按名取 7 列成元组整体比对:只数值相等不够,还要位置对得上——
+    # 把 skeletal_muscle_mass 与 protein_mass 在参数元组里互换,单看数量仍通过,这里会红。
     import sqlite3
     conn = sqlite3.connect(db_info['path'])
     try:
         row = conn.execute(
-            "SELECT body_fat_rate, visceral_fat, muscle_mass FROM records"
+            "SELECT body_fat_rate, body_fat_mass, muscle_mass, skeletal_muscle_mass,"
+            " protein_mass, visceral_fat, basal_metabolism FROM records"
         ).fetchone()
     finally:
         conn.close()
-    assert row == (21.7, 9, 52.3)
+    assert row == (21.7, 15.3, 52.3, 27.0, 13.8, 9, 1562)
 
 
 def test_same_weight_within_3min_still_conflicts(client_authenticated):
