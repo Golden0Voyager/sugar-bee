@@ -2,6 +2,7 @@ import datetime
 import json
 
 import settings
+from settings import BODY_COMP_CORE, BODY_COMP_FIELDS
 from user_manager import UserManager
 from utils.timezone import now as app_now
 
@@ -149,6 +150,49 @@ def get_dashboard_stats(db, user_id):
     user_config = UserManager().get_user_config(user_id)
     latest_bmi = settings.calculate_bmi(latest_weight, user_config.get('height')) if latest_weight else (round(latest_bmi_raw, 1) if latest_bmi_raw else None)
     bmi_category = settings.get_bmi_category(latest_bmi)
+
+    # === 5b. 体成分统计(逐字段取最新) ===
+    # 一次按时间倒序扫描:每个字段取第一个非空值,较新的不完整记录不得抹掉更早的值。
+    # 用 db.execute 而不是共享的 cursor c:get_dashboard_stats 被大量测试用精确的
+    # fetchone/fetchall side_effect 序列驱动,走 c 多一次 fetchall 会把序列整体错位。
+    # db.execute 在 SQLite 与 PostgreSQL 两个连接包装器上都可用,返回的游标自带 fetchall。
+    bc_fields = BODY_COMP_FIELDS
+    bc_select = ", ".join(bc_fields)
+    bc_where = " OR ".join(f"{f} IS NOT NULL" for f in bc_fields)
+    body_comp_rows = db.execute(f"""
+        SELECT timestamp, {bc_select} FROM records
+        WHERE user_id = ? AND ({bc_where})
+        ORDER BY timestamp DESC
+    """, (user_id,)).fetchall()
+    body_comp_latest = dict.fromkeys(bc_fields)
+    body_comp_timestamp = None
+    for row in body_comp_rows:
+        if body_comp_timestamp is None:
+            body_comp_timestamp = row[0]
+        for i, field in enumerate(bc_fields):
+            if body_comp_latest[field] is None and row[i + 1] is not None:
+                body_comp_latest[field] = row[i + 1]
+    has_body_comp = any(body_comp_latest[f] is not None for f in BODY_COMP_CORE)
+    gender = user_config.get('gender') or 'male'
+    age = user_config.get('age')  # get_user_config 已按生日月/日修正
+    statuses = {}
+    if body_comp_latest['body_fat_rate'] is not None:
+        statuses['body_fat_rate'] = settings.get_body_fat_category(body_comp_latest['body_fat_rate'], gender, age)
+    if body_comp_latest['visceral_fat'] is not None:
+        statuses['visceral_fat'] = settings.get_visceral_fat_category(body_comp_latest['visceral_fat'])
+    if body_comp_latest['muscle_mass'] is not None:
+        statuses['muscle_mass'] = settings.get_muscle_mass_category(body_comp_latest['muscle_mass'], latest_weight, gender)
+    body_comp = {
+        'has_data': has_body_comp,
+        'latest': {**body_comp_latest, 'timestamp': body_comp_timestamp},
+        'statuses': statuses,
+        'thresholds': {
+            'body_fat_rate_max': settings.get_body_fat_upper_bound(gender, age),
+            'visceral_fat_max': settings.VISCERAL_FAT_MAX,
+            # 用未取整的 latest_weight 算(0.70 × 70.45 = 49.315 → 49.3)
+            'muscle_mass_min_kg': round(settings.get_muscle_mass_ratio_min(gender) * latest_weight, 1) if latest_weight else None,
+        },
+    }
 
     # 今日体重（全部记录）
     c.execute("""SELECT weight, bmi, timestamp FROM records
@@ -496,6 +540,9 @@ def get_dashboard_stats(db, user_id):
         'weight_change_default': weight_change_default,
         'bmi_category': bmi_category,
         'target_weight': user_config.get('target_weight'),
+
+        # 体成分
+        'body_comp': body_comp,
 
         # 健康分析
         'latest_analysis': latest_analysis,
