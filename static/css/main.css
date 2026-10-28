@@ -111,6 +111,11 @@
             transition: box-shadow 0.3s cubic-bezier(0.4, 0, 0.2, 1);
             overflow: hidden;
         }
+        /* 体重/体成分卡里的范围与「更多」下拉是绝对定位；区间无数据时卡片变矮，
+           overflow:hidden 会把菜单下半截裁掉，导致「全部数据」等选项点不到 */
+        #weightChartCard {
+            overflow: visible;
+        }
         .card:hover {
             box-shadow: var(--md-shadow-3);
         }
