@@ -138,9 +138,12 @@
                         </a>
                     </li>
                     <li><hr class="dropdown-divider"></li>
+                    {% if is_admin %}
+                    <!-- 切换用户仅管理员调试用：普通用户走登录页，避免旁观他人数据 -->
                     <li class="px-3 py-1"><small class="text-muted fw-semibold">切换用户</small></li>
                     <li id="userSwitcherList"></li>
                     <li><hr class="dropdown-divider"></li>
+                    {% endif %}
                     <li>
                         <a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#userSettingsModal">
                             ⚙️ 更多设置
@@ -2475,9 +2478,11 @@
                     <div class="tutorial-tip mb-2">
                         <div class="mb-0"><strong>标签页</strong>：下面可以切换各个功能，看近 7 天走势。</div>
                     </div>
+                    {% if is_admin %}
                     <div class="tutorial-tip mb-2">
                         <div class="mb-0"><strong>右上角头像</strong>：可以切换家人，每个人的数据分开存，互不影响。</div>
                     </div>
+                    {% endif %}
                     {% if 'bone_density' in active_modules or 'checkup' in active_modules %}
                     <div class="tutorial-tip mb-3">
                         <div class="mb-0">🦴📋 <strong>骨密度、体检报告</strong>一年才做一次，藏在右上角头像菜单里（药物管理下面），拍照就能存。</div>
@@ -2548,6 +2553,8 @@
 <script>
     // 当前用户启用的功能模块（后端渲染，供 JS 侧按模块隐藏内容）
     const ACTIVE_MODULES = new Set({{ active_modules|tojson }});
+    // 是否管理员（后端按 SUGAR_BEE_ADMIN_USERS 判定）：切换用户等调试入口只对管理员开放
+    const IS_ADMIN = {{ is_admin|tojson }};
     // 所有健康趋势图共用一套视觉语言；医学阈值和数据筛选仍在各图表内维护。
     const IS_MOBILE = window.innerWidth <= 480;
     const CHART_FONT_FAMILY = "'Noto Sans SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
@@ -9774,10 +9781,12 @@
                                 ${isCurrent ? '<span class="badge bg-primary ms-2">当前</span>' : ''}
                             </div>
                             <div class="d-flex gap-2">
-                                ${!isCurrent ? `
+                                ${!isCurrent && IS_ADMIN ? `
                                 <button class="btn btn-sm btn-outline-primary" onclick="switchUser(${user.id})" title="切换">
                                     <i class="bi bi-box-arrow-in-right"></i> 切换
                                 </button>
+                                ` : ''}
+                                ${!isCurrent ? `
                                 <button class="btn btn-sm btn-outline-danger" onclick="deleteUser(${user.id}, '${user.display_name || user.username}')" title="删除">
                                     <i class="bi bi-trash3"></i>
                                 </button>
