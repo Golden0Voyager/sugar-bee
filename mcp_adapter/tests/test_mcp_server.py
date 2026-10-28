@@ -522,6 +522,42 @@ class TestInlineBatchInsert:
         assert len(result["warnings"]) == 1
         assert "收缩压" in result["warnings"][0]
 
+    def test_reserved_type_rejected(self, patch_db):
+        """保留操作词类型硬拒收(2026-10-28 事故:AI 伪造 type='delete' 冒充删除)。"""
+        from mcp_adapter.servers.writer import _inline_batch_insert
+        conn = patch_db
+        result = _inline_batch_insert(conn, [
+            {"user_id": 1, "type": "delete", "value": 0, "datetime": "2026-05-02 07:00"},
+            {"user_id": 1, "type": "空腹", "value": 5.5, "datetime": "2026-05-02 07:05"},
+        ], conflict_resolution="overwrite")
+        # delete 被拒收且不落库,合法记录正常写入
+        assert result["inserted_ids"] != []
+        assert len(result["rejected"]) == 1
+        assert "delete" in result["rejected"][0]
+        c = conn.cursor()
+        c.execute("SELECT COUNT(*) n FROM records WHERE type = 'delete'")
+        assert c.fetchone()["n"] == 0
+
+    def test_overlong_type_rejected(self, patch_db):
+        from mcp_adapter.servers.writer import _inline_batch_insert
+        conn = patch_db
+        result = _inline_batch_insert(conn, [
+            {"user_id": 1, "type": "血糖" + "记录" * 10, "value": 5.5,
+             "datetime": "2026-05-02 07:00"},
+        ], conflict_resolution="overwrite")
+        assert result["inserted_ids"] == []
+        assert len(result["rejected"]) == 1
+
+    def test_custom_slot_type_still_accepted(self, patch_db):
+        """自定义时间段(如 晨跑前)是合法类型,不得误伤。"""
+        from mcp_adapter.servers.writer import _inline_batch_insert
+        conn = patch_db
+        result = _inline_batch_insert(conn, [
+            {"user_id": 1, "type": "晨跑前", "value": 5.8, "datetime": "2026-05-02 06:40"},
+        ], conflict_resolution="overwrite")
+        assert len(result["inserted_ids"]) == 1
+        assert result["rejected"] == []
+
 
 # ============================================================
 # DB-dependent tools (real temp SQLite)
@@ -663,7 +699,7 @@ class TestRecordBloodPressure:
         assert "心率" in result
 
     @pytest.mark.asyncio
-    async def test_success(self, mock_api):
+    async def test_success(self, mock_api, patch_db):
         from mcp_adapter.servers.writer import record_blood_pressure
         result = await record_blood_pressure(1, systolic=120, diastolic=80, pulse_rate=72)
         assert "✅" in result
@@ -685,7 +721,7 @@ class TestRecordWeight:
         assert "❌" in result
 
     @pytest.mark.asyncio
-    async def test_success(self, mock_api):
+    async def test_success(self, mock_api, patch_db):
         from mcp_adapter.servers.writer import record_weight
         result = await record_weight(1, weight=70.0)
         assert "✅" in result
@@ -707,7 +743,7 @@ class TestRecordGlucose:
         assert "❌" in result
 
     @pytest.mark.asyncio
-    async def test_success(self, mock_api):
+    async def test_success(self, mock_api, patch_db):
         from mcp_adapter.servers.writer import record_glucose
         result = await record_glucose(1, value=5.5, record_type="空腹")
         assert "✅" in result
