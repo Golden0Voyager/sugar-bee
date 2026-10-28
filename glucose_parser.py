@@ -225,6 +225,19 @@ def parse_glucose_input(text, history_context=None, images_data=None, mime_type=
       - "早空腹血压122/71、61，68.60，7.1" → 必须拆分：独立记录血压(122/71, 脉搏61)；独立记录体重(68.6)；独立血糖('空腹', 7.1)
       - "今天早空腹125/68、66，68.85" → 只有2条记录：血压(125/68, 脉搏66) + 体重(68.85)。注意：没有明确的血糖数值就不要生成血糖记录！"早空腹"是时间描述，不是"早餐"！
 
+    **体成分识别规则(智能体脂秤截图)**:
+    - 识别特征：秤面 / App 截图上出现的「体脂率 / 体脂 %」「体脂量」「肌肉量」「骨骼肌量 / 骨骼肌」「蛋白量 / 蛋白质」「内脏脂肪(等级)」「基础代谢 / BMR」等标签。
+    - 归属规则（逐条写死，防止串位）：
+      - body_fat_rate: 体脂**率**，单位 %；body_fat_mass: 体脂**量**，单位 kg。两者不是一回事，不要混填。
+      - muscle_mass: 肌肉量(kg)；skeletal_muscle_mass: 骨骼肌量(kg)。肌肉量 ≠ 骨骼肌量，两个数值都在秤面时必须分别填入。
+      - protein_mass: 蛋白量 / 蛋白质(kg)。
+      - visceral_fat: 内脏脂肪**等级**，是 1-30 的无单位整数，**不是百分比**。
+      - basal_metabolism: 基础代谢，单位 kcal。
+    - **只抄录数字，不要照抄秤面给出的「标准 / 偏高 / 优秀」等评价** —— 这些状态由本系统计算，你不填任何状态或评级字段。
+    - **秤面上没有显示的指标一律留空(null)，不要估算、不要用 0 代替** —— 只抄录真实出现在截图里的数值，虚构数值会被当成用户实测数据。
+    - 体成分字段一律挂在 type="体重记录" 同一条记录上，与 weight 同行（不要为每个指标单独生成记录）。
+    - 示例："体重70.45 体脂率21.7% 体脂量15.3kg 肌肉量52.3kg 骨骼肌量27.0kg 蛋白量13.8kg 内脏脂肪9 基础代谢1562" → 一条 type="体重记录"，weight=70.45，其余 7 个体成分字段各取一个数值。
+
     **血糖预测规则（用于计算 predicted_value）**:
     - 预测值必须基于用户历史数据（空腹均值、餐后均值）合理推算
     - **累积效应**：如果用户在短时间内多次进食，预测值应适当上调
@@ -314,7 +327,14 @@ def parse_glucose_input(text, history_context=None, images_data=None, mime_type=
             "medication_timing": "string (服用时机，可选)",
             "medication_is_new_plan": boolean (是否为新的长期用药方案),
             "medication_action": "string (take/stop/resume，默认take，可选)",
-            "weight": float (体重值kg，仅体重记录需要)
+            "weight": float (体重值kg，仅体重记录需要),
+            "body_fat_rate": float (体脂率%，仅体重记录需要，可选),
+            "body_fat_mass": float (体脂量kg，仅体重记录需要，可选),
+            "muscle_mass": float (肌肉量kg，仅体重记录需要，可选),
+            "skeletal_muscle_mass": float (骨骼肌量kg，仅体重记录需要，可选),
+            "protein_mass": float (蛋白量kg，仅体重记录需要，可选),
+            "visceral_fat": int (内脏脂肪等级1-30，无单位，不是百分比，可选),
+            "basal_metabolism": int (基础代谢kcal，仅体重记录需要，可选)
         }}
     ]
     你必须只返回一个JSON数组，不要包含任何 markdown 格式化。

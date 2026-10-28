@@ -28,6 +28,19 @@ def _is_truthy(value) -> bool:
     return bool(value)
 
 
+def _optional_float(value):
+    """可选数值字段(体成分)归一化:None/空串保持 None,其余转 float,转不动也回 None。
+
+    form 分支拿到的是字符串,直接参与范围比较会 TypeError,而校验函数绝不能抛异常。
+    """
+    if value is None or value == '':
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def _validate_record_data(r: dict) -> list[str]:
     """校验单条记录的数据范围，返回警告信息列表（空列表表示无警告）。"""
     warnings: list[str] = []
@@ -63,6 +76,29 @@ def _validate_record_data(r: dict) -> list[str]:
     weight = r.get('weight')
     if weight and weight > 0 and (weight < 20.0 or weight > 300.0):
         warnings.append(f"体重 {weight} 超出正常范围（20-300 kg）")
+
+    # 体成分校验(字段名随 BODY_COMP_FIELDS 走,缺失/None 不产警告)
+    body_comp_ranges = {
+        'body_fat_rate': ('体脂率', 3, 60),
+        'body_fat_mass': ('体脂量', 0.5, 100),
+        'muscle_mass': ('肌肉量', 1, 100),
+        'skeletal_muscle_mass': ('骨骼肌量', 0.5, 60),
+        'protein_mass': ('蛋白量', 0.5, 30),
+        'visceral_fat': ('内脏脂肪', 1, 30),
+        'basal_metabolism': ('基础代谢', 500, 4000),
+    }
+    for field in settings.BODY_COMP_FIELDS:
+        value = r.get(field)
+        if value is None:
+            continue
+        bounds = body_comp_ranges.get(field)
+        if bounds is None:
+            # 字段进了 BODY_COMP_FIELDS 但这里没有区间 -> 降级为「不警告」,
+            # 绝不能让每次写记录都 500
+            continue
+        label, low, high = bounds
+        if value < low or value > high:
+            warnings.append(f"{label} {value} 超出正常范围({low}-{high})")
 
     return warnings
 
@@ -150,6 +186,8 @@ def add_record():
             pace = data.get('pace')
             max_pace = data.get('max_pace')
             cadence = data.get('cadence')
+            # 体成分 7 项(Task 1 已加列),字段清单以 settings.BODY_COMP_FIELDS 为唯一来源
+            body_comp = {field: data.get(field) for field in settings.BODY_COMP_FIELDS}
         else:
             value = request.form.get('value')
             unit = request.form.get('unit')
@@ -183,6 +221,10 @@ def add_record():
             pace = request.form.get('pace')
             max_pace = request.form.get('max_pace')
             cadence = request.form.get('cadence')
+            body_comp = {field: request.form.get(field) for field in settings.BODY_COMP_FIELDS}
+
+        # 体成分:JSON 给数值、form 给字符串,统一成 float/None 再交给校验与 INSERT
+        body_comp = {field: _optional_float(v) for field, v in body_comp.items()}
 
         # 使用当前 session 用户，不轻信前端传入的 user_id
         current_user_id = user_manager.get_current_user_id()
@@ -304,6 +346,7 @@ def add_record():
             'type': r_type, 'value': value, 'systolic_pressure': systolic_pressure,
             'diastolic_pressure': diastolic_pressure, 'pulse_rate': pulse_rate,
             'spo2': spo2, 'weight': weight, 'heart_rate': heart_rate,
+            **body_comp,
         }
         warnings = _validate_record_data(payload_dict)
 
@@ -311,13 +354,19 @@ def add_record():
                      (user_id, value, unit, type, notes, timestamp, calories, diet_analysis, is_predicted,
                       distance, duration, heart_rate, systolic_pressure, diastolic_pressure, pulse_rate,
                       carbs_grams, gi_value, weight, bmi, spo2, vo2max, max_heart_rate, steps,
-                      pace, max_pace, cadence)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                      pace, max_pace, cadence,
+                      body_fat_rate, body_fat_mass, muscle_mass, skeletal_muscle_mass,
+                      protein_mass, visceral_fat, basal_metabolism)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                             ?, ?, ?, ?, ?, ?, ?)
                      RETURNING id""",
                   (current_user_id, value, unit, r_type, notes, timestamp, calories, diet_analysis, is_predicted,
                    distance, duration, heart_rate, systolic_pressure, diastolic_pressure, pulse_rate,
                    carbs_grams, gi_value, weight, bmi, spo2, vo2max, max_heart_rate, steps,
-                   pace, max_pace, cadence))
+                   pace, max_pace, cadence,
+                   body_comp['body_fat_rate'], body_comp['body_fat_mass'], body_comp['muscle_mass'],
+                   body_comp['skeletal_muscle_mass'], body_comp['protein_mass'],
+                   body_comp['visceral_fat'], body_comp['basal_metabolism']))
 
         real_record_id = c.lastrowid
 
@@ -484,7 +533,9 @@ def batch_add():
             r_type = r['type']
 
             # 数据范围校验（允许写入，但收集警告）
-            warnings = _validate_record_data(r)
+            # 体成分先归一化成 float/None 再校验与落库(字符串直接比较会 TypeError)
+            body_comp = {field: _optional_float(r.get(field)) for field in settings.BODY_COMP_FIELDS}
+            warnings = _validate_record_data({**r, **body_comp})
             if warnings:
                 label = r.get('type', '未知记录')
                 all_warnings.append(f"[{label}] " + "; ".join(warnings))
@@ -509,15 +560,21 @@ def batch_add():
             c.execute("""INSERT INTO records (user_id, value, unit, type, notes, timestamp, calories, diet_analysis, is_predicted,
                                             distance, duration, heart_rate, max_heart_rate, systolic_pressure, diastolic_pressure,
                                             pulse_rate, weight, bmi, medication_name, steps, pace, max_pace, cadence, vo2max,
-                                            spo2, carbs_grams, gi_value)
-                          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                            spo2, carbs_grams, gi_value,
+                                            body_fat_rate, body_fat_mass, muscle_mass, skeletal_muscle_mass,
+                                            protein_mass, visceral_fat, basal_metabolism)
+                          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                                  ?, ?, ?, ?, ?, ?, ?)
                           RETURNING id""",
                        (record_uid, r['value'], r.get('unit', 'mmol/L'), r_type, r.get('notes', ''), timestamp,
                         r.get('calories', 0), r.get('diet_analysis', ''), is_pred, r.get('distance'), r.get('duration'),
                         r.get('heart_rate'), r.get('max_heart_rate'), systolic, diastolic,
                         r.get('pulse_rate'), weight, bmi, r.get('medication_name'), r.get('steps'),
                         r.get('pace'), r.get('max_pace'), r.get('cadence'), r.get('vo2max'),
-                        r.get('spo2'), r.get('carbs_grams'), r.get('gi_value')))
+                        r.get('spo2'), r.get('carbs_grams'), r.get('gi_value'),
+                        body_comp['body_fat_rate'], body_comp['body_fat_mass'], body_comp['muscle_mass'],
+                        body_comp['skeletal_muscle_mass'], body_comp['protein_mass'],
+                        body_comp['visceral_fat'], body_comp['basal_metabolism']))
             inserted_records.append({'id': c.lastrowid, 'is_pred': is_pred, 'value': r['value'], 'datetime': timestamp, 'type': r_type})
 
         db.commit()
