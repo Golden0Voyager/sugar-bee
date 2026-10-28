@@ -199,6 +199,51 @@ class TestCheckupApi:
         got = client_authenticated.get(f"/api/checkup/{reports[0]['id']}").get_json()['data']
         assert got['institution'] == '市第一医院'
 
+    def test_save_uses_returning_id_for_postgres(self, client_authenticated, monkeypatch):
+        """PostgreSQL 只有显式 RETURNING id 才能给明细提供 report_id。"""
+        from routes import api_checkup
+
+        class PgLikeCursor:
+            def __init__(self):
+                self.lastrowid = None
+                self.calls = []
+
+            def execute(self, sql, params=()):
+                self.calls.append((sql, params))
+                if 'INSERT INTO checkup_reports' in sql:
+                    self.lastrowid = 73 if 'RETURNING id' in sql else None
+
+        class FakeDb:
+            def __init__(self):
+                self.c = PgLikeCursor()
+                self.committed = False
+
+            def cursor(self):
+                return self.c
+
+            def commit(self):
+                self.committed = True
+
+        db = FakeDb()
+        monkeypatch.setattr(api_checkup, 'get_db', lambda: db)
+        monkeypatch.setattr(
+            api_checkup, '_report_detail',
+            lambda _db, _user_id, report_id: {'id': report_id, 'items': []},
+        )
+
+        resp = client_authenticated.post('/api/checkup/save', json={
+            'checkup_date': '2026-03-01',
+            'items': [{'name': '血糖', 'value': '5.0'}],
+        })
+
+        assert resp.status_code == 200
+        assert resp.get_json()['data']['id'] == 73
+        report_sql = db.c.calls[0][0]
+        assert 'RETURNING id' in report_sql
+        item_params = db.c.calls[1][1]
+        assert item_params[0] == 73
+        assert db.committed is True
+
     def test_save_requires_items(self, client_authenticated):
         assert client_authenticated.post('/api/checkup/save', json={'items': []}).status_code == 400
         assert client_authenticated.post('/api/checkup/save', json={}).status_code == 400

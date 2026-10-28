@@ -2615,7 +2615,7 @@
         if (str === null || str === undefined) return '';
         const div = document.createElement('div');
         div.textContent = String(str);
-        return div.innerHTML;
+        return div.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
     }
 
     /** 获取用户 emoji 标识（多用户模式下显示） */
@@ -10350,8 +10350,8 @@
             const l = d.latest;
             if (l && l.t_score !== null && l.t_score !== undefined) {
                 const g = l.grade || {};
-                latestBox.innerHTML = `最近一次：<strong>${l.measure_date}</strong> · ${l.site} · T 值 <strong>${l.t_score}</strong>`
-                    + (g.label ? ` <span class="badge" style="background:${g.color}">${g.label}</span>` : '');
+                latestBox.innerHTML = `最近一次：<strong>${escapeHtml(l.measure_date)}</strong> · ${escapeHtml(l.site)} · T 值 <strong>${escapeHtml(l.t_score)}</strong>`
+                    + (g.label ? ` <span class="badge" style="background:${g.color}">${escapeHtml(g.label)}</span>` : '');
             } else {
                 latestBox.textContent = '还没有记录，点「＋ 新增」记一次骨密度检查';
             }
@@ -10364,16 +10364,16 @@
                 const g = r.grade || {};
                 return `<div class="d-flex justify-content-between align-items-center border-bottom py-2">
                     <div>
-                        <div class="fw-semibold">${r.measure_date} · ${r.site}</div>
+                        <div class="fw-semibold">${escapeHtml(r.measure_date)} · ${escapeHtml(r.site)}</div>
                         <div class="small text-muted">
-                            T 值 ${r.t_score === null ? '-' : r.t_score}
-                            ${r.z_score !== null && r.z_score !== undefined ? ' · Z 值 ' + r.z_score : ''}
-                            ${r.bmd ? ' · ' + r.bmd + ' g/cm²' : ''}
-                            ${r.institution ? ' · ' + r.institution : ''}
+                            T 值 ${r.t_score === null ? '-' : escapeHtml(r.t_score)}
+                            ${r.z_score !== null && r.z_score !== undefined ? ' · Z 值 ' + escapeHtml(r.z_score) : ''}
+                            ${r.bmd ? ' · ' + escapeHtml(r.bmd) + ' g/cm²' : ''}
+                            ${r.institution ? ' · ' + escapeHtml(r.institution) : ''}
                         </div>
                     </div>
                     <div class="d-flex align-items-center gap-2">
-                        ${g.label ? `<span class="badge" style="background:${g.color}">${g.label}</span>` : ''}
+                        ${g.label ? `<span class="badge" style="background:${g.color}">${escapeHtml(g.label)}</span>` : ''}
                         <button class="btn btn-sm btn-outline-danger" onclick="deleteBoneRecord(${r.id})">删除</button>
                     </div>
                 </div>`;
@@ -10488,12 +10488,12 @@
                     <div class="form-check">
                         <input class="form-check-input" type="checkbox" ${m.selected ? 'checked' : ''}
                                onchange="_bonePreviewItems[${idx}].selected=this.checked">
-                        <label class="form-check-label small">${m.site}</label>
+                        <label class="form-check-label small">${escapeHtml(m.site)}</label>
                     </div>
                 </td>
-                <td><input class="form-control form-control-sm" value="${m.t_score === null ? '' : m.t_score}"
+                <td><input class="form-control form-control-sm" value="${m.t_score === null ? '' : escapeHtml(m.t_score)}"
                         oninput="_bonePreviewItems[${idx}].t_score=this.value"></td>
-                <td><input class="form-control form-control-sm" value="${m.z_score === null ? '' : m.z_score}"
+                <td><input class="form-control form-control-sm" value="${m.z_score === null ? '' : escapeHtml(m.z_score)}"
                         oninput="_bonePreviewItems[${idx}].z_score=this.value"></td>
                 <td><button class="btn btn-sm btn-link text-danger p-0"
                         onclick="_bonePreviewItems.splice(${idx},1);renderBonePreview()">×</button></td>
@@ -10602,8 +10602,8 @@
                 box.innerHTML = reports.length ? reports.map(r => `
                     <div class="d-flex justify-content-between align-items-center border-bottom py-2">
                         <div role="button" onclick="viewCheckup(${r.id})">
-                            <div class="fw-semibold">${r.checkup_date}${r.institution ? ' · ' + r.institution : ''}</div>
-                            <div class="small text-muted">${r.item_count} 项${r.abnormal_count > 0 ? ' · 异常 ' + r.abnormal_count + ' 项' : ' · 全部正常'}</div>
+                            <div class="fw-semibold">${escapeHtml(r.checkup_date)}${r.institution ? ' · ' + escapeHtml(r.institution) : ''}</div>
+                            <div class="small text-muted">${escapeHtml(r.item_count)} 项${r.abnormal_count > 0 ? ' · 异常 ' + escapeHtml(r.abnormal_count) + ' 项' : ' · 全部正常'}</div>
                         </div>
                         <button class="btn btn-sm btn-outline-danger" onclick="deleteCheckup(${r.id})">删除</button>
                     </div>
@@ -10707,10 +10707,10 @@
         body.innerHTML = _checkupPreviewItems.map((it, idx) => {
             const color = it.status === 'high' ? '#DC2626' : (it.status === 'low' ? '#2563EB' : '#475569');
             return `<tr>
-                <td><div class="small fw-semibold">${it.name}</div><div class="text-muted" style="font-size:.75rem">${it.category}</div></td>
-                <td><input class="form-control form-control-sm" style="color:${color}" value="${it.value}"
+                <td><div class="small fw-semibold">${escapeHtml(it.name)}</div><div class="text-muted" style="font-size:.75rem">${escapeHtml(it.category)}</div></td>
+                <td><input class="form-control form-control-sm" style="color:${color}" value="${escapeHtml(it.value)}"
                         oninput="_checkupPreviewItems[${idx}].value=this.value"></td>
-                <td class="small text-muted">${it.ref_range || '-'} ${it.unit || ''}</td>
+                <td class="small text-muted">${escapeHtml(it.ref_range || '-')} ${escapeHtml(it.unit || '')}</td>
                 <td><button class="btn btn-sm btn-link text-danger p-0" onclick="_checkupPreviewItems.splice(${idx},1);renderCheckupPreview()">×</button></td>
             </tr>`;
         }).join('');
