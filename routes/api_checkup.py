@@ -11,7 +11,8 @@ import checkup_parser
 from user_manager import UserManager
 from utils.auth import login_required
 from utils.db import get_db
-from utils.report_files import ReportFileError, to_model_images
+from utils.report_files import ReportFileError, to_report_pages
+from utils.report_processing import process_report_pages
 from utils.responses import api_error, api_success
 from utils.timezone import today as app_today
 
@@ -55,7 +56,7 @@ def _report_detail(db, user_id, report_id):
 @bp_checkup.route('/api/checkup/parse', methods=['POST'])
 @login_required
 def parse_report():
-    """解析体检报告（照片或 PDF，最多 3 页），返回结构化指标（不落库）。"""
+    """解析整份体检报告；原生文字优先，视觉兜底，单次最多 50 页。"""
     try:
         data = request.json or {}
         images_b64 = data.get('images') or []
@@ -63,12 +64,17 @@ def parse_report():
             return api_error('请上传体检报告照片或 PDF', status_code=400, error_type='validation_error')
 
         try:
-            # PDF 在这里被渲染成图片，之后一律按图片送模型
-            images_data = to_model_images(images_b64)
+            pages = to_report_pages(images_b64)
         except ReportFileError as exc:
             return api_error(str(exc), status_code=400, error_type='validation_error')
 
-        result = checkup_parser.parse_checkup_report(images_data, 'image/jpeg')
+        result = process_report_pages(
+            pages,
+            text_parser=checkup_parser.parse_checkup_text,
+            vision_parser=checkup_parser.parse_checkup_report,
+            item_key='items',
+            date_key='checkup_date',
+        )
         if not result['items']:
             return api_error(
                 '没有从报告里识别出体检指标，可以换一张更清晰的照片，或稍后手工录入',
@@ -76,7 +82,10 @@ def parse_report():
             )
         if not result['checkup_date']:
             result['checkup_date'] = app_today().strftime('%Y-%m-%d')
-        return api_success(data=result, message=f'识别到 {len(result["items"])} 项指标')
+        message = f'识别到 {len(result["items"])} 项指标'
+        if result['failed_pages']:
+            message += f'，{len(result["failed_pages"])} 页识别失败'
+        return api_success(data=result, message=message)
     except Exception as e:
         traceback.print_exc()
         return api_error(f'识别失败：{e}', status_code=503, error_type='ai_unavailable')
