@@ -174,3 +174,69 @@ def test_parsed_body_comp_survives_postprocess():
     assert out[0]["body_fat_rate"] == 21.7
     assert out[0]["visceral_fat"] == 9
     assert out[0]["muscle_mass"] == 52.3
+
+
+def _session_user_id(client):
+    """取当前登录用户 id —— `_test` 用户的 id 不一定等于 1,不能写死。"""
+    with client.session_transaction() as sess:
+        return sess['current_user_id']
+
+
+def _insert_body_comp(app, user_id, timestamp='2026-10-27 07:15:00', weight=70.45, **over):
+    """插一条体成分体重记录(schema 已由 `app` fixture 的 init_db 建好)。"""
+    from utils.db import get_db
+    vals = {'body_fat_rate': 21.7, 'body_fat_mass': 15.3, 'muscle_mass': 52.3,
+            'skeletal_muscle_mass': 27.0, 'protein_mass': 13.8, 'visceral_fat': 9,
+            'basal_metabolism': 1562}
+    vals.update(over)
+    cols = ", ".join(vals)
+    ph = ", ".join("?" for _ in vals)
+    with app.app_context():
+        db = get_db()
+        db.execute(
+            f"INSERT INTO records (user_id, value, unit, type, timestamp, weight, {cols}) "
+            f"VALUES (?, 0, 'mmol/L', '体重记录', ?, ?, {ph})",
+            (user_id, timestamp, weight, *vals.values()))
+        db.commit()
+
+
+def test_dashboard_exposes_body_comp(app, client_authenticated):
+    from services.dashboard_service import get_dashboard_stats
+    uid = _session_user_id(client_authenticated)
+    _insert_body_comp(app, uid)
+    with app.app_context():
+        from utils.db import get_db
+        stats = get_dashboard_stats(get_db(), uid)
+    bc = stats['body_comp']
+    assert bc['has_data'] is True
+    assert bc['latest']['body_fat_rate'] == 21.7
+    assert bc['latest']['basal_metabolism'] == 1562
+    assert bc['statuses']['body_fat_rate']['label'] in ('偏低', '标准', '偏高')
+    assert bc['statuses']['visceral_fat']['label'] == '标准'
+    assert bc['thresholds']['visceral_fat_max'] == 9
+    assert bc['thresholds']['muscle_mass_min_kg'] == 49.3  # 0.70 × 70.45
+
+
+def test_dashboard_body_comp_hidden_without_core_metrics(app, client_authenticated):
+    from services.dashboard_service import get_dashboard_stats
+    uid = _session_user_id(client_authenticated)
+    _insert_body_comp(app, uid, body_fat_rate=None, visceral_fat=None, muscle_mass=None)
+    with app.app_context():
+        from utils.db import get_db
+        stats = get_dashboard_stats(get_db(), uid)
+    assert stats['body_comp']['has_data'] is False
+
+
+def test_dashboard_body_comp_latest_is_per_field(app, client_authenticated):
+    """逐字段取最新:较旧记录里的蛋白量也要能被取到(spec M10)。"""
+    from services.dashboard_service import get_dashboard_stats
+    uid = _session_user_id(client_authenticated)
+    _insert_body_comp(app, uid, protein_mass=13.1, body_fat_rate=22.5)
+    # 后插一条不完整记录,只带体脂率
+    _insert_body_comp(app, uid, timestamp='2026-10-28 07:15:00', weight=70.2,
+                      protein_mass=None, body_fat_rate=22.9)
+    with app.app_context():
+        from utils.db import get_db
+        stats = get_dashboard_stats(get_db(), uid)
+    assert stats['body_comp']['latest']['body_fat_rate'] == 22.9   # 取最新
+    assert stats['body_comp']['latest']['protein_mass'] == 13.1    # 保留更早的值
