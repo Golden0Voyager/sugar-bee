@@ -41,3 +41,29 @@ def test_index_hides_body_comp_row_without_data(client_authenticated, app):
         db.commit()
     html = client_authenticated.get('/').data.decode('utf-8')
     assert 'id="bodyCompRow"' not in html
+
+
+def test_body_comp_card_anchors_and_js():
+    html = INDEX.read_text(encoding="utf-8")
+    for anchor in ('id="bodyCompChartCard"', 'id="bodyCompChart"',
+                   'id="bodyCompRangeDropdown"', 'id="bodyCompNavNext"',
+                   'function initBodyCompChart', 'function changeBodyCompRange',
+                   'function bodyCompNav', 'function selectBodyCompTab'):
+        assert anchor in html, f"缺少 {anchor}"
+    for metric in ('body_fat_rate', 'visceral_fat', 'muscle_mass'):
+        assert f'data-body-comp-tab="{metric}"' in html
+
+
+def test_body_comp_chart_reads_thresholds_from_stats():
+    """阈值只能来自后端下发,不得在模板里写死数值(spec: 阈值单一来源)。"""
+    html = INDEX.read_text(encoding="utf-8")
+    assert 'stats.body_comp.thresholds' in html
+    assert 'BODY_COMP_THRESHOLDS' in html
+
+
+def test_body_comp_chart_guards_missing_canvas():
+    """模块关闭或缺卡时 initBodyCompChart 必须安全返回(照 initWeightChart 的兜底)。"""
+    html = INDEX.read_text(encoding="utf-8")
+    body = html.split('function initBodyCompChart')[1].split('function changeBodyCompRange')[0]
+    assert "getElementById('bodyCompChart')" in body
+    assert 'return' in body
