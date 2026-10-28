@@ -2548,11 +2548,197 @@
 }
 
 
-/* 图表容器:高度跟随全局图表比例(与 Chart.defaults.aspectRatio 同源),使血糖/CGM 图与血压、心率、体重图高度口径一致。比例由 index.html 写入 CSS 变量 --chart-aspect-ratio。 */
+/* ========== 健康趋势图：统一容器、图例、空状态与触控 ========== */
+#glucoseMonitorCard,
+#bloodPressureChartCard,
+#weightChartCard {
+    border: 1px solid rgba(99, 102, 241, 0.09);
+    box-shadow: 0 3px 14px rgba(51, 65, 85, 0.06);
+    overflow: visible;
+}
+
+#glucoseMonitorCard .card-body > .d-flex.justify-content-between.align-items-center:first-child,
+#bloodPressureChartCard .card-body > .d-flex.justify-content-between.align-items-center:first-child,
+#weightChartCard .card-body > .d-flex.justify-content-between.align-items-center:first-child {
+    gap: 12px;
+}
+
+#glucoseMonitorCard h5,
+#bloodPressureChartCard h5,
+#weightChartCard h5 {
+    letter-spacing: 0.04em !important;
+    color: #334155;
+}
+
+/* 高度跟随全局图表比例；所有图表共用这一容器，不再各用一套高度口径。 */
 .chart-box {
     position: relative;
     width: 100%;
+    min-width: 0;
     aspect-ratio: var(--chart-aspect-ratio, 2);
+    padding: 12px;
+    border: 1px solid #EDF1F7;
+    border-radius: 14px;
+    background: linear-gradient(180deg, #FDFEFF 0%, #FAFBFE 100%);
+    overflow: hidden;
+}
+
+.chart-box canvas {
+    max-width: 100%;
+    padding: 0 !important;
+}
+
+.chart-box.is-empty canvas {
+    visibility: hidden;
+}
+
+.chart-empty {
+    position: absolute;
+    inset: 12px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 20px;
+    border-radius: 10px;
+    color: #64748B;
+    background: #FAFBFE;
+    text-align: center;
+    font-size: 0.88rem;
+    line-height: 1.6;
+}
+
+.chart-empty[hidden] {
+    display: none !important;
+}
+
+.chart-empty > i {
+    color: #94A3B8;
+    font-size: 1.65rem;
+}
+
+.chart-empty-text {
+    max-width: 32rem;
+}
+
+.chart-legend,
+#weightChartLegend {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 10px 22px;
+    margin: 0 0 10px;
+    color: #64748B;
+    font-size: 0.78rem !important;
+}
+
+.chart-legend > span,
+#weightChartLegend > span {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+}
+
+.chart-legend-line {
+    display: inline-block;
+    width: 22px;
+    height: 0;
+    border-top: 2.5px solid var(--legend-color);
+    border-radius: 2px;
+}
+
+.chart-legend-line.is-dashed {
+    border-top-style: dashed;
+}
+
+#glucoseMonitorCard .btn-overview-nav,
+#bloodPressureChartCard .btn-overview-nav,
+#weightChartCard .btn-overview-nav {
+    min-width: 44px;
+    min-height: 44px;
+}
+
+#glucoseMonitorCard .dropdown > .btn,
+#bloodPressureChartCard .dropdown > .btn,
+#weightChartCard .dropdown > .btn {
+    min-height: 44px !important;
+}
+
+#weightChartCard a[onclick*="showTargetWeightPopup"] {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    padding: 4px 6px;
+    border-radius: 8px;
+}
+
+.btn-overview-nav:focus-visible,
+#glucoseMonitorCard .dropdown > .btn:focus-visible,
+#bloodPressureChartCard .dropdown > .btn:focus-visible,
+#weightChartCard .dropdown > .btn:focus-visible,
+#weightChartCard a[onclick*="showTargetWeightPopup"]:focus-visible {
+    outline: 3px solid rgba(99, 102, 241, 0.3) !important;
+    outline-offset: 3px;
+    box-shadow: none !important;
+}
+
+@media (max-width: 768px) {
+    /* 健康分析外层直接使用 Bootstrap row，手机上需抵消息边距造成的横向溢出。 */
+    #healthAnalysisSection > .row {
+        margin-left: 0;
+        margin-right: 0;
+    }
+
+    #healthAnalysisSection > .row > .col-12 {
+        padding-left: 0;
+        padding-right: 0;
+    }
+
+    #glucoseMonitorCard .card-body > .d-flex.justify-content-between.align-items-center:first-child > .d-flex:first-child,
+    #bloodPressureChartCard .card-body > .d-flex.justify-content-between.align-items-center:first-child > .d-flex:first-child,
+    #weightChartCard .card-body > .d-flex.justify-content-between.align-items-center:first-child > .d-flex:first-child {
+        width: 100%;
+    }
+
+    #trendRangeDropdown,
+    #bpRangeDropdown,
+    #weightChartCard .card-body > .d-flex.justify-content-between.align-items-center:first-child > .d-flex:last-child {
+        align-self: stretch;
+        justify-content: space-between;
+    }
+
+    #trendRangeDropdown > .btn,
+    #bpRangeDropdown > .btn {
+        width: 100%;
+        justify-content: center;
+    }
+
+    .chart-box {
+        padding: 8px;
+        border-radius: 12px;
+    }
+
+    .chart-empty {
+        inset: 8px;
+        padding: 16px;
+        font-size: 0.82rem;
+    }
+
+    .chart-legend,
+    #weightChartLegend {
+        gap: 8px 16px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #glucoseMonitorCard,
+    #bloodPressureChartCard,
+    #weightChartCard,
+    .chart-box {
+        transition: none !important;
+    }
 }
 
 /* ========== 新手使用引导 ========== */
