@@ -15,6 +15,8 @@ import json
 import sqlite3
 from unittest.mock import MagicMock, patch
 
+from utils.timezone import now as app_now
+
 # ============================================================
 # api_admin.py
 # ============================================================
@@ -927,7 +929,8 @@ class TestBuildChatContext:
     PATCH_AVAIL = 'routes.api_chat.CHAT_AVAILABLE'
 
     def setup_method(self):
-        self.today = datetime.datetime.now()
+        # 与业务代码同一时区取“今天”：CI 机器是 UTC，业务时区是上海，跨午夜不能错开一天
+        self.today = app_now()
         self.today_str = self.today.strftime('%Y-%m-%d')
 
     def _setup_user(self, db_path, user_id=1):
