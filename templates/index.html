@@ -1452,16 +1452,18 @@
             <div class="text-center text-muted py-4" style="font-size: 0.82rem; display: none;" id="bodyCompEmpty">
                 该区间暂无<span id="bodyCompEmptyMetric">体脂率</span>数据
             </div>
-            <!-- 更多指标(仅最新值) -->
+            <!-- 更多指标(仅最新值):标签/判定/格式与体重面板行一致(%g + is not none);四项皆空时整块不渲染,避免孤立标题 -->
+            {% if stats.body_comp and stats.body_comp.latest %}
+            {% if (stats.body_comp.latest.body_fat_mass is not none) or (stats.body_comp.latest.skeletal_muscle_mass is not none) or (stats.body_comp.latest.protein_mass is not none) or (stats.body_comp.latest.basal_metabolism is not none) %}
             <div class="d-flex flex-wrap justify-content-center gap-3 mt-2" style="font-size: 0.78rem; color: #757575;" id="bodyCompLatestFooter">
                 <span>更多指标(仅最新值)</span>
-                {% if stats.body_comp and stats.body_comp.latest %}
-                {% if stats.body_comp.latest.body_fat_mass %}<span>体脂肪量 {{ stats.body_comp.latest.body_fat_mass }}kg</span>{% endif %}
-                {% if stats.body_comp.latest.skeletal_muscle_mass %}<span>骨骼肌 {{ stats.body_comp.latest.skeletal_muscle_mass }}kg</span>{% endif %}
-                {% if stats.body_comp.latest.protein_mass %}<span>蛋白质 {{ stats.body_comp.latest.protein_mass }}kg</span>{% endif %}
-                {% if stats.body_comp.latest.basal_metabolism %}<span>基础代谢 {{ stats.body_comp.latest.basal_metabolism }}kcal</span>{% endif %}
-                {% endif %}
+                {% if stats.body_comp.latest.body_fat_mass is not none %}<span>体脂量 {{ '%g'|format(stats.body_comp.latest.body_fat_mass) }}kg</span>{% endif %}
+                {% if stats.body_comp.latest.skeletal_muscle_mass is not none %}<span>骨骼肌量 {{ '%g'|format(stats.body_comp.latest.skeletal_muscle_mass) }}kg</span>{% endif %}
+                {% if stats.body_comp.latest.protein_mass is not none %}<span>蛋白量 {{ '%g'|format(stats.body_comp.latest.protein_mass) }}kg</span>{% endif %}
+                {% if stats.body_comp.latest.basal_metabolism is not none %}<span>基础代谢 {{ '%g'|format(stats.body_comp.latest.basal_metabolism) }}kcal</span>{% endif %}
             </div>
+            {% endif %}
+            {% endif %}
         </div>
     </div>
     {% endif %}{# end bodyCompChartCard data gate #}
