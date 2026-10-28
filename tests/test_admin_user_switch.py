@@ -62,7 +62,8 @@ class TestIndexGating:
         assert resp.status_code == 200
         html = resp.get_data(as_text=True)
         assert 'id="userSwitcherList"' not in html
-        assert '切换用户' not in html
+        # 注释里也可能带「切换用户」字样，这里守的是菜单标题本身
+        assert '<small class="text-muted fw-semibold">切换用户</small>' not in html
         assert '切换家人' not in html  # 新手引导也不再讲不存在的入口
         assert 'const IS_ADMIN = false;' in html
 
