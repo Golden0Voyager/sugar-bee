@@ -4422,7 +4422,9 @@
                     }
                     if (entry.type === 'CGM') {
                         dayCgmRecords.push(entry);
-                    } else {
+                    } else if (isGlucoseEntry(entry)) {
+                        // 与日历/后端均值同口径:只收真血糖,血压(value=收缩压)、
+                        // 运动、饮食、体重等一律不进趋势图,否则 Y 轴会被拉飞
                         dayNonCgmRecords.push(entry);
                     }
                 }
