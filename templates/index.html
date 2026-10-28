@@ -1399,6 +1399,70 @@
     </div>
     {% endif %}{# end weightChartCard #}
 
+    <!-- Body Composition Trend Chart Section - Material Design -->
+    {% if 'weight' in active_modules %}
+    {% if stats.body_comp and stats.body_comp.has_data %}
+    <div class="card mb-4" id="bodyCompChartCard">
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <div class="d-flex align-items-center gap-2">
+                    <button class="btn btn-overview-nav" onclick="bodyCompNav(-1)" title="往前看">
+                        <i class="bi bi-chevron-left"></i>
+                    </button>
+                    <div class="mini-calendar">
+                        <div class="mini-cal-month"><i class="bi bi-activity" style="font-size: 0.7rem; -webkit-text-stroke: 1px currentColor;"></i></div>
+                        <div class="mini-cal-day" id="bodyCompCalLabel" style="font-size: 0.95rem; padding: 5px 0 3px;">30d</div>
+                    </div>
+                    <div class="px-2">
+                        <h5 class="mb-0" style="font-size: 1.1rem; letter-spacing: 0.15em;">体成分趋势</h5>
+                    </div>
+                    <button class="btn btn-overview-nav" onclick="bodyCompNav(1)" title="往后看" id="bodyCompNavNext" style="display: none;">
+                        <i class="bi bi-chevron-right"></i>
+                    </button>
+                </div>
+                <div class="d-flex align-items-center gap-2">
+                    <div class="dropdown" id="bodyCompRangeDropdown">
+                        <button type="button" class="btn btn-sm d-flex align-items-center gap-2" data-bs-toggle="dropdown" aria-expanded="false"
+                                style="border: 1.5px solid var(--border-color); border-radius: 24px; padding: 7px 10px 7px 14px; font-size: 0.85rem; font-weight: 500; color: var(--md-primary-dark); background: var(--md-background); transition: color 0.2s ease, border-color 0.2s ease; box-shadow: none; min-height: auto; transform: none !important;">
+                            <i class="bi bi-calendar3" style="font-size: 0.8rem; opacity: 0.7;"></i>
+                            <span id="bodyCompRangeLabel">近30天</span>
+                            <span style="display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 50%; background: var(--md-primary); color: white; font-size: 0.55rem; margin-left: -2px;">
+                                <i class="bi bi-chevron-down"></i>
+                            </span>
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end dropdown-menu-pills">
+                            <li><a class="dropdown-item" href="#" onclick="changeBodyCompRange(7);return false;" data-days="7">近 7 天</a></li>
+                            <li><a class="dropdown-item" href="#" onclick="changeBodyCompRange(14);return false;" data-days="14">近 14 天</a></li>
+                            <li><a class="dropdown-item active" href="#" onclick="changeBodyCompRange(30);return false;" data-days="30">近 30 天</a></li>
+                            <li><a class="dropdown-item" href="#" onclick="changeBodyCompRange(60);return false;" data-days="60">近 60 天</a></li>
+                            <li><a class="dropdown-item" href="#" onclick="changeBodyCompRange(90);return false;" data-days="90">近 90 天</a></li>
+                            <li><a class="dropdown-item" href="#" onclick="changeBodyCompRange(null);return false;" data-days="all">全部数据</a></li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+            <!-- 指标页签(默认体脂率;数值阈值只来自后端下发) -->
+            <div class="cal-seg-control mb-3" style="width: fit-content;">
+                <button class="cal-seg-btn cal-seg-active" data-body-comp-tab="body_fat_rate" onclick="selectBodyCompTab('body_fat_rate')">体脂率</button>
+                <button class="cal-seg-btn" data-body-comp-tab="visceral_fat" onclick="selectBodyCompTab('visceral_fat')">内脏脂肪</button>
+                <button class="cal-seg-btn" data-body-comp-tab="muscle_mass" onclick="selectBodyCompTab('muscle_mass')">肌肉量</button>
+            </div>
+            <canvas id="bodyCompChart" height="60"></canvas>
+            <!-- 更多指标(仅最新值) -->
+            <div class="d-flex flex-wrap justify-content-center gap-3 mt-2" style="font-size: 0.78rem; color: #757575;" id="bodyCompLatestFooter">
+                <span>更多指标(仅最新值)</span>
+                {% if stats.body_comp and stats.body_comp.latest %}
+                {% if stats.body_comp.latest.body_fat_mass %}<span>体脂肪量 {{ stats.body_comp.latest.body_fat_mass }}kg</span>{% endif %}
+                {% if stats.body_comp.latest.skeletal_muscle_mass %}<span>骨骼肌 {{ stats.body_comp.latest.skeletal_muscle_mass }}kg</span>{% endif %}
+                {% if stats.body_comp.latest.protein_mass %}<span>蛋白质 {{ stats.body_comp.latest.protein_mass }}kg</span>{% endif %}
+                {% if stats.body_comp.latest.basal_metabolism %}<span>基础代谢 {{ stats.body_comp.latest.basal_metabolism }}kcal</span>{% endif %}
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    {% endif %}{# end bodyCompChartCard data gate #}
+    {% endif %}{# end bodyCompChartCard module gate #}
+
     <!-- Calendar View - Material Design -->
     <div class="card">
         <div class="card-body">
@@ -2534,6 +2598,8 @@
     // ========== 全局血糖达标标准和徽章奖励系统 ==========
     // 使用后端传递的科学达标标准（基于《中国糖尿病防治指南（2024版）》）
     const GLUCOSE_TARGETS = {{ stats.glucose_targets | tojson }};
+    // 体成分阈值(唯一来源:后端 stats.body_comp.thresholds;参考线方向与数值全部取自这里)
+    const BODY_COMP_THRESHOLDS = {{ (stats.body_comp.thresholds if stats.body_comp else {}) | tojson }};
     const BADGE_SYSTEM = {{ stats.badge_system | tojson }};
     const USER_EMOJI_MAP = {{ user_emoji_map | tojson }};  // {user_id: emoji}
     const USER_EMOJI_MAP_STR = Object.fromEntries(Object.entries(USER_EMOJI_MAP).map(([k,v]) => [String(k), v]));
@@ -3588,6 +3654,249 @@
         initWeightChart(days, weightOffset);
     }
 
+    // ========== 体成分趋势卡 ==========
+    // 状态:当前页签、当前时间范围、翻页偏移
+    let currentBodyCompDays = 30;
+    let bodyCompOffset = 0;
+    let bodyCompMetric = 'body_fat_rate';
+    let bodyCompChartInstance = null;
+
+    // 页签元数据(标题/单位/颜色)。参考线的数值与方向只来自 BODY_COMP_THRESHOLDS,
+    // 本文件不写任何数字阈值。
+    const BODY_COMP_METRICS = {
+        body_fat_rate: { label: '体脂率', unit: '%', color: '#00897B' },
+        visceral_fat: { label: '内脏脂肪', unit: '', color: '#F4511E' },
+        muscle_mass: { label: '肌肉量', unit: 'kg', color: '#1A73E8' }
+    };
+
+    function initBodyCompChart(days = 30, offset = 0) {
+        // 模块关闭或缺卡时这张卡片整个不渲染,直接跳过(照 initWeightChart 的兜底)
+        if (!document.getElementById('bodyCompChart')) return;
+        if (bodyCompChartInstance) { bodyCompChartInstance.destroy(); bodyCompChartInstance = null; }
+
+        const metric = bodyCompMetric;
+        const meta = BODY_COMP_METRICS[metric];
+        if (!meta) return;
+        const unitSuffix = meta.unit ? ` (${meta.unit})` : '';
+
+        // endDate 对齐到当天 24:00(次日 0 点),确保 x 轴以完整天为单位
+        const endDate = offset > 0 ? new Date(Date.now() - offset * 24 * 60 * 60 * 1000) : new Date();
+        function toLocalDateStr(d) {
+            return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+        }
+        const endDateStr = toLocalDateStr(endDate);
+        endDate.setHours(24, 0, 0, 0);
+        const cutoffDate = days ? new Date(endDate.getTime() - days * 24 * 60 * 60 * 1000) : null;
+        const cutoffDateStr = cutoffDate ? toLocalDateStr(cutoffDate) : null;
+        const xAxisMin = cutoffDateStr ? cutoffDateStr + ' 00:00:00' : undefined;
+        const xAxisMax = endDateStr + ' 23:59:59';
+
+        // 从 timelineData 收集当前页签字段非空的点(每行 entry 带全部 records 列)
+        const bodyCompRecords = [];
+        timelineData.forEach(day => {
+            if (cutoffDateStr && day.date < cutoffDateStr) return;
+            if (offset > 0 && day.date > endDateStr) return;
+            day.data.entries.forEach(entry => {
+                const v = entry[metric];
+                if (v !== null && v !== undefined && v > 0) {
+                    bodyCompRecords.push({ x: entry.timestamp, y: v });
+                }
+            });
+        });
+
+        if (bodyCompRecords.length === 0) {
+            document.getElementById('bodyCompChartCard').style.display = 'none';
+            return;
+        }
+        // 确保卡片可见
+        document.getElementById('bodyCompChartCard').style.display = '';
+
+        // Sort by timestamp
+        bodyCompRecords.sort((a, b) => new Date(a.x) - new Date(b.x));
+
+        const ctx = document.getElementById('bodyCompChart').getContext('2d');
+
+        // Y 轴范围按当前指标取整
+        const values = bodyCompRecords.map(r => r.y);
+        let yMin = Math.floor(Math.min(...values) - 1);
+        let yMax = Math.ceil(Math.max(...values) + 1);
+
+        // 参考线:体脂率/内脏脂肪画上限虚线,肌肉量画下限虚线;
+        // 阈值为 null(如无体重的肌肉量参考线)时一律不画,不回落字面量。
+        const thresholds = BODY_COMP_THRESHOLDS || {};
+        const annotations = {};
+        const thresholdMax = (metric === 'body_fat_rate') ? thresholds.body_fat_rate_max : (metric === 'visceral_fat' ? thresholds.visceral_fat_max : null);
+        if (thresholdMax !== undefined && thresholdMax !== null) {
+            yMax = Math.max(yMax, Math.ceil(Number(thresholdMax) + 1));
+            annotations[metric + 'MaxLine'] = {
+                type: 'line',
+                yMin: thresholdMax,
+                yMax: thresholdMax,
+                yScaleID: 'y',
+                borderColor: 'rgba(239, 83, 80, 0.5)',
+                borderWidth: 1.5,
+                borderDash: [6, 4],
+                label: {
+                    display: !IS_MOBILE,
+                    content: `参考上限 ${thresholdMax}${meta.unit}`,
+                    position: 'end',
+                    yAdjust: -12,
+                    backgroundColor: 'transparent',
+                    color: '#EF5350',
+                    font: { size: 11 },
+                    padding: 2
+                }
+            };
+        }
+        const thresholdMin = (metric === 'muscle_mass') ? thresholds.muscle_mass_min_kg : null;
+        if (thresholdMin !== undefined && thresholdMin !== null) {
+            yMin = Math.min(yMin, Math.floor(Number(thresholdMin) - 1));
+            annotations.muscleMinLine = {
+                type: 'line',
+                yMin: thresholdMin,
+                yMax: thresholdMin,
+                yScaleID: 'y',
+                borderColor: 'rgba(66, 165, 245, 0.6)',
+                borderWidth: 1.5,
+                borderDash: [6, 4],
+                label: {
+                    display: !IS_MOBILE,
+                    content: `参考下限 ${thresholdMin}${meta.unit}`,
+                    position: 'start',
+                    yAdjust: -12,
+                    backgroundColor: 'transparent',
+                    color: '#42A5F5',
+                    font: { size: 11 },
+                    padding: 2
+                }
+            };
+        }
+
+        bodyCompChartInstance = new Chart(ctx, {
+            type: 'line',
+            data: {
+                datasets: [{
+                    label: meta.label + unitSuffix,
+                    data: bodyCompRecords,
+                    borderColor: meta.color,
+                    backgroundColor: meta.color,
+                    borderWidth: 3,
+                    tension: 0.3,
+                    pointRadius: 5,
+                    pointHoverRadius: 8,
+                    pointBackgroundColor: meta.color,
+                    pointBorderColor: '#fff',
+                    pointBorderWidth: 2,
+                    fill: false,
+                    yAxisID: 'y'
+                }]
+            },
+            options: {
+                responsive: true,
+                interaction: {
+                    mode: 'index',
+                    intersect: false
+                },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            title: (items) => {
+                                if (items[0]) {
+                                    const d = new Date(items[0].raw.x);
+                                    return d.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+                                }
+                                return '';
+                            },
+                            label: (item) => `${meta.label}: ${item.raw.y}${meta.unit}`
+                        }
+                    },
+                    annotation: { annotations }
+                },
+                scales: {
+                    x: {
+                        type: 'time',
+                        bounds: 'ticks',
+                        min: xAxisMin,
+                        max: xAxisMax,
+                        afterBuildTicks: function(axis) {
+                            if (axis.ticks && axis.ticks.length > 0) {
+                                if (axis.ticks[0].value > axis.min) {
+                                    axis.ticks.unshift({ value: axis.min });
+                                }
+                                if (axis.ticks[axis.ticks.length - 1].value < axis.max) {
+                                    axis.ticks.push({ value: axis.max });
+                                }
+                            }
+                        },
+                        time: { unit: 'day', displayFormats: { day: 'MM-dd' } },
+                        ticks: { maxRotation: 30, autoSkip: true },
+                        grid: { color: 'rgba(0,0,0,0.05)' }
+                    },
+                    y: {
+                        position: 'left',
+                        beginAtZero: false,
+                        min: yMin,
+                        max: yMax,
+                        title: {
+                            display: !IS_MOBILE,
+                            text: meta.label + unitSuffix,
+                            font: { size: IS_MOBILE ? 9 : 12, weight: 'bold' },
+                            color: meta.color
+                        },
+                        ticks: {
+                            stepSize: 1,
+                            font: { size: 11 },
+                            color: meta.color
+                        },
+                        grid: { color: 'rgba(0,0,0,0.05)' }
+                    }
+                }
+            }
+        });
+    }
+
+    // 体成分时间范围切换
+    async function changeBodyCompRange(days) {
+        currentBodyCompDays = days;
+        bodyCompOffset = 0;
+        document.getElementById('bodyCompNavNext').style.display = 'none';
+        const labelMap = {7: '近7天', 14: '近14天', 30: '近30天', 60: '近60天', 90: '近90天'};
+        document.querySelectorAll('#bodyCompRangeDropdown .dropdown-item').forEach(b => b.classList.remove('active'));
+        const daysAttr = days === null ? 'all' : days;
+        const activeItem = document.querySelector(`#bodyCompRangeDropdown .dropdown-item[data-days="${daysAttr}"]`);
+        if (activeItem) activeItem.classList.add('active');
+        document.getElementById('bodyCompRangeLabel').textContent = days ? (labelMap[days] || `近${days}天`) : '全部';
+        const calLabel = document.getElementById('bodyCompCalLabel');
+        if (calLabel) calLabel.textContent = days ? days + 'd' : '全部';
+        if (days === null || days > 90) {
+            await ensureTimelineData(days);
+        }
+        initBodyCompChart(days);
+    }
+
+    // 体成分趋势日导航
+    async function bodyCompNav(delta) {
+        const days = currentBodyCompDays;
+        const step = 1;
+        bodyCompOffset = Math.max(0, bodyCompOffset - delta * step);
+        document.getElementById('bodyCompNavNext').style.display = bodyCompOffset > 0 ? 'flex' : 'none';
+        const totalDaysNeeded = (days || 90) + bodyCompOffset;
+        if (totalDaysNeeded > 90) {
+            await ensureTimelineData(totalDaysNeeded);
+        }
+        initBodyCompChart(days, bodyCompOffset);
+    }
+
+    // 页签切换:切选中态并重画当前范围
+    function selectBodyCompTab(metric) {
+        bodyCompMetric = metric;
+        document.querySelectorAll('[data-body-comp-tab]').forEach(b => {
+            b.classList.toggle('cal-seg-active', b.getAttribute('data-body-comp-tab') === metric);
+        });
+        initBodyCompChart(currentBodyCompDays, bodyCompOffset);
+    }
+
     // 血糖趋势日导航
     let trendOffset = 0;
     async function trendNav(delta) {
@@ -4067,6 +4376,11 @@
         // Initialize Weight/BMI Chart
         if (document.getElementById('weightChart')) {
         initWeightChart(30);
+        }
+
+        // Initialize Body Composition Trend Chart
+        if (document.getElementById('bodyCompChart')) {
+        initBodyCompChart(30);
         }
 
         // Initialize Bootstrap Tooltips
