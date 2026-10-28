@@ -41,6 +41,26 @@ def _optional_float(value):
         return None
 
 
+# 保留操作词黑名单:这些「动作词」绝不是合法记录类型。2026-10-28 事故——AI 助手
+# 没有删除工具,把「删除刚才那条」伪装成 type='delete' 的记录写入,数值校验只看范围,
+# 垃圾数据直接落库。类型必须在写入前做硬校验。
+RESERVED_RECORD_TYPES = frozenset({
+    'delete', 'remove', 'update', 'del', 'drop', 'clear',
+    'none', 'null', 'test', '测试',
+})
+
+
+def _invalid_record_type(r_type) -> str | None:
+    """记录类型硬校验:返回错误信息,None 表示合法。与 writer MCP 的同名函数保持一致。"""
+    if not isinstance(r_type, str) or not r_type.strip():
+        return "记录类型不能为空"
+    if r_type.strip().lower() in RESERVED_RECORD_TYPES:
+        return f"'{r_type}' 是保留操作词,不是合法记录类型"
+    if len(r_type) > 20:
+        return f"记录类型过长({len(r_type)} 字符,上限 20)"
+    return None
+
+
 def _validate_record_data(r: dict) -> list[str]:
     """校验单条记录的数据范围，返回警告信息列表（空列表表示无警告）。"""
     warnings: list[str] = []
@@ -225,6 +245,13 @@ def add_record():
 
         # 体成分:JSON 给数值、form 给字符串,统一成 float/None 再交给校验与 INSERT
         body_comp = {field: _optional_float(v) for field, v in body_comp.items()}
+
+        # 类型硬校验:拒绝 delete/update 这类保留操作词(历史事故:AI 伪造删除记录)
+        type_error = _invalid_record_type(r_type)
+        if type_error:
+            if request.is_json:
+                return api_error(type_error, status_code=400, error_type="invalid_type")
+            return type_error, 400
 
         # 使用当前 session 用户，不轻信前端传入的 user_id
         current_user_id = user_manager.get_current_user_id()
@@ -524,6 +551,7 @@ def batch_add():
         # Phase 2: Validate + Insert
         inserted_records = []
         all_warnings: list[str] = []
+        rejected: list[dict] = []
         for r in data:
             if 'value' not in r or 'type' not in r:
                 continue
@@ -531,6 +559,12 @@ def batch_add():
             is_pred = 1 if r.get('is_predicted', False) else 0
             timestamp = r.get('datetime')
             r_type = r['type']
+
+            # 类型硬校验:保留操作词直接拒收,不再落库(历史事故:AI 伪造 type='delete')
+            type_error = _invalid_record_type(r_type)
+            if type_error:
+                rejected.append({'type': r_type, 'datetime': timestamp, 'reason': type_error})
+                continue
 
             # 数据范围校验（允许写入，但收集警告）
             # 体成分先归一化成 float/None 再校验与落库(字符串直接比较会 TypeError)
@@ -581,6 +615,8 @@ def batch_add():
         response_data = {"inserted": len(inserted_records)}
         if all_warnings:
             response_data["warnings"] = all_warnings
+        if rejected:
+            response_data["rejected"] = rejected
         return api_success(data=response_data, message="Batch add successful")
     except Exception as e:
         traceback.print_exc()
