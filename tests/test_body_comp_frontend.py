@@ -134,14 +134,12 @@ def test_select_weight_metric_keeps_current_range():
 
 
 def test_empty_range_keeps_card_and_tabs():
-    """区间无数据时保留卡片(翻页/范围都在卡里),只藏画布并显示提示。"""
+    """区间无数据时保留卡片与全部导航，纯体重用户也不能被卡在空区间。"""
     html = INDEX.read_text(encoding="utf-8")
     body = html.split('function initWeightChart')[1].split('// Get point border color')[0]
-    assert "const hasTabs = !!document.getElementById('weightMetricTabs')" in body
-    # 有页签时不藏卡,只有完全没有体成分的老用户才沿用「无数据藏卡」
-    assert 'if (!hasTabs)' in body
-    assert 'weightChartCard' in body
-    assert 'weightChartEmpty' in body
+    assert "document.getElementById('weightChartCard').style.display = ''" in body
+    assert "document.getElementById('weightChartCard').style.display = 'none'" not in body
+    assert "setChartEmptyState('weightChart', 'weightChartEmpty', isEmpty)" in body
 
 
 def test_weight_chart_card_does_not_clip_dropdowns():
