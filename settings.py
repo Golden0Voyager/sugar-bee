@@ -368,6 +368,103 @@ def get_bmi_category(bmi):
         return {'label': '肥胖', 'color': '#EF5350'}
 
 
+# ========== 体成分状态阈值(唯一来源)==========
+# 体成分记录的 7 个字段与核心 3 项(仪表盘/图表消费)
+BODY_COMP_FIELDS = ('body_fat_rate', 'body_fat_mass', 'muscle_mass',
+                    'skeletal_muscle_mass', 'protein_mass', 'visceral_fat', 'basal_metabolism')
+BODY_COMP_CORE = ('body_fat_rate', 'visceral_fat', 'muscle_mass')
+
+# 体脂率分档表(按性别、年龄):
+#   (age_min, age_max, low_bound, high_bound):< low 偏低,在区间内 标准,> high 偏高
+BODY_FAT_BANDS = {
+    'male':   [(0, 39, 8.0, 19.0), (40, 59, 11.0, 21.0), (60, 200, 13.0, 24.0)],
+    'female': [(0, 39, 21.0, 32.0), (40, 59, 24.0, 34.0), (60, 200, 27.0, 37.0)],
+}
+# 肌肉量按比例(muscle_mass / weight)判定,绝不按绝对 kg(秤的"肌肉量"含水)
+MUSCLE_MASS_RATIO_MIN = {'male': 0.70, 'female': 0.64}
+MUSCLE_MASS_RATIO_EXCELLENT = {'male': 0.78, 'female': 0.72}
+VISCERAL_FAT_MAX = 9
+
+_UNKNOWN = {'label': '未知', 'color': '#9E9E9E'}
+
+
+def _body_fat_band(gender: str, age: int):
+    """按性别取分档表(未知性别按 male),按 age 命中档位;无命中回落最后一档。"""
+    bands = BODY_FAT_BANDS.get(gender, BODY_FAT_BANDS['male'])
+    for band in bands:
+        if band[0] <= age <= band[1]:
+            return band
+    return bands[-1]
+
+
+def get_body_fat_category(rate: float | None, gender: str, age: int) -> dict:
+    """按性别 + 年龄分档判定体脂率状态。
+
+    Returns:
+        dict: {'label': str, 'color': str};rate 缺失/非正数/非数值 → 未知
+    """
+    if rate is None:
+        return dict(_UNKNOWN)
+    try:
+        rate = float(rate)
+    except (TypeError, ValueError):
+        return dict(_UNKNOWN)
+    if rate <= 0:
+        return dict(_UNKNOWN)
+    _, _, low, high = _body_fat_band(gender, age)
+    if rate < low:
+        return {'label': '偏低', 'color': '#42A5F5'}
+    if rate > high:
+        return {'label': '偏高', 'color': '#FFA726'}
+    return {'label': '标准', 'color': '#4CAF50'}
+
+
+def get_body_fat_upper_bound(gender: str, age: int) -> float:
+    """返回命中分档的高界(给图表画上限线用)。"""
+    return _body_fat_band(gender, age)[3]
+
+
+def get_visceral_fat_category(level: float | None) -> dict:
+    """内脏脂肪等级判定:≤9 标准、10–14 偏高、≥15 高。"""
+    if level is None:
+        return dict(_UNKNOWN)
+    try:
+        level = float(level)
+    except (TypeError, ValueError):
+        return dict(_UNKNOWN)
+    if level <= 0:
+        return dict(_UNKNOWN)
+    if level <= VISCERAL_FAT_MAX:
+        return {'label': '标准', 'color': '#4CAF50'}
+    if level <= 14:
+        return {'label': '偏高', 'color': '#FFA726'}
+    return {'label': '高', 'color': '#EF5350'}
+
+
+def get_muscle_mass_category(muscle_mass: float | None, weight: float | None, gender: str) -> dict:
+    """按比例 muscle_mass / weight 判定肌肉量状态(绝不按绝对 kg)。"""
+    if muscle_mass is None or weight is None:
+        return dict(_UNKNOWN)
+    try:
+        muscle_mass = float(muscle_mass)
+        weight = float(weight)
+    except (TypeError, ValueError):
+        return dict(_UNKNOWN)
+    if muscle_mass <= 0 or weight <= 0:
+        return dict(_UNKNOWN)
+    ratio = muscle_mass / weight
+    if ratio >= MUSCLE_MASS_RATIO_EXCELLENT.get(gender, MUSCLE_MASS_RATIO_EXCELLENT['male']):
+        return {'label': '优秀', 'color': '#4CAF50'}
+    if ratio >= MUSCLE_MASS_RATIO_MIN.get(gender, MUSCLE_MASS_RATIO_MIN['male']):
+        return {'label': '标准', 'color': '#4CAF50'}
+    return {'label': '偏低', 'color': '#42A5F5'}
+
+
+def get_muscle_mass_ratio_min(gender: str) -> float:
+    """返回肌肉量比例的最低标准(未知性别按 male)。"""
+    return MUSCLE_MASS_RATIO_MIN.get(gender, MUSCLE_MASS_RATIO_MIN['male'])
+
+
 def get_ai_system_prompt(user_id: int | None = None) -> str:
     """生成 AI 系统提示词。user_id 缺失时使用 DEFAULT_PROFILE 兜底(避免崩溃)。"""
     config = load_config(user_id) if user_id is not None else {
