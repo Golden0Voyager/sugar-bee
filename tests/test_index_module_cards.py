@@ -117,6 +117,26 @@ class TestChartInitGuards:
             )
 
 
+class TestGlucoseTrendOnlyPlotsGlucose:
+    """趋势图只画真血糖。历史 bug：空腹血压记录的 value 被填成收缩压（124），
+    趋势图不过滤，把血压画成 120+ 的「其他」点，Y 轴被拉飞、正常数据挤成一条线。"""
+
+    def test_non_cgm_entries_pass_through_is_glucose_entry(self):
+        """非 CGM 记录必须经过与日历/后端均值一致的 isGlucoseEntry 过滤。"""
+        import os
+
+        repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        with open(os.path.join(repo_root, 'templates/index.html'), encoding='utf-8') as f:
+            html = f.read()
+        start = html.index('function initGlucoseChart(')
+        end = html.index('// 计算x轴边界', start)
+        body = html[start:end]
+        assert 'dayNonCgmRecords.push(entry)' in body
+        assert 'else if (isGlucoseEntry(entry))' in body, (
+            '趋势图收集非 CGM 记录时未走 isGlucoseEntry 过滤，血压/运动等会混进血糖图'
+        )
+
+
 # 头像菜单里的入口（首页已不再放卡片）
 MENU_MEDS = '💊 药物管理'
 MENU_BONE = 'onclick="openBoneModal()"'
