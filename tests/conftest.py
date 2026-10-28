@@ -135,6 +135,17 @@ def client_authenticated(client, app):
 
 
 @pytest.fixture
+def client_admin(client_authenticated, monkeypatch):
+    """已登录且位于管理员名单（SUGAR_BEE_ADMIN_USERS）中的测试客户端。
+
+    切换用户等调试能力只对管理员开放；普通用户用 client_authenticated，
+    凡是测这些接口的管理员路径（成功/404/500 等）都必须用这个 fixture。
+    """
+    monkeypatch.setenv('SUGAR_BEE_ADMIN_USERS', '_test')
+    return client_authenticated
+
+
+@pytest.fixture
 def client_glucose(client_authenticated, app):
     """已登录 + 显式开启血糖模块的测试客户端。
 

@@ -97,8 +97,8 @@ class TestUserRoutes:
         resp = client_authenticated.get('/get_current_user')
         assert resp.status_code == 200
 
-    def test_switch_user_not_found(self, client_authenticated):
-        resp = client_authenticated.post('/switch_user/99999')
+    def test_switch_user_not_found(self, client_admin):
+        resp = client_admin.post('/switch_user/99999')
         assert resp.status_code == 404
 
     def test_create_user_requires_login(self, client):

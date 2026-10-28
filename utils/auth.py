@@ -29,6 +29,41 @@ def login_required(f):
     return decorated
 
 
+def get_admin_usernames():
+    """管理员用户名集合，来自环境变量 SUGAR_BEE_ADMIN_USERS（逗号分隔）。
+
+    默认为空 = 没有管理员。切换用户这类调试能力因此默认对所有人关闭，
+    只有部署方显式配置后才开启。
+    """
+    raw = os.environ.get('SUGAR_BEE_ADMIN_USERS', '')
+    return {u.strip() for u in raw.split(',') if u.strip()}
+
+
+def is_current_user_admin():
+    """当前登录用户是否在管理员名单里。未登录或查不到用户都视为非管理员。"""
+    user_id = session.get('current_user_id')
+    if not user_id:
+        return False
+    admins = get_admin_usernames()
+    if not admins:
+        return False
+    from utils.db import get_db
+    c = get_db().cursor()
+    c.execute("SELECT username FROM app_users WHERE id = ?", (user_id,))
+    row = c.fetchone()
+    return bool(row and row['username'] in admins)
+
+
+def admin_required(f):
+    """要求当前登录用户是管理员，否则返回 403。配合 login_required 使用。"""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if not is_current_user_admin():
+            return api_error("仅管理员可执行此操作", status_code=403, error_type="admin_only")
+        return f(*args, **kwargs)
+    return decorated
+
+
 def login_or_token_required(f):
     """
     支持两种鉴权（任一通过即可）：

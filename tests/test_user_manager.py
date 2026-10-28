@@ -214,11 +214,11 @@ import pytest
 class TestUserSwitchExcept:
     """api_user.py L45-47: switch_user except 分支"""
 
-    def test_switch_user_exception(self, client_authenticated):
+    def test_switch_user_exception(self, client_admin):
         """L45-47: get_user 抛出异常 -> 500"""
         with patch('routes.api_user.user_manager.get_user',
                    side_effect=Exception("db crash")):
-            resp = client_authenticated.post('/switch_user/1',
+            resp = client_admin.post('/switch_user/1',
                 data=json.dumps({}),
                 content_type='application/json')
             assert resp.status_code == 500

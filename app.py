@@ -26,7 +26,7 @@ from services.gcs_sync import (  # noqa: E402
     sync_file_to_gcs,
 )
 from user_manager import UserManager  # noqa: E402
-from utils.auth import login_required  # noqa: E402
+from utils.auth import is_current_user_admin, login_required  # noqa: E402
 from utils.db import close_db, get_db, get_raw_conn, init_db, put_raw_conn  # noqa: E402
 from utils.timezone import today as app_today  # noqa: E402
 
@@ -185,7 +185,7 @@ def index():
 
         return render_template('index.html', records=records, stats=stats, timeline=sorted_dates,
                                enabled_modules=enabled_modules, is_garmin_user=is_garmin_user,
-                               brand=brand,
+                               brand=brand, is_admin=is_current_user_admin(),
                                user_emoji_map=settings.USER_EMOJI_MAP)
     except Exception as e:
         traceback.print_exc()

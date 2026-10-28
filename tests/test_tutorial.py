@@ -118,9 +118,10 @@ class TestTutorialContent:
             assert example in html
 
     def test_mentions_user_switching(self):
-        """家人共用一台设备，切换用户必须讲。"""
+        """切换用户是管理员调试能力：文案保留，但包在 is_admin 条件里，
+        普通用户的引导不会讲一个自己看不到的入口。"""
         html = _index_html()
-        assert '切换家人' in html
+        assert re.search(r"\{% if is_admin %\}(?:(?!\{% endif %\}).)*切换家人", html, re.S)
 
 
 class TestTutorialStyles:

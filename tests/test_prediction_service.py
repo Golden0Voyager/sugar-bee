@@ -20,6 +20,7 @@ from services.prediction_service import (
     predict_remaining_glucose_slots,
     summarize_slot_history,
 )
+from utils.timezone import now as app_now
 
 USER_ID = 1
 
@@ -98,7 +99,7 @@ class TestPredictMorningFpg:
 
     def setup_method(self):
         """在每个测试前计算日期常量（避免模块级 import 与运行时跨午夜漂移）"""
-        self.today = datetime.datetime.now()
+        self.today = app_now()
         self.yesterday = self.today - datetime.timedelta(days=1)
         self.today_str = self.today.strftime('%Y-%m-%d')
         self.yesterday_str = self.yesterday.strftime('%Y-%m-%d')
@@ -230,7 +231,7 @@ class TestPredictPostExercise:
     PATCH_AVAIL = 'services.prediction_service.AI_AVAILABLE'
 
     def setup_method(self):
-        self.today = datetime.datetime.now()
+        self.today = app_now()
         self.today_str = self.today.strftime('%Y-%m-%d')
 
     def _setup_basic(self, db_path, has_exercise=True):
@@ -309,7 +310,7 @@ class TestPredictRemaining:
     PATCH_AVAIL = 'services.prediction_service.AI_AVAILABLE'
 
     def setup_method(self):
-        self.today = datetime.datetime.now()
+        self.today = app_now()
         self.today_str = self.today.strftime('%Y-%m-%d')
 
     def _setup_measured_only(self, db_path):
