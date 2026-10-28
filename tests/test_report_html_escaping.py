@@ -27,3 +27,12 @@ def test_checkup_preview_escapes_text_and_input_value():
     assert '${escapeHtml(it.name)}' in REPORT_RENDERERS
     assert 'value="${escapeHtml(it.value)}"' in REPORT_RENDERERS
     assert "${escapeHtml(it.ref_range || '-')} ${escapeHtml(it.unit || '')}" in REPORT_RENDERERS
+
+
+def test_report_upload_does_not_silently_drop_selected_files():
+    assert 'return await Promise.all(files.map(readFileAsDataUrl));' in REPORT_RENDERERS
+    assert 'files.slice(0, REPORT_MAX_FILES)' not in REPORT_RENDERERS
+
+
+def test_partial_failure_labels_are_escaped_before_toast():
+    assert "failed.map(p => escapeHtml(p.label || `第 ${p.page} 页`))" in REPORT_RENDERERS

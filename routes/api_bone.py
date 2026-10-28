@@ -11,7 +11,8 @@ import bone_parser
 from user_manager import UserManager
 from utils.auth import login_required
 from utils.db import get_db
-from utils.report_files import ReportFileError, to_model_images
+from utils.report_files import ReportFileError, to_report_pages
+from utils.report_processing import process_report_pages
 from utils.responses import api_error, api_success
 from utils.timezone import today as app_today
 
@@ -46,7 +47,7 @@ def list_bone_records():
 @bp_bone.route('/api/bone/parse', methods=['POST'])
 @login_required
 def parse_bone_image():
-    """识别骨密度报告（照片或 PDF，最多 3 页），返回多条测量值（不落库，等用户确认）。"""
+    """识别整份 DXA 报告；原生文字优先，视觉兜底，单次最多 50 页。"""
     try:
         data = request.json or {}
         images_b64 = data.get('images') or []
@@ -54,11 +55,17 @@ def parse_bone_image():
             return api_error('请上传骨密度报告照片或 PDF', status_code=400, error_type='validation_error')
 
         try:
-            images_data = to_model_images(images_b64)
+            pages = to_report_pages(images_b64)
         except ReportFileError as exc:
             return api_error(str(exc), status_code=400, error_type='validation_error')
 
-        result = bone_parser.parse_bone_report(images_data, 'image/jpeg')
+        result = process_report_pages(
+            pages,
+            text_parser=bone_parser.parse_bone_text,
+            vision_parser=bone_parser.parse_bone_report,
+            item_key='measurements',
+            date_key='measure_date',
+        )
         if not result['measurements']:
             return api_error(
                 '没有从报告里识别出 T 值，可以换一张更清晰的照片，或手工录入',
@@ -66,7 +73,10 @@ def parse_bone_image():
             )
         if not result['measure_date']:
             result['measure_date'] = app_today().strftime('%Y-%m-%d')
-        return api_success(data=result, message=f'识别到 {len(result["measurements"])} 个部位')
+        message = f'识别到 {len(result["measurements"])} 个部位'
+        if result['failed_pages']:
+            message += f'，{len(result["failed_pages"])} 页识别失败'
+        return api_success(data=result, message=message)
     except Exception as e:
         traceback.print_exc()
         return api_error(f'识别失败：{e}', status_code=503, error_type='ai_unavailable')

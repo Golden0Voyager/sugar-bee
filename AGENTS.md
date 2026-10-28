@@ -190,9 +190,10 @@ ignore = ["E501", "E402", "E702"]  # E402/E702 for test files
   2. 渲染层：`renderDayDetails` 和日视图时间轴的循环里 `if (r.is_predicted && !ACTIVE_MODULES.has('glucose')) return;` —— 只藏「预测」徽章不够，数值/类型/AI 解释会一起漏出来
   3. 数据层：`utils/db.py::_apply_prediction_cleanup()` 一次性删掉非血糖用户的历史 `is_predicted = 1` 记录（只删 AI 生成的，用户真实数据一条不动）
   门禁**不要放进 `predict_morning_fpg` 内部**：那些函数被大量测试用精确的 `fetchone.side_effect` 序列驱动，内部多一次查询会把序列整体错位
-- **报告上传走 `utils/report_files.py`，不要直接塞 base64 给视觉模型**（历史 bug：只支持单张 jpg，PDF 直接被拒）。两个入口 `/api/checkup/parse` 和 `/api/bone/parse` 都先调 `to_model_images(images_b64)`：
-  - 视觉模型只吃图片，所以 PDF 在服务端用 pypdfium2 渲染成 JPEG（`PDF_DPI=150`、`PDF_MAX_PAGES=3`，多了截断）
-  - 单次请求最多 `MAX_IMAGES=3` 张（照片 + PDF 页合并计算），前后端都用这个数，改上限要同步 `index.html` 的 `REPORT_MAX_FILES`
+- **报告上传走 `utils/report_files.py`，不要直接塞 base64 给视觉模型**（历史 bug：只支持单张 jpg，PDF 直接被拒）。两个入口 `/api/checkup/parse` 和 `/api/bone/parse` 都先用 `to_report_pages(images_b64)` 展开全部页面，再交给 `utils/report_processing.py` 分批：
+  - PDF 有可靠原生文字层时走文本模型；扫描件、乱码、文本输出异常或指标缺乏原文依据时回退视觉模型。视觉页才用 pypdfium2 惰性渲染成 JPEG（`PDF_DPI=150`），不要在请求开始时渲染整份 PDF
+  - `MAX_IMAGES=3` 是**每次模型调用**的页数上限，`MAX_REPORT_PAGES=50` 是整次上传的安全上限；整份报告必须全部处理，超过上限明确报错，不能静默截断。模型并发最多 2，部分失败必须返回 `failed_pages` / `warnings`
+  - 前端 `REPORT_MAX_FILES=50` 只负责超限提示，不得再 `slice()` 静默丢弃文件；失败页提示要转义
   - 解码失败抛 `ReportFileError`，路由统一转 400 + 「请上传体检报告照片或 PDF」，不要让它冒成 500
   - 渲染后的图片一律按 `image/jpeg` 往下传，别再用上传时的 mime（PDF 的 mime 传下去模型会报错）
 

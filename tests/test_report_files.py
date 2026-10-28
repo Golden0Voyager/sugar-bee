@@ -1,8 +1,8 @@
 """报告文件解码（utils/report_files.py）测试。
 
 覆盖两类真实场景：
-1. 医院导出的 PDF 报告（视觉模型只吃图片，必须服务端渲染）；
-2. 用户一次选多张照片（后端限制 3 张，多出来的要截断而不是报错）。
+1. 医院导出的 PDF 报告（提取文字，视觉需要时服务端渲染）；
+2. 多文件与页数上限（超限明确报错，不能静默丢页）。
 """
 import base64
 import io
@@ -12,7 +12,6 @@ from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 
 from utils.report_files import (
-    MAX_IMAGES,
     ReportFileError,
     decode_base64_item,
     is_pdf,
@@ -98,15 +97,15 @@ class TestToModelImages:
         images = to_model_images([data_url(make_pdf(2), 'application/pdf')])
         assert len(images) == 2
 
-    def test_total_capped(self):
-        """3 张图 + 1 个多页 PDF，总数仍然不超过 MAX_IMAGES。"""
+    def test_total_over_cap_raises_instead_of_dropping_pages(self):
         raw = b'\xff\xd8\xff\xe0jpeg'
         items = [data_url(raw) for _ in range(3)] + [data_url(make_pdf(3), 'application/pdf')]
-        assert len(to_model_images(items)) == MAX_IMAGES
+        with pytest.raises(ReportFileError, match='最多 3 页'):
+            to_model_images(items)
 
-    def test_pdf_cannot_exceed_cap(self):
-        """单个多页 PDF 也不能超过上限。"""
-        assert len(to_model_images([data_url(make_pdf(6), 'application/pdf')])) == MAX_IMAGES
+    def test_pdf_over_cap_raises_instead_of_dropping_pages(self):
+        with pytest.raises(ReportFileError, match='最多 3 页'):
+            to_model_images([data_url(make_pdf(6), 'application/pdf')])
 
     def test_bad_item_raises(self):
         with pytest.raises(ReportFileError):

@@ -10475,7 +10475,7 @@
         document.getElementById('bonePreviewInst').value = data.institution || '';
         renderBonePreview();
         document.getElementById('bonePreview').classList.remove('d-none');
-        showToast(`识别到 ${_bonePreviewItems.length} 个部位，请核对`, 'success');
+        showReportResultToast(data, _bonePreviewItems.length, '个部位');
     }
 
     function renderBonePreview() {
@@ -10636,9 +10636,8 @@
     }
 
     // ========== 报告上传（体检 / 骨密度共用） ==========
-    // 后端会把 PDF 渲染成图片再送模型，单个请求最多 3 张图（PDF 按页算），
-    // 所以这里限制 3 个文件，避免用户选了 10 个却只识别了前 3 个还不知道。
-    const REPORT_MAX_FILES = 3;
+    // 后端逐页分批识别，每次模型调用最多 3 页；整份报告安全上限为 50 页。
+    const REPORT_MAX_FILES = 50;
 
     function showReportFileHint(inputId, hintId) {
         const input = document.getElementById(inputId);
@@ -10646,13 +10645,11 @@
         if (!hint) return;
         const files = [...((input && input.files) || [])];
         if (!files.length) { hint.textContent = ''; return; }
-        const shown = files.slice(0, REPORT_MAX_FILES).map(f => f.name).join('、');
-        hint.textContent = files.length > REPORT_MAX_FILES
-            ? `已选 ${files.length} 个，只识别前 ${REPORT_MAX_FILES} 个：${shown}`
-            : `已选 ${files.length} 个：${shown}`;
+        const shown = files.slice(0, 5).map(f => f.name).join('、');
+        hint.textContent = `已选 ${files.length} 个：${shown}${files.length > 5 ? ' 等' : ''}`;
     }
 
-    /** 读取用户选中的报告文件（图片或 PDF），返回 data URL 数组。 */
+    /** 读取全部报告文件，不静默丢弃用户选择的内容。 */
     async function collectReportImages(inputId) {
         const input = document.getElementById(inputId);
         const files = [...((input && input.files) || [])];
@@ -10660,8 +10657,21 @@
             showToast('请先选择报告照片或 PDF', 'error');
             return null;
         }
-        const picked = files.slice(0, REPORT_MAX_FILES);
-        return await Promise.all(picked.map(readFileAsDataUrl));
+        if (files.length > REPORT_MAX_FILES) {
+            showToast(`一次最多识别 ${REPORT_MAX_FILES} 页，请拆分后上传`, 'error');
+            return null;
+        }
+        return await Promise.all(files.map(readFileAsDataUrl));
+    }
+
+    function showReportResultToast(data, count, unit) {
+        const failed = data.failed_pages || [];
+        if (!failed.length) {
+            showToast(`识别到 ${count} ${unit}，请核对`, 'success');
+            return;
+        }
+        const labels = failed.map(p => escapeHtml(p.label || `第 ${p.page} 页`)).join('、');
+        showToast(`识别到 ${count} ${unit}；${labels}识别失败，请重新上传对应页面`, 'warning');
     }
 
     function clearReportFileInput(inputId, hintId) {
@@ -10698,7 +10708,7 @@
         document.getElementById('checkupInst').value = data.institution || '';
         renderCheckupPreview();
         document.getElementById('checkupPreview').classList.remove('d-none');
-        showToast(`识别到 ${_checkupPreviewItems.length} 项，请核对`, 'success');
+        showReportResultToast(data, _checkupPreviewItems.length, '项');
     }
 
     function renderCheckupPreview() {

@@ -374,6 +374,7 @@ class TestCheckupPdfAndMultiFile:
                                'unit': 'mmol/L', 'ref_range': '3.1-5.2', 'status': 'high'}]}
 
         monkeypatch.setattr('checkup_parser.parse_checkup_report', fake_parse)
+        monkeypatch.setattr('utils.report_processing.has_reliable_native_text', lambda text: False)
         resp = client_authenticated.post('/api/checkup/parse', json={'images': [self._pdf_data_url(2)]})
 
         assert resp.status_code == 200
@@ -391,26 +392,29 @@ class TestCheckupPdfAndMultiFile:
                                'unit': 'mmol/L', 'ref_range': '3.9-6.1', 'status': 'normal'}]}
 
         monkeypatch.setattr('checkup_parser.parse_checkup_report', fake_parse)
+        monkeypatch.setattr('utils.report_processing.has_reliable_native_text', lambda text: False)
         resp = client_authenticated.post('/api/checkup/parse', json={'images': [FAKE_IMAGE] * 3})
 
         assert resp.status_code == 200
         assert captured['count'] == 3
 
-    def test_parse_caps_at_three(self, client_authenticated, monkeypatch):
-        """选了 5 个文件也只送 3 张，避免请求体过大。"""
-        captured = {}
+    def test_parse_five_images_in_two_batches(self, client_authenticated, monkeypatch):
+        """5 张图全部处理，每次模型调用仍不超过 3 张。"""
+        captured = []
 
         def fake_parse(images, mime):
-            captured['count'] = len(images)
+            captured.append(len(images))
             return {'checkup_date': '', 'institution': '',
                     'items': [{'category': '血糖', 'name': '空腹血糖', 'value': '5.4',
                                'unit': 'mmol/L', 'ref_range': '3.9-6.1', 'status': 'normal'}]}
 
         monkeypatch.setattr('checkup_parser.parse_checkup_report', fake_parse)
+        monkeypatch.setattr('utils.report_processing.has_reliable_native_text', lambda text: False)
         resp = client_authenticated.post('/api/checkup/parse', json={'images': [FAKE_IMAGE] * 5})
 
         assert resp.status_code == 200
-        assert captured['count'] == 3
+        assert captured == [3, 2]
+        assert resp.get_json()['data']['total_pages'] == 5
 
     def test_corrupt_pdf_rejected(self, client_authenticated):
         bad = 'data:application/pdf;base64,' + base64.b64encode(b'%PDF-1.4 broken').decode()
@@ -452,6 +456,7 @@ class TestBonePdfAndMultiFile:
                     'measurements': [{'site': '腰椎L1-L4', 't_score': -1.2, 'z_score': -0.8}]}
 
         monkeypatch.setattr('bone_parser.parse_bone_report', fake_parse)
+        monkeypatch.setattr('utils.report_processing.has_reliable_native_text', lambda text: False)
         resp = client_authenticated.post('/api/bone/parse', json={'images': [self._pdf_data_url(2)]})
 
         assert resp.status_code == 200
