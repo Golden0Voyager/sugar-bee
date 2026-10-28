@@ -1448,6 +1448,10 @@
                 <button class="cal-seg-btn" data-body-comp-tab="muscle_mass" onclick="selectBodyCompTab('muscle_mass')">肌肉量</button>
             </div>
             <canvas id="bodyCompChart" height="60"></canvas>
+            <!-- 页签空状态提示:当前页签在该区间无数据时由 JS 显示,页签/范围/翻页不受影响 -->
+            <div class="text-center text-muted py-4" style="font-size: 0.82rem; display: none;" id="bodyCompEmpty">
+                该区间暂无<span id="bodyCompEmptyMetric">体脂率</span>数据
+            </div>
             <!-- 更多指标(仅最新值) -->
             <div class="d-flex flex-wrap justify-content-center gap-3 mt-2" style="font-size: 0.78rem; color: #757575;" id="bodyCompLatestFooter">
                 <span>更多指标(仅最新值)</span>
@@ -3704,22 +3708,36 @@
             });
         });
 
+        // 空状态按页签展示:卡本身由模板门禁(模块 + has_data)决定渲染,JS 绝不整体隐藏卡片。
+        // 当前页签在该区间没有数据时,只藏画布、显示提示;页签条、范围下拉、翻页保持可用可切回。
+        const emptyHint = document.getElementById('bodyCompEmpty');
         if (bodyCompRecords.length === 0) {
-            document.getElementById('bodyCompChartCard').style.display = 'none';
+            document.getElementById('bodyCompChart').style.display = 'none';
+            if (emptyHint) {
+                const metricName = document.getElementById('bodyCompEmptyMetric');
+                if (metricName) metricName.textContent = meta.label;
+                emptyHint.style.display = '';
+            }
             return;
         }
-        // 确保卡片可见
-        document.getElementById('bodyCompChartCard').style.display = '';
+        // 有数据:画布可见,空状态提示隐藏
+        document.getElementById('bodyCompChart').style.display = '';
+        if (emptyHint) emptyHint.style.display = 'none';
 
         // Sort by timestamp
         bodyCompRecords.sort((a, b) => new Date(a.x) - new Date(b.x));
 
         const ctx = document.getElementById('bodyCompChart').getContext('2d');
 
-        // Y 轴范围按当前指标取整
-        const values = bodyCompRecords.map(r => r.y);
-        let yMin = Math.floor(Math.min(...values) - 1);
-        let yMax = Math.ceil(Math.max(...values) + 1);
+        // Y 轴范围按当前指标取整(循环求最值,避免 "全部" 长历史下展开运算符抛 RangeError)
+        let yMin = Infinity;
+        let yMax = -Infinity;
+        bodyCompRecords.forEach(r => {
+            if (r.y < yMin) yMin = r.y;
+            if (r.y > yMax) yMax = r.y;
+        });
+        yMin = Math.floor(yMin - 1);
+        yMax = Math.ceil(yMax + 1);
 
         // 参考线:体脂率/内脏脂肪画上限虚线,肌肉量画下限虚线;
         // 阈值为 null(如无体重的肌肉量参考线)时一律不画,不回落字面量。
