@@ -964,6 +964,60 @@
                             </div>
                         </div>
                     </div>
+                    {% if stats.body_comp and stats.body_comp.has_data %}
+                    <div class="row g-2" id="bodyCompRow">
+                        <div class="col-12">
+                            <div style="margin-top:8px; padding-top:6px; border-top:1px dashed #e0e0e0;">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <span class="fw-semibold" style="color: #00897B;">🧬 体成分</span>
+                                    <a id="bodyCompExpand" href="#" onclick="var m=document.getElementById('bodyCompMore');if(m){m.style.display=m.style.display==='none'?'':'none';}var c=document.getElementById('bodyCompChart');if(c){c.scrollIntoView({behavior:'smooth',block:'center'});}return false;" class="text-decoration-none" style="font-size:0.8rem; color:#00897B;">展开查看趋势 ⌄</a>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-12">
+                            <div class="row g-2" id="bodyCompTiles">
+                                {% set bfr_val = stats.body_comp.latest.body_fat_rate %}
+                                {% set bfr_status = stats.body_comp.statuses.get('body_fat_rate') %}
+                                {% if bfr_val is not none and bfr_status %}
+                                <div class="col-4" data-metric="body_fat_rate">
+                                    <div class="text-center p-3 rounded" style="background: {{ bfr_status.color }}20; color: {{ bfr_status.color }};">
+                                        <div class="fs-4 fw-bold">{{ '%g'|format(bfr_val) }}<small class="fw-normal" style="font-size:0.7rem;">%</small></div>
+                                        <small class="text-muted d-block fw-semibold">体脂率</small>
+                                        <small class="d-block" style="font-size:0.7rem;">{{ bfr_status.label }}</small>
+                                    </div>
+                                </div>
+                                {% endif %}
+                                {% set vf_val = stats.body_comp.latest.visceral_fat %}
+                                {% set vf_status = stats.body_comp.statuses.get('visceral_fat') %}
+                                {% if vf_val is not none and vf_status %}
+                                <div class="col-4" data-metric="visceral_fat">
+                                    <div class="text-center p-3 rounded" style="background: {{ vf_status.color }}20; color: {{ vf_status.color }};">
+                                        <div class="fs-4 fw-bold">{{ '%g'|format(vf_val) }}</div>
+                                        <small class="text-muted d-block fw-semibold">内脏脂肪</small>
+                                        <small class="d-block" style="font-size:0.7rem;">{{ vf_status.label }}</small>
+                                    </div>
+                                </div>
+                                {% endif %}
+                                {% set mm_val = stats.body_comp.latest.muscle_mass %}
+                                {% set mm_status = stats.body_comp.statuses.get('muscle_mass') %}
+                                {% if mm_val is not none and mm_status %}
+                                <div class="col-4" data-metric="muscle_mass">
+                                    <div class="text-center p-3 rounded" style="background: {{ mm_status.color }}20; color: {{ mm_status.color }};">
+                                        <div class="fs-4 fw-bold">{{ '%g'|format(mm_val) }}<small class="fw-normal" style="font-size:0.7rem;">kg</small></div>
+                                        <small class="text-muted d-block fw-semibold">肌肉量</small>
+                                        <small class="d-block" style="font-size:0.7rem;">{{ mm_status.label }}</small>
+                                    </div>
+                                </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                        <div class="col-12" id="bodyCompMore" style="display:none;">
+                            <div class="text-muted small" style="font-size:0.75rem; line-height:1.6;">
+                                更多指标(仅最新值):{% if stats.body_comp.latest.body_fat_mass is not none %}体脂量 {{ '%g'|format(stats.body_comp.latest.body_fat_mass) }}kg{% endif %}{% if stats.body_comp.latest.skeletal_muscle_mass is not none %} · 骨骼肌量 {{ '%g'|format(stats.body_comp.latest.skeletal_muscle_mass) }}kg{% endif %}{% if stats.body_comp.latest.protein_mass is not none %} · 蛋白量 {{ '%g'|format(stats.body_comp.latest.protein_mass) }}kg{% endif %}{% if stats.body_comp.latest.basal_metabolism is not none %} · 基础代谢 {{ '%g'|format(stats.body_comp.latest.basal_metabolism) }}kcal{% endif %}
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
                     {% else %}
                     <div class="text-center text-muted py-4">
                         <i class="bi bi-info-circle d-block fs-3 mb-2"></i>
