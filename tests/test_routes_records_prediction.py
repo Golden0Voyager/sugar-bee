@@ -260,6 +260,71 @@ class TestRecordsAddFormDataBmiTimestamp:
             assert result.status_code == 200
             mock_update.assert_called()
 
+
+class TestAddReservedTypeRejected:
+    """保留操作词类型硬校验(2026-10-28 事故:AI 助手伪造 type='delete' 冒充删除)。"""
+
+    def test_add_rejects_delete_type(self, client_authenticated):
+        result = client_authenticated.post('/add', json={
+            'type': 'delete', 'value': 0, 'timestamp': '2024-06-01 07:15:00',
+        })
+        assert result.status_code == 400
+        assert result.json['error_type'] == 'invalid_type'
+
+    def test_add_rejects_reserved_words_case_insensitive(self, client_authenticated):
+        for bad in ('DELETE', 'Delete', 'update', 'remove', 'del'):
+            result = client_authenticated.post('/add', json={
+                'type': bad, 'value': 0, 'timestamp': '2024-06-01 07:15:00',
+            })
+            assert result.status_code == 400, f"{bad} 应被拒"
+            assert result.json['error_type'] == 'invalid_type'
+
+    def test_add_rejects_empty_and_overlong_type(self, client_authenticated):
+        for bad in ('', '   ', '血糖' + '记录' * 10):  # 空/纯空格/超过 20 字符
+            result = client_authenticated.post('/add', json={
+                'type': bad, 'value': 6.5, 'timestamp': '2024-06-01 07:15:00',
+            })
+            assert result.status_code == 400, f"类型 {bad!r} 应被拒"
+
+    def test_add_accepts_custom_slot_type(self, client_authenticated):
+        """自定义时间段(如 晨跑前)是合法类型,不得误伤。"""
+        with patch('routes.api_records.get_db') as mock_get_db, \
+             patch('routes.api_records.link_prediction_to_real_record'):
+            mock_c = MagicMock()
+            mock_c.lastrowid = 601
+            mock_c.fetchone.return_value = None
+            mock_db = MagicMock()
+            mock_db.cursor.return_value = mock_c
+            mock_get_db.return_value = mock_db
+
+            result = client_authenticated.post('/add', json={
+                'type': '晨跑前', 'value': 6.2, 'timestamp': '2024-06-01 06:40:00',
+            })
+            assert result.status_code == 200
+
+    def test_batch_add_rejects_reserved_type(self, client_authenticated):
+        """混合批次:合法记录落库,保留操作词被拒收并出现在 rejected 里。"""
+        with patch('routes.api_records.get_db') as mock_get_db:
+            mock_c = MagicMock()
+            mock_c.lastrowid = 602
+            mock_c.fetchone.return_value = None
+            mock_db = MagicMock()
+            mock_db.cursor.return_value = mock_c
+            mock_get_db.return_value = mock_db
+
+            result = client_authenticated.post('/batch_add', json={
+                'records': [
+                    {'value': 0.0, 'type': 'delete', 'datetime': '2024-06-01 07:15:00'},
+                    {'value': 6.5, 'type': '空腹', 'datetime': '2024-06-01 07:15:00'},
+                ],
+                'conflict_resolution': 'overwrite'
+            })
+            assert result.status_code == 200
+            data = result.json['data']
+            assert data['inserted'] == 1
+            assert len(data['rejected']) == 1
+            assert 'delete' in data['rejected'][0]['type']
+
     def test_add_form_numeric_user_id(self, client_authenticated):
         """form-data 的 user_id 转换 (lines 191-192)"""
         with patch('routes.api_records.get_db') as mock_get_db, \
