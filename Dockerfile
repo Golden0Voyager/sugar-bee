@@ -26,7 +26,7 @@ RUN sed -i "s|deb.debian.org|mirrors.tencent.com|g" /etc/apt/sources.list.d/debi
 
 # 先复制依赖文件并安装（利用 Docker 缓存层）
 COPY requirements.txt .
-RUN pip install --no-cache-dir -i https://mirrors.cloud.tencent.com/pypi/simple -r requirements.txt gunicorn google-cloud-storage
+RUN pip install --no-cache-dir -r requirements.txt gunicorn google-cloud-storage
 
 # 复制应用代码
 COPY . .
