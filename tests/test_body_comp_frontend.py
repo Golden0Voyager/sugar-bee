@@ -47,6 +47,7 @@ def test_body_comp_card_anchors_and_js():
     html = INDEX.read_text(encoding="utf-8")
     for anchor in ('id="bodyCompChartCard"', 'id="bodyCompChart"',
                    'id="bodyCompRangeDropdown"', 'id="bodyCompNavNext"',
+                   'id="bodyCompEmpty"',
                    'function initBodyCompChart', 'function changeBodyCompRange',
                    'function bodyCompNav', 'function selectBodyCompTab'):
         assert anchor in html, f"缺少 {anchor}"
