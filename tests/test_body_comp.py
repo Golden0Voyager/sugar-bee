@@ -160,6 +160,9 @@ def test_body_comp_rules_in_prompt():
         assert f'"{key}"' not in schema, f"schema 不应包含 {key}"
     # 提示词必须明确「状态由本系统计算」,否则模型会把秤面评价一起抄回来
     assert "由本系统计算" in prompt
+    # 未显示在秤面上的指标必须留空,绝不能靠估算或 0 补值(否则虚构数值会
+    # 通过范围校验并被当成用户实测数据展示)
+    assert "秤面上没有显示的指标一律留空(null)" in prompt
 
 
 def test_parsed_body_comp_survives_postprocess():
