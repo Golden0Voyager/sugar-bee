@@ -7,7 +7,7 @@ from flask import Blueprint, current_app, jsonify, request, session
 import branding
 import settings
 from user_manager import UserManager
-from utils.auth import login_required
+from utils.auth import admin_required, login_required
 from utils.db import get_db
 from utils.responses import api_error, api_success
 from utils.timezone import now as app_now
@@ -23,6 +23,7 @@ def allowed_file(filename):
 
 @bp_user.route('/switch_user/<int:user_id>', methods=['POST'])
 @login_required
+@admin_required
 def switch_user(user_id):
     try:
         user = user_manager.get_user(user_id)
