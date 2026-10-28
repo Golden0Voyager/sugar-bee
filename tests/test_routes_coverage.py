@@ -394,7 +394,7 @@ class TestUserBranches:
         assert resp.status_code == 400
         assert resp.json['error_type'] == 'validation_error'
 
-    def test_switch_user_password_wrong(self, client_authenticated):
+    def test_switch_user_password_wrong(self, client_admin):
         """L43-47: has_password=True + 密码错误 -> 401 (含 SQL 查询路径)"""
         mock_row = MagicMock()
         mock_row.__getitem__.return_value = '_test'  # 支持 row['username']
@@ -406,24 +406,24 @@ class TestUserBranches:
              patch('routes.api_user.user_manager.get_user', return_value={'id': 1, 'username': '_test'}), \
              patch('routes.api_user.user_manager.authenticate', return_value=False), \
              patch('routes.api_user.get_db', return_value=mock_db):
-            resp = client_authenticated.post('/switch_user/1',
+            resp = client_admin.post('/switch_user/1',
                 data=json.dumps({'password': 'wrong'}),
                 content_type='application/json')
             assert resp.status_code == 401
 
-    def test_switch_user_no_password(self, client_authenticated):
+    def test_switch_user_no_password(self, client_admin):
         """has_password=False -> 跳过密码验证，直接切换"""
         with patch('routes.api_user.user_manager.has_password', return_value=False), \
              patch('routes.api_user.user_manager.get_user', return_value={'id': 1, 'username': '_test'}):
-            resp = client_authenticated.post('/switch_user/1',
+            resp = client_admin.post('/switch_user/1',
                 data=json.dumps({}),
                 content_type='application/json')
             assert resp.status_code == 200
 
-    def test_switch_user_not_found(self, client_authenticated):
+    def test_switch_user_not_found(self, client_admin):
         """用户不存在 -> 404"""
         with patch('routes.api_user.user_manager.get_user', return_value=None):
-            resp = client_authenticated.post('/switch_user/999',
+            resp = client_admin.post('/switch_user/999',
                 data=json.dumps({}),
                 content_type='application/json')
             assert resp.status_code == 404
