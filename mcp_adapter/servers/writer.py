@@ -138,6 +138,25 @@ def _is_dup_error(data: dict) -> str | None:
 # 以下函数对照 Flask routes/api_records.py 实现，确保行为一致
 # ------------------------------------------------------------------
 
+# 保留操作词黑名单:与 Flask routes/api_records.py 保持一致。AI 助手曾把「删除」
+# 意图伪装成 type='delete' 的记录写入(2026-10-28 事故),数值校验只看范围拦不住。
+RESERVED_RECORD_TYPES = frozenset({
+    "delete", "remove", "update", "del", "drop", "clear",
+    "none", "null", "test", "测试",
+})
+
+
+def _invalid_record_type(r_type) -> str | None:
+    """记录类型硬校验:返回错误信息,None 表示合法。与 Flask 端保持一致。"""
+    if not isinstance(r_type, str) or not r_type.strip():
+        return "记录类型不能为空"
+    if r_type.strip().lower() in RESERVED_RECORD_TYPES:
+        return f"'{r_type}' 是保留操作词,不是合法记录类型"
+    if len(r_type) > 20:
+        return f"记录类型过长({len(r_type)} 字符,上限 20)"
+    return None
+
+
 def _validate_record_data(r: dict) -> list[str]:
     """校验单条记录的数据范围，返回警告信息列表（空列表表示无警告）。
     与 Flask 端 _validate_record_data() 保持一致。"""
@@ -441,10 +460,11 @@ def _inline_batch_insert(
     records: list[dict],
     conflict_resolution: str = "overwrite",
 ) -> dict:
-    """批量写入记录的内联核心逻辑。返回 {inserted_ids, warnings, duplicates_skipped}。"""
+    """批量写入记录的内联核心逻辑。返回 {inserted_ids, warnings, duplicates_skipped, rejected}。"""
     inserted_ids: list[int] = []
     all_warnings: list[str] = []
     duplicates_skipped: list[str] = []
+    rejected: list[str] = []
 
     for r in records:
         user_id = r.get("user_id", DEFAULT_USER_ID)
@@ -452,6 +472,14 @@ def _inline_batch_insert(
         timestamp = r.get("datetime") or r.get("timestamp", "")
         if not timestamp:
             timestamp = app_timestamp_str()
+
+        # 0. 类型硬校验:保留操作词(delete/update 等)直接拒收,不再落库
+        # (历史事故:AI 助手伪造 type='delete' 冒充删除,写进两条垃圾数据)
+        type_error = _invalid_record_type(rtype)
+        if type_error:
+            label = rtype or "未知记录"
+            rejected.append(f"[{label}] {type_error}")
+            continue
 
         # 1. 数据范围校验（收集警告，不阻止写入）
         warnings = _validate_record_data(r)
@@ -503,6 +531,7 @@ def _inline_batch_insert(
         "inserted_ids": inserted_ids,
         "warnings": all_warnings,
         "duplicates_skipped": duplicates_skipped,
+        "rejected": rejected,
     }
 
 
@@ -885,20 +914,25 @@ async def batch_record(user_id: int, records: list[dict]) -> str:
         inserted = result["inserted_ids"]
         warnings = result["warnings"]
         skipped = result["duplicates_skipped"]
+        rejected = result["rejected"]
 
         label = _user_label(user_id)
         lines = [f"✅ {label} 批量记录成功，共写入 {len(inserted)} 条"]
         if skipped:
             lines.append(f"⚠️ 跳过 {len(skipped)} 条重复记录")
+        if rejected:
+            lines.append(f"⛔ 拒收 {len(rejected)} 条非法记录：")
+            for rj in rejected:
+                lines.append(f"  - {rj}")
         if warnings:
             lines.append("\n⚠️ 数据警告：")
             for w in warnings:
                 lines.append(f"  - {w}")
 
-        # 记录详情
+        # 记录详情（逐条取 r['id'],与 batch_parse_and_record 一致;被拒收的没有 id）
         lines.append("")
-        for idx, r in enumerate(records, 1):
-            rid = inserted[idx - 1] if idx <= len(inserted) else "?"
+        for r in records:
+            rid = r.get("id", "?")
             rtype = r.get("type", "")
             ts = r.get("datetime", "")
             time_str = ts.split(" ")[-1][:5] if " " in ts else ts
@@ -987,6 +1021,7 @@ async def batch_parse_and_record(text: str) -> str:
         inserted = result["inserted_ids"]
         warnings = result["warnings"]
         skipped = result["duplicates_skipped"]
+        rejected = result["rejected"]
     except Exception as e:
         conn.rollback()
         conn.close()
@@ -1005,6 +1040,10 @@ async def batch_parse_and_record(text: str) -> str:
         lines[-1] += "（正则快速解析）"
     if skipped:
         lines.append(f"⚠️ 跳过 {len(skipped)} 条重复记录")
+    if rejected:
+        lines.append(f"⛔ 拒收 {len(rejected)} 条非法记录：")
+        for rj in rejected:
+            lines.append(f"  - {rj}")
     lines.append("\n解析预览：")
     lines.append(preview_text)
     if warnings:
