@@ -1,5 +1,9 @@
 # 体成分(体脂率 / 内脏脂肪 / 肌肉量)Implementation Plan
 
+> **⚠️ 已被取代（2026-10-28）**：趋势不再单独成卡，已并入「体重 / 体成分趋势」一张卡 + 指标页签；
+> 体重面板的体成分行改为默认收起。执行本计划中「新增 `#bodyCompChartCard` / `initBodyCompChart`」的
+> 任务前，先读 spec 末尾的「2026-10-28 调整」章节。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 让智能体脂秤截图除体重外再存入 7 项体成分指标,并在首页「体重管理」面板与新增的「体成分趋势」卡上展示,状态由本系统计算。

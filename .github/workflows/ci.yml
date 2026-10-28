@@ -46,4 +46,5 @@ jobs:
           python -m py_compile wsgi.py
 
       - name: Test Docker build
-        run: docker build -t sugar-bee:ci .
+        # 构建机在境外，腾讯镜像源经常断流；这里改用官方 PyPI。
+        run: docker build --build-arg PIP_INDEX_URL=https://pypi.org/simple -t sugar-bee:ci .

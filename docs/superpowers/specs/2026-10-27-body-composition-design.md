@@ -280,3 +280,33 @@ M1 由用户选定;M2–M10 用户未表态,我按合理默认定,集中标出�
 | `tests/*` | 新增/扩展用例 |
 
 不改:`services/timeline_service.py`、`app.py`、`mcp_adapter/*`、Garmin 同步。
+
+## 2026-10-28 调整：趋势并入体重卡、面板默认收起
+
+初版把体成分做成「体重面板一行 + 独立趋势卡」，实测后按用户反馈改成一块：
+
+1. **趋势只保留一张卡**。删除 `#bodyCompChartCard` 与 `initBodyCompChart` / `changeBodyCompRange` /
+   `bodyCompNav` / `selectBodyCompTab`；`#weightChartCard` 标题改为「体重 / 体成分趋势」，
+   卡内新增指标页签 `#weightMetricTabs`：
+   - `weight_fat`（默认）：双轴双线，体重实线走左轴（kg），体脂率虚线走右轴（%）。
+   - `visceral_fat` / `muscle_mass`：单指标 + 参考线。
+   - `更多 ▾`（`#weightMoreMenu`）：体脂量 / 骨骼肌量 / 蛋白量 / 基础代谢 4 项单指标；
+     该字段从未测过时置灰（`aria-disabled`），避免点开是空图。
+   - 时间范围、前后翻页与体重共用一套（`currentWeightDays` / `weightOffset`），切页签不重置范围。
+   - 某指标在当前区间无数据时，只藏画布并显示 `#weightChartEmpty` 提示；卡片、页签、范围、
+     翻页都保留可用（翻页控件在卡里，藏卡会让人退不回来）。
+2. **体重面板默认只显示体重**。`#bodyCompBody` 默认 `display:none`，链接文案「展开更多数据 ⌄」；
+   展开后显示 3 个带状态色的大格 + 4 个次级指标小格（全部 7 项），链接变「收起 ⌃」。
+   某次级指标从未测过时该小格不渲染（不显示空占位），所以展开后看到的格数可能少于 7。
+3. **不变**：阈值仍只来自 `BODY_COMP_THRESHOLDS`（后端下发），状态仍由本应用计算；
+   体成分数据仍挂在 `type='体重记录'` 行上，后端与数据库无改动。
+
+### 评审后补充（2026-10-28）
+
+- `#weightChartCard` 加 `overflow: visible`：`.card` 默认 `overflow: hidden`，区间无数据时卡片变矮，
+  会把范围下拉和「更多」下拉的下半截裁掉（「全部数据」点不到）。
+- 置灰的「更多」项改为 `<span class="dropdown-item disabled">`（无 `href`、无 `onclick`）：
+  `.disabled` 只挡鼠标，带 `href="#"` 时键盘回车仍会跳页。
+- 只有体脂率、没有体重的记录（API / 导入可写入）退化成单轴体脂图，避免左轴标题写着「体重」
+  却按体脂率算范围。
+- 图例只在有体成分数据时渲染；单条线（含纯体重用户）的 tooltip 交互仍是 `index`。

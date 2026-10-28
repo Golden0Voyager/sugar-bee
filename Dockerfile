@@ -25,8 +25,12 @@ RUN sed -i "s|deb.debian.org|mirrors.tencent.com|g" /etc/apt/sources.list.d/debi
     && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 # 先复制依赖文件并安装（利用 Docker 缓存层）
+# 默认走腾讯镜像（本机 make build 快）；境外构建（如 GitHub Actions）用
+# --build-arg PIP_INDEX_URL=https://pypi.org/simple 覆盖，避免镜像源断流。
+ARG PIP_INDEX_URL=https://mirrors.cloud.tencent.com/pypi/simple
 COPY requirements.txt .
-RUN pip install --no-cache-dir -i https://mirrors.cloud.tencent.com/pypi/simple -r requirements.txt gunicorn google-cloud-storage
+RUN pip install --no-cache-dir --retries 5 --timeout 60 \
+    -i "$PIP_INDEX_URL" -r requirements.txt gunicorn google-cloud-storage
 
 # 复制应用代码
 COPY . .
