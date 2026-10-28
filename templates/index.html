@@ -1082,7 +1082,12 @@
                             <option value="30">近30天</option>
                         </select>
                     </div>
-                    <canvas id="predictionComparisonChart" height="100"></canvas>
+                    <div class="chart-box">
+                        <canvas id="predictionComparisonChart" role="img" aria-label="AI 预测血糖与真实测量值对比折线图，虚线为预测值，实线为真实值"></canvas>
+                        <div class="chart-empty" id="predictionComparisonEmpty" role="status" hidden>
+                            <i class="bi bi-graph-up" aria-hidden="true"></i><span class="chart-empty-text">暂无已验证的预测数据</span>
+                        </div>
+                    </div>
                     <div id="comparisonStats" class="mt-3 p-3 bg-light rounded"></div>
                 </div>
             </div>
@@ -1279,14 +1284,20 @@
                 </li>
             </ul>
             <div class="tab-content" id="glucoseTabContent">
-                <div class="tab-pane fade show active" id="trend-chart-pane" role="tabpanel">
+                <div class="tab-pane fade show active" id="trend-chart-pane" role="tabpanel" aria-labelledby="trend-chart-tab">
                     <div class="chart-box">
                         <canvas id="glucoseChart" role="img" aria-label="血糖趋势折线图：空腹、餐后2小时、运动后、睡前血糖随时间变化"></canvas>
+                        <div class="chart-empty" id="glucoseChartEmpty" role="status" hidden>
+                            <i class="bi bi-droplet" aria-hidden="true"></i><span class="chart-empty-text">该区间暂无血糖记录</span>
+                        </div>
                     </div>
                 </div>
-                <div class="tab-pane fade" id="cgm-chart-pane" role="tabpanel">
+                <div class="tab-pane fade" id="cgm-chart-pane" role="tabpanel" aria-labelledby="cgm-chart-tab">
                     <div class="chart-box">
                         <canvas id="cgmChart" role="img" aria-label="CGM 连续血糖曲线"></canvas>
+                        <div class="chart-empty" id="cgmChartEmpty" role="status" hidden>
+                            <i class="bi bi-activity" aria-hidden="true"></i><span class="chart-empty-text">该区间暂无连续血糖记录</span>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1349,22 +1360,25 @@
                 </li>
             </ul>
             <div class="tab-content" id="bpTabContent">
-                <div class="tab-pane fade show active" id="bp-chart-pane" role="tabpanel">
-                    <!-- 自定义图例 -->
-                    <div class="d-flex flex-wrap justify-content-center gap-3 mb-2" style="font-size: 0.8rem; color: #64748B;">
-                        <span class="d-flex align-items-center gap-1">
-                            <span style="width: 10px; height: 10px; border-radius: 50%; background: #E25B5B; display: inline-block;"></span>
-                            收缩压
-                        </span>
-                        <span class="d-flex align-items-center gap-1">
-                            <span style="width: 10px; height: 10px; border-radius: 50%; background: #4A90D9; display: inline-block;"></span>
-                            舒张压
-                        </span>
+                <div class="tab-pane fade show active" id="bp-chart-pane" role="tabpanel" aria-labelledby="bp-chart-tab">
+                    <div class="chart-legend" aria-label="血压图例">
+                        <span><i class="chart-legend-line" style="--legend-color:#E25B5B" aria-hidden="true"></i>收缩压（高压）</span>
+                        <span><i class="chart-legend-line" style="--legend-color:#4A90D9" aria-hidden="true"></i>舒张压（低压）</span>
                     </div>
-                    <canvas id="bloodPressureChart" height="60"></canvas>
+                    <div class="chart-box">
+                        <canvas id="bloodPressureChart" role="img" aria-label="血压趋势折线图：收缩压与舒张压随时间变化，红色虚线为警戒参考线"></canvas>
+                        <div class="chart-empty" id="bloodPressureChartEmpty" role="status" hidden>
+                            <i class="bi bi-heart-pulse" aria-hidden="true"></i><span class="chart-empty-text">该区间暂无血压记录</span>
+                        </div>
+                    </div>
                 </div>
-                <div class="tab-pane fade" id="pulse-chart-pane" role="tabpanel">
-                    <canvas id="pulseChart" height="60"></canvas>
+                <div class="tab-pane fade" id="pulse-chart-pane" role="tabpanel" aria-labelledby="pulse-chart-tab">
+                    <div class="chart-box">
+                        <canvas id="pulseChart" role="img" aria-label="静息脉搏趋势折线图，单位次每分钟"></canvas>
+                        <div class="chart-empty" id="pulseChartEmpty" role="status" hidden>
+                            <i class="bi bi-heart" aria-hidden="true"></i><span class="chart-empty-text">该区间暂无心率记录</span>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -1455,10 +1469,13 @@
                     </div>
                 </div>
             </div>
-            <canvas id="weightChart" height="60"></canvas>
-            <!-- 页签空状态:当前指标在该区间没有数据时由 JS 显示,页签/范围/翻页保持可用 -->
-            <div class="text-center text-muted py-4" style="font-size: 0.82rem; display: none;" id="weightChartEmpty">
-                该区间暂无<span id="weightChartEmptyMetric">体脂率</span>数据
+            <div class="chart-box">
+                <canvas id="weightChart" role="img" aria-label="体重与体成分趋势折线图，可切换体重、体脂率、内脏脂肪和肌肉量等指标"></canvas>
+                <!-- 空状态保留画布容器，切换时间范围或指标后可以恢复。 -->
+                <div class="chart-empty" id="weightChartEmpty" role="status" hidden>
+                    <i class="bi bi-speedometer2" aria-hidden="true"></i>
+                    <span class="chart-empty-text">该区间暂无<span id="weightChartEmptyMetric"></span>数据</span>
+                </div>
             </div>
         </div>
     </div>
@@ -2213,7 +2230,12 @@
                 </div>
 
                 <div class="alert alert-light border small mb-3" id="boneLatest">还没有记录</div>
-                <canvas id="boneTrendChart" height="150" class="mb-3"></canvas>
+                <div class="chart-box mb-3">
+                    <canvas id="boneTrendChart" role="img" aria-label="骨密度 T 值与 Z 值趋势折线图，实线为 T 值，虚线为 Z 值"></canvas>
+                    <div class="chart-empty" id="boneTrendEmpty" role="status" hidden>
+                        <i class="bi bi-graph-up" aria-hidden="true"></i><span class="chart-empty-text">至少记录两次同部位检查后显示趋势</span>
+                    </div>
+                </div>
                 <div class="d-flex justify-content-between align-items-center mb-2">
                     <div class="fw-semibold">历史记录</div>
                     <button class="btn btn-sm btn-primary" onclick="toggleBoneForm(true)">＋ 新增</button>
@@ -2526,25 +2548,115 @@
 <script>
     // 当前用户启用的功能模块（后端渲染，供 JS 侧按模块隐藏内容）
     const ACTIVE_MODULES = new Set({{ active_modules|tojson }});
-    // Chart.js 全局字体配置
+    // 所有健康趋势图共用一套视觉语言；医学阈值和数据筛选仍在各图表内维护。
     const IS_MOBILE = window.innerWidth <= 480;
-    Chart.defaults.font.family = "'Noto Sans SC', -apple-system, BlinkMacSystemFont, sans-serif";
-    Chart.defaults.font.size = IS_MOBILE ? 11 : 14;
-    Chart.defaults.plugins.tooltip.titleFont = { size: IS_MOBILE ? 12 : 16, family: "'Noto Sans SC', sans-serif" };
-    Chart.defaults.plugins.tooltip.bodyFont = { size: IS_MOBILE ? 11 : 15, family: "'Noto Sans SC', sans-serif" };
-    Chart.defaults.plugins.legend.labels.font = { size: IS_MOBILE ? 11 : 14, family: "'Noto Sans SC', sans-serif" };
-    Chart.defaults.plugins.legend.labels.boxWidth = IS_MOBILE ? 8 : 10;
-    Chart.defaults.plugins.legend.labels.boxHeight = IS_MOBILE ? 8 : 10;
+    const CHART_FONT_FAMILY = "'Noto Sans SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
+    const CHART_COLORS = {
+        text: '#475569', muted: '#718096', grid: 'rgba(100, 116, 139, 0.12)',
+        tooltip: '#1E293B', tooltipBody: '#E2E8F0'
+    };
+    const CHART_REDUCED_MOTION = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    Chart.defaults.font.family = CHART_FONT_FAMILY;
+    Chart.defaults.font.size = IS_MOBILE ? 11 : 12;
+    Chart.defaults.color = CHART_COLORS.text;
+    Chart.defaults.plugins.legend.labels.font = { size: IS_MOBILE ? 11 : 12, family: CHART_FONT_FAMILY, weight: '500' };
+    Chart.defaults.plugins.legend.labels.boxWidth = 10;
+    Chart.defaults.plugins.legend.labels.boxHeight = 10;
     Chart.defaults.plugins.legend.labels.usePointStyle = true;
-    Chart.defaults.scale.ticks.font = { size: IS_MOBILE ? 9 : 12, family: "'Noto Sans SC', sans-serif" };
-    Chart.defaults.scale.ticks.padding = IS_MOBILE ? 2 : 6;
-    Chart.defaults.scale.title.font = { size: IS_MOBILE ? 11 : 14, family: "'Noto Sans SC', sans-serif", weight: 'bold' };
-    Chart.defaults.scale.ticks.maxTicksLimit = IS_MOBILE ? 6 : null;
-    Chart.defaults.aspectRatio = IS_MOBILE ? 1.1 : 2;
-    // 把同一比例交给 CSS:.chart-box(血糖/CGM 图容器)用它算高度,
-    // 保证与血压、心率、体重图(走 maintainAspectRatio)的高度口径一致。
+    Chart.defaults.scale.ticks.font = { size: IS_MOBILE ? 10 : 11, family: CHART_FONT_FAMILY };
+    Chart.defaults.scale.ticks.padding = IS_MOBILE ? 4 : 8;
+    Chart.defaults.scale.title.font = { size: 11, family: CHART_FONT_FAMILY, weight: '600' };
+    Chart.defaults.scale.ticks.maxTicksLimit = IS_MOBILE ? 6 : 10;
+    Chart.defaults.aspectRatio = IS_MOBILE ? 1.35 : 2.4;
+    // CSS 与 Chart.js 使用同一个比例来源，七类图表在桌面和手机上高度一致。
     document.documentElement.style.setProperty('--chart-aspect-ratio', Chart.defaults.aspectRatio);
-    Chart.defaults.layout.padding = { top: 4, right: IS_MOBILE ? 0 : 4, bottom: IS_MOBILE ? 8 : 12, left: IS_MOBILE ? 0 : 4 };
+    Chart.defaults.layout.padding = { top: 4, right: 4, bottom: 4, left: 4 };
+
+    function mergeChartOptions(base, overrides) {
+        const result = { ...base };
+        Object.entries(overrides || {}).forEach(([key, value]) => {
+            const isPlainObject = value && typeof value === 'object' && !Array.isArray(value) && typeof value !== 'function';
+            result[key] = isPlainObject && base[key] && typeof base[key] === 'object' && !Array.isArray(base[key])
+                ? mergeChartOptions(base[key], value)
+                : value;
+        });
+        return result;
+    }
+
+    function createHealthChart(context, config) {
+        const canvas = context.canvas || context;
+        const isContinuous = canvas.id === 'cgmChart';
+        const datasets = (config.data.datasets || []).map((dataset, datasetIndex) => ({
+            borderWidth: 2.5,
+            pointRadius: 4,
+            pointHoverRadius: 6,
+            pointHitRadius: 14,
+            pointBorderColor: '#FFFFFF',
+            pointBorderWidth: 2,
+            pointBackgroundColor: dataset.borderColor,
+            ...dataset,
+            // 离散测量不做圆滑插值；只有连续血糖仪曲线保留轻微平滑。
+            tension: isContinuous ? 0.25 : 0,
+            // 除颜色外，再用点形和虚线区分系列，色弱用户也能辨认。
+            pointStyle: dataset.borderDash && dataset.borderDash.length ? 'rectRot' : (datasetIndex % 2 ? 'rect' : 'circle')
+        }));
+        const themedOptions = mergeChartOptions({
+            responsive: true,
+            maintainAspectRatio: false,
+            layout: { padding: { top: 4, right: 4, bottom: 4, left: 4 } },
+            animation: CHART_REDUCED_MOTION ? false : { duration: 400, easing: 'easeOutQuart' },
+            interaction: { mode: 'nearest', axis: 'x', intersect: false },
+            plugins: {
+                legend: {
+                    position: 'top', align: 'start',
+                    labels: { color: CHART_COLORS.text, padding: 16, usePointStyle: true, pointStyle: 'circle', boxWidth: 9, boxHeight: 9 }
+                },
+                tooltip: {
+                    backgroundColor: CHART_COLORS.tooltip,
+                    titleColor: '#FFFFFF', bodyColor: CHART_COLORS.tooltipBody, footerColor: CHART_COLORS.tooltipBody,
+                    titleFont: { size: 13, weight: '600', family: CHART_FONT_FAMILY },
+                    bodyFont: { size: 12, family: CHART_FONT_FAMILY },
+                    padding: 12, cornerRadius: 10, caretSize: 6, displayColors: true,
+                    usePointStyle: true, boxWidth: 8, boxHeight: 8, boxPadding: 4
+                }
+            },
+            scales: {
+                x: {
+                    border: { display: false }, grid: { display: false },
+                    ticks: { color: CHART_COLORS.muted, maxRotation: 0, autoSkip: true }
+                },
+                y: {
+                    border: { display: false }, grid: { color: CHART_COLORS.grid, drawTicks: false },
+                    ticks: { color: CHART_COLORS.muted }
+                }
+            }
+        }, config.options);
+        if (IS_MOBILE) {
+            themedOptions.layout.padding.bottom = 0;
+            themedOptions.plugins.legend.labels.padding = 10;
+            if (canvas.id === 'glucoseChart' && themedOptions.plugins.legend.display !== false) {
+                const shortLabels = {
+                    'FPG (空腹/餐前)': '空腹', 'PPG-2h (餐后2小时)': '餐后',
+                    'Post-Ex (运动后)': '运动后', 'BT (睡前)': '睡前'
+                };
+                themedOptions.plugins.legend.labels.generateLabels = chart =>
+                    Chart.defaults.plugins.legend.labels.generateLabels(chart).map(item => ({
+                        ...item, text: shortLabels[item.text] || item.text
+                    }));
+            }
+        }
+        return new Chart(context, { ...config, data: { ...config.data, datasets }, options: themedOptions });
+    }
+
+    function setChartEmptyState(canvasId, emptyId, isEmpty, message = '') {
+        const canvas = document.getElementById(canvasId);
+        const empty = document.getElementById(emptyId);
+        if (!canvas || !empty) return;
+        canvas.closest('.chart-box')?.classList.toggle('is-empty', isEmpty);
+        canvas.setAttribute('aria-hidden', String(isEmpty));
+        empty.hidden = !isEmpty;
+        if (isEmpty && message) empty.querySelector('.chart-empty-text').textContent = message;
+    }
 
     // Injected from server (初始 90 天，按需加载更多)
     let timelineData = {{ timeline | tojson }};
@@ -3917,21 +4029,15 @@
      * 绘制预测对比图表
      */
     function renderPredictionComparisonChart(data) {
-        const ctx = document.getElementById('predictionComparisonChart').getContext('2d');
-
         if (predictionComparisonChart) {
             predictionComparisonChart.destroy();
+            predictionComparisonChart = null;
         }
 
-        if (!data || data.length === 0) {
-            document.getElementById('predictionComparisonChart').parentElement.innerHTML = `
-                <div class="text-center text-muted py-5">
-                    <i class="bi bi-info-circle d-block fs-4 mb-2"></i>
-                    暂无已验证的预测数据
-                </div>
-            `;
-            return;
-        }
+        const isEmpty = !data || data.length === 0;
+        setChartEmptyState('predictionComparisonChart', 'predictionComparisonEmpty', isEmpty, '该区间暂无已验证的预测，切换时间范围可查看其他记录');
+        if (isEmpty) return;
+        const ctx = document.getElementById('predictionComparisonChart').getContext('2d');
 
         // 按日期分组
         const dates = [...new Set(data.map(d => d.date))];
@@ -3944,7 +4050,7 @@
             return items.length > 0 ? items.reduce((sum, d) => sum + d.real, 0) / items.length : null;
         });
 
-        predictionComparisonChart = new Chart(ctx, {
+        predictionComparisonChart = createHealthChart(ctx, {
             type: 'line',
             data: {
                 labels: dates.map(d => d.substring(5)),  // MM-DD 格式
@@ -3974,7 +4080,7 @@
             },
             options: {
                 responsive: true,
-                maintainAspectRatio: true,
+                maintainAspectRatio: false,
                 plugins: {
                     legend: {
                         display: true,
@@ -4089,6 +4195,10 @@
     }
 
     document.addEventListener('DOMContentLoaded', function() {
+        // 图标按钮保留视觉简洁，同时为读屏软件提供明确名称。
+        document.querySelectorAll('.btn-overview-nav[title]').forEach(button => {
+            button.setAttribute('aria-label', button.getAttribute('title'));
+        });
         // 同步AI预测按钮宽度与最后一个槽位（仅桌面端，手机端保持自然宽度）
         function syncAiPredictWidth() {
             const slots = document.querySelectorAll('.glucose-slot');
@@ -4495,8 +4605,9 @@
         }
         const xStepSize = effectiveDays > 60 ? 7 : (effectiveDays > 30 ? 3 : 1);
 
+        setChartEmptyState('glucoseChart', 'glucoseChartEmpty', allRecords.length === 0, '该区间暂无血糖记录，可切换时间范围或返回近期');
         if (allRecords.length === 0) {
-            // 没有数据时仍显示空图表（带网格和参考线）
+            // 保留固定画布尺寸，用明确空状态代替容易被误认为有记录的参考线图。
             const ctx = document.getElementById('glucoseChart').getContext('2d');
             const now = endDate;
             const emptyY = glucoseYRange([]);
@@ -4505,7 +4616,7 @@
             const hoursRange = days ? days * 24 : 14 * 24;
             const xUnit = hoursRange <= 24 ? 'hour' : 'day';
             // xFormat 已移除，统一使用 'MM-dd'
-            glucoseChart = new Chart(ctx, {
+            glucoseChart = createHealthChart(ctx, {
                 type: 'line',
                 data: { datasets: [] },
                 options: {
@@ -4618,7 +4729,7 @@
         // Y轴范围：统一比例尺 + 按数据自适应上限（避免 >12 的点被裁掉）
         const { yMin, yMax } = glucoseYRange(allRecords.map(r => r.value));
 
-        glucoseChart = new Chart(ctx, {
+        glucoseChart = createHealthChart(ctx, {
             type: 'line',
             data: { datasets: chartDatasets },
             options: {
@@ -4640,7 +4751,7 @@
                             usePointStyle: true,  // Google Fit 风格：使用圆形图例
                             pointStyle: 'circle',
                             padding: 20,
-                            font: { size: 14, family: "'Roboto', 'Helvetica Neue', sans-serif", weight: '500' },
+                            font: { size: 14, family: CHART_FONT_FAMILY, weight: '500' },
                             boxWidth: 10,  // 圆形图例大小
                             boxHeight: 10
                         }
@@ -4691,7 +4802,7 @@
                                     position: 'end',
                                     backgroundColor: 'rgba(251, 188, 4, 0.9)',
                                     color: '#202124',
-                                    font: { size: 11, family: "'Roboto', sans-serif" },
+                                    font: { size: 11, family: CHART_FONT_FAMILY },
                                     padding: { top: 2, bottom: 2, left: 6, right: 6 },
                                     borderRadius: 4
                                 }
@@ -4709,7 +4820,7 @@
                                     position: 'end',
                                     backgroundColor: 'rgba(234, 67, 53, 0.9)',
                                     color: '#fff',
-                                    font: { size: 11, family: "'Roboto', sans-serif" },
+                                    font: { size: 11, family: CHART_FONT_FAMILY },
                                     padding: { top: 2, bottom: 2, left: 6, right: 6 },
                                     borderRadius: 4
                                 }
@@ -4727,7 +4838,7 @@
                                     position: 'start',
                                     backgroundColor: 'rgba(234, 67, 53, 0.9)',
                                     color: '#fff',
-                                    font: { size: 11, family: "'Roboto', sans-serif" },
+                                    font: { size: 11, family: CHART_FONT_FAMILY },
                                     padding: { top: 2, bottom: 2, left: 6, right: 6 },
                                     borderRadius: 4
                                 }
@@ -4782,7 +4893,7 @@
                                 }
                                 return h + ':00';
                             },
-                            font: { size: IS_MOBILE ? 9 : 12, family: "'Roboto', 'Helvetica Neue', sans-serif" }
+                            font: { size: IS_MOBILE ? 9 : 12, family: CHART_FONT_FAMILY }
                         },
                         title: { display: false },
                         afterFit: function(axis) {
@@ -4831,7 +4942,7 @@
                     const xScale = chart.scales.x;
                     const ctx = chart.ctx;
                     ctx.save();
-                    ctx.font = "bold 11px 'Roboto', 'Helvetica Neue', sans-serif";
+                    ctx.font = `600 11px ${CHART_FONT_FAMILY}`;
                     ctx.fillStyle = '#333';
                     ctx.textAlign = 'center';
 
@@ -4914,22 +5025,8 @@
         };
         collectCgmRecords();
 
-        // 当前时间范围内没有 CGM 数据时，自动锚定到最近一次 CGM 数据所在的时间段
-        if (cgmRecords.length === 0 && days) {
-            let latestCgm = null;
-            timelineData.forEach(day => day.data.entries.forEach(entry => {
-                if (entry.type === 'CGM' && entry.value > 0) {
-                    const t = new Date(entry.timestamp);
-                    if (!latestCgm || t > latestCgm) latestCgm = t;
-                }
-            }));
-            if (latestCgm) {
-                endDate = new Date(latestCgm.getTime() + 12 * 60 * 60 * 1000);
-                cutoffDate = new Date(endDate.getTime() - days * 24 * 60 * 60 * 1000);
-                collectCgmRecords();
-            }
-        }
-
+        // “近 N 天”始终以当前时间为准；空区间保留导航，不静默跳到旧数据。
+        setChartEmptyState('cgmChart', 'cgmChartEmpty', cgmRecords.length === 0, '该区间暂无连续血糖记录，可点击左上角 ← 查看更早数据');
         if (cgmRecords.length === 0) return;
         cgmRecords.sort((a, b) => a.x - b.x);
 
@@ -4970,7 +5067,7 @@
 
         const ctx = document.getElementById('cgmChart').getContext('2d');
         const cgmY = glucoseYRange(cgmRecords.map(r => r.y));
-        cgmChartInstance = new Chart(ctx, {
+        cgmChartInstance = createHealthChart(ctx, {
             type: 'line',
             data: { datasets: [dataset] },
             options: {
@@ -4986,7 +5083,7 @@
                             usePointStyle: true,
                             pointStyle: 'circle',
                             padding: 20,
-                            font: { size: 13, family: "'Roboto', 'Helvetica Neue', sans-serif", weight: '500' },
+                            font: { size: 13, family: CHART_FONT_FAMILY, weight: '500' },
                             boxWidth: 8,
                             boxHeight: 8
                         }
@@ -5071,7 +5168,7 @@
                                 }
                                 return h + ':00';
                             },
-                            font: { size: IS_MOBILE ? 9 : 12, family: "'Roboto', 'Helvetica Neue', sans-serif" }
+                            font: { size: IS_MOBILE ? 9 : 12, family: CHART_FONT_FAMILY }
                         },
                         title: { display: false },
                         afterFit: function(axis) {
@@ -5103,7 +5200,7 @@
                     const xScale = chart.scales.x;
                     const ctx = chart.ctx;
                     ctx.save();
-                    ctx.font = "bold 11px 'Roboto', 'Helvetica Neue', sans-serif";
+                    ctx.font = `600 11px ${CHART_FONT_FAMILY}`;
                     ctx.fillStyle = '#333';
                     ctx.textAlign = 'center';
                     xScale.ticks.forEach((tick, i) => {
@@ -5122,8 +5219,8 @@
         });
     }
 
-    // CGM 标签页激活时再渲染：隐藏状态下 Chart.js 无法正确计算尺寸，
-    // 且首次加载时当前时间范围可能不含 CGM 数据（initCgmChart 内部会自动锚定到最近数据段）
+    // CGM 标签页激活时再渲染：隐藏状态下 Chart.js 无法正确计算尺寸；
+    // 当前范围没有 CGM 数据时保留空状态，不自动跳到旧数据。
     document.getElementById('cgm-chart-tab')?.addEventListener('shown.bs.tab', () => {
         if (cgmChartInstance) {
             cgmChartInstance.resize();
@@ -5176,14 +5273,14 @@
             });
         });
 
+        // 空区间也保留卡片、翻页和时间范围控件，用户始终能返回有数据的区间。
+        document.getElementById('bloodPressureChartCard').style.display = '';
+        setChartEmptyState('bloodPressureChart', 'bloodPressureChartEmpty', bpRecords.length === 0, '该区间暂无血压记录，可往前翻或切换时间范围');
         if (bpRecords.length === 0) {
-            // 如果没有血压数据，隐藏图表
-            document.getElementById('bloodPressureChartCard').style.display = 'none';
+            setChartEmptyState('pulseChart', 'pulseChartEmpty', true, '该区间暂无心率记录，可往前翻或切换时间范围');
             return;
         }
-
-        // 确保卡片可见
-        document.getElementById('bloodPressureChartCard').style.display = '';
+        setChartEmptyState('pulseChart', 'pulseChartEmpty', false);
 
         // Sort by timestamp
         bpRecords.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
@@ -5205,6 +5302,7 @@
                 pulseData.push({ x: record.timestamp, y: record.pulse });
             }
         });
+        setChartEmptyState('pulseChart', 'pulseChartEmpty', pulseData.length === 0, '该区间的血压记录未包含心率');
 
         // 根据血压状态设置点的颜色
         function getBPPointColor(systolic, diastolic) {
@@ -5266,12 +5364,12 @@
         const yMin = Math.max(40, Math.floor((minBP - 10) / 10) * 10);
         const yMax = Math.min(200, Math.ceil((maxBP + 10) / 10) * 10);
 
-        bpChartInstance = new Chart(ctx, {
+        bpChartInstance = createHealthChart(ctx, {
             type: 'line',
             data: { datasets: datasets },
             options: {
                 responsive: true,
-                maintainAspectRatio: true,
+                maintainAspectRatio: false,
                 interaction: {
                     mode: 'nearest',
                     axis: 'x',
@@ -5291,19 +5389,19 @@
                                 const idx = context.dataIndex;
                                 const bp = bpRecords[idx];
 
-                                let statusIcon, statusName;
+                                let statusName;
                                 if (bp.systolic > 140 || bp.diastolic > 90) {
-                                    statusIcon = '⚠️'; statusName = '偏高';
+                                    statusName = '偏高';
                                 } else if (bp.systolic > 130 || bp.diastolic > 85) {
-                                    statusIcon = '👍'; statusName = '警戒';
+                                    statusName = '警戒';
                                 } else {
-                                    statusIcon = '🌟'; statusName = '理想';
+                                    statusName = '理想';
                                 }
 
                                 if (context.dataset.label === '收缩压（高压）') {
-                                    return bp.systolic + '/' + bp.diastolic + ' mmHg ' + statusIcon + ' ' + statusName;
+                                    return `血压 ${bp.systolic}/${bp.diastolic} mmHg · ${statusName}`;
                                 }
-                                return ''; // 舒张压不单独显示，避免重复
+                                return `舒张压 ${bp.diastolic} mmHg · ${statusName}`;
                             }
                         }
                     },
@@ -5429,7 +5527,7 @@
             }
 
             const pulseCtx = document.getElementById('pulseChart').getContext('2d');
-            pulseChartInstance = new Chart(pulseCtx, {
+            pulseChartInstance = createHealthChart(pulseCtx, {
                 type: 'line',
                 data: {
                     datasets: [{
@@ -5449,7 +5547,7 @@
                 },
                 options: {
                     responsive: true,
-                    maintainAspectRatio: true,
+                    maintainAspectRatio: false,
                     plugins: {
                         legend: { display: false },
                         tooltip: {
@@ -5508,17 +5606,17 @@
         if (!el) return;
         // 没有体成分数据时这张卡就是纯体重图,不显示图例(与合并前一致)
         if (!document.getElementById('weightMetricTabs')) { el.innerHTML = ''; return; }
-        const dot = (color) => `<span style="width:10px;height:10px;border-radius:50%;background:${color};display:inline-block;"></span>`;
+        const line = (color, dashed = false) => `<i class="chart-legend-line${dashed ? ' is-dashed' : ''}" style="--legend-color:${color}" aria-hidden="true"></i>`;
         if (metric === 'weight_fat') {
             let html = '';
-            if (hasWeight !== false) html += `<span class="d-flex align-items-center gap-1">${dot('#00897B')}体重 kg（左轴）</span>`;
-            if (hasFat) html += `<span class="d-flex align-items-center gap-1">${dot('#FF7043')}体脂率 %（${hasWeight === false ? '左' : '右'}轴）</span>`;
+            if (hasWeight !== false) html += `<span>${line('#00897B')}体重 kg（左轴）</span>`;
+            if (hasFat) html += `<span>${line('#FF7043', true)}体脂率 %（${hasWeight === false ? '左' : '右'}轴）</span>`;
             el.innerHTML = html;
             return;
         }
         const meta = BODY_COMP_METRICS[metric];
         el.innerHTML = meta
-            ? `<span class="d-flex align-items-center gap-1">${dot(meta.color)}${meta.label}${meta.unit ? ' (' + meta.unit + ')' : ''}</span>`
+            ? `<span>${line(meta.color)}${meta.label}${meta.unit ? ' (' + meta.unit + ')' : ''}</span>`
             : '';
     }
 
@@ -5565,41 +5663,17 @@
 
         const hasWeight = weightRecords.length > 0;
         const hasMetric = metricRecords.length > 0;
-        const hasTabs = !!document.getElementById('weightMetricTabs');
-        const emptyHint = document.getElementById('weightChartEmpty');
+        const isEmpty = (!hasWeight && !hasMetric) || (!isWeightFat && !hasMetric);
 
-        // 整卡一条数据都没有:没有体成分页签时沿用旧行为(藏卡);
-        // 有页签时必须留着卡——翻页/范围控件都在卡里,藏了就没有入口退回来了
-        if (!hasWeight && !hasMetric) {
-            if (!hasTabs) {
-                document.getElementById('weightChartCard').style.display = 'none';
-                return;
-            }
-            document.getElementById('weightChartCard').style.display = '';
-            document.getElementById('weightChart').style.display = 'none';
-            if (emptyHint) {
-                const nameEl = document.getElementById('weightChartEmptyMetric');
-                if (nameEl) nameEl.textContent = '';
-                emptyHint.style.display = '';
-            }
-            updateWeightLegend(metric, false, hasWeight);
-            return;
-        }
+        // 无论是否有体成分页签，都保留范围与翻页控件；只隐藏图形，不隐藏整张卡。
         document.getElementById('weightChartCard').style.display = '';
-
-        // 单指标在该区间无数据 -> 藏画布 + 提示,页签/范围/翻页保持可用
-        if (!isWeightFat && !hasMetric) {
-            document.getElementById('weightChart').style.display = 'none';
-            if (emptyHint) {
-                const nameEl = document.getElementById('weightChartEmptyMetric');
-                if (nameEl) nameEl.textContent = meta.label;
-                emptyHint.style.display = '';
-            }
+        const nameEl = document.getElementById('weightChartEmptyMetric');
+        if (nameEl) nameEl.textContent = !isWeightFat && meta ? meta.label : '';
+        setChartEmptyState('weightChart', 'weightChartEmpty', isEmpty);
+        if (isEmpty) {
             updateWeightLegend(metric, false, hasWeight);
             return;
         }
-        document.getElementById('weightChart').style.display = '';
-        if (emptyHint) emptyHint.style.display = 'none';
         updateWeightLegend(metric, hasMetric, hasWeight);
 
         weightRecords.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
@@ -5873,7 +5947,7 @@
             };
         }
 
-        weightChartInstance = new Chart(ctx, {
+        weightChartInstance = createHealthChart(ctx, {
             type: 'line',
             data: { datasets },
             options: {
@@ -10388,12 +10462,9 @@
         const canvas = document.getElementById('boneTrendChart');
         if (!canvas || typeof Chart === 'undefined') return;
         if (_boneChart) { _boneChart.destroy(); _boneChart = null; }
-        if (trend.length < 2) {
-            canvas.style.display = 'none';
-            return;
-        }
-        canvas.style.display = 'block';
-        _boneChart = new Chart(canvas, {
+        setChartEmptyState('boneTrendChart', 'boneTrendEmpty', trend.length < 2, '至少记录两次同部位检查后显示趋势');
+        if (trend.length < 2) return;
+        _boneChart = createHealthChart(canvas, {
             type: 'line',
             data: {
                 labels: trend.map(t => t.date),
