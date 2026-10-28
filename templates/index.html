@@ -970,7 +970,7 @@
                             <div style="margin-top:8px; padding-top:6px; border-top:1px dashed #e0e0e0;">
                                 <div class="d-flex justify-content-between align-items-center">
                                     <span class="fw-semibold" style="color: #00897B;">🧬 体成分</span>
-                                    <a id="bodyCompExpand" href="#" onclick="toggleBodyCompDetails();return false;" class="text-decoration-none" style="font-size:0.8rem; color:#00897B;" aria-expanded="false">展开更多数据 ⌄</a>
+                                    <a id="bodyCompExpand" href="#" onclick="toggleBodyCompDetails();return false;" class="text-decoration-none" style="font-size:0.8rem; color:#00897B;" aria-expanded="false" aria-controls="bodyCompBody">展开更多数据 ⌄</a>
                                 </div>
                             </div>
                         </div>
@@ -1417,11 +1417,11 @@
             </div>
             {% if stats.body_comp and stats.body_comp.has_data %}
             <!-- 指标页签:默认「体重+体脂率」双线;其余为单指标;次级 4 项收在「更多」下拉里 -->
-            <div class="d-flex flex-wrap align-items-center gap-2 mb-2" id="weightMetricTabs">
+            <div class="d-flex flex-wrap align-items-center gap-2 mb-2" id="weightMetricTabs" role="group" aria-label="选择体成分指标">
                 <div class="cal-seg-control" style="width: fit-content;">
-                    <button class="cal-seg-btn cal-seg-active" data-weight-metric="weight_fat" onclick="selectWeightMetric('weight_fat')">体重+体脂率</button>
-                    <button class="cal-seg-btn" data-weight-metric="visceral_fat" onclick="selectWeightMetric('visceral_fat')">内脏脂肪</button>
-                    <button class="cal-seg-btn" data-weight-metric="muscle_mass" onclick="selectWeightMetric('muscle_mass')">肌肉量</button>
+                    <button type="button" class="cal-seg-btn cal-seg-active" data-weight-metric="weight_fat" aria-pressed="true" onclick="selectWeightMetric('weight_fat')">体重+体脂率</button>
+                    <button type="button" class="cal-seg-btn" data-weight-metric="visceral_fat" aria-pressed="false" onclick="selectWeightMetric('visceral_fat')">内脏脂肪</button>
+                    <button type="button" class="cal-seg-btn" data-weight-metric="muscle_mass" aria-pressed="false" onclick="selectWeightMetric('muscle_mass')">肌肉量</button>
                 </div>
                 <div class="dropdown" id="weightMoreDropdown">
                     <button class="cal-seg-btn" type="button" data-bs-toggle="dropdown" aria-expanded="false" id="weightMoreBtn">更多 ⌄</button>
@@ -1429,16 +1429,21 @@
                         {% set more_metrics = [('body_fat_mass', '体脂量'), ('skeletal_muscle_mass', '骨骼肌量'), ('protein_mass', '蛋白量'), ('basal_metabolism', '基础代谢')] %}
                         {% for field, label in more_metrics %}
                         <li>
-                            <a class="dropdown-item{% if stats.body_comp.latest[field] is none %} disabled{% endif %}" href="#"
-                               data-weight-metric="{{ field }}"
-                               {% if stats.body_comp.latest[field] is none %}aria-disabled="true"{% else %}onclick="selectWeightMetric('{{ field }}');return false;"{% endif %}>{{ label }}</a>
+                            {% if stats.body_comp.latest[field] is none %}
+                            {# 没有值:不给 href、不给 onclick,键盘也激活不了 #}
+                            <span class="dropdown-item disabled" data-weight-metric="{{ field }}" aria-disabled="true">{{ label }}</span>
+                            {% else %}
+                            <a class="dropdown-item" href="#" data-weight-metric="{{ field }}" aria-pressed="false" onclick="selectWeightMetric('{{ field }}');return false;">{{ label }}</a>
+                            {% endif %}
                         </li>
                         {% endfor %}
                     </ul>
                 </div>
             </div>
             {% endif %}
+            {% if stats.body_comp and stats.body_comp.has_data %}
             <div class="d-flex flex-wrap justify-content-center gap-3 mb-2" id="weightChartLegend" style="font-size: 0.8rem; color: #64748B;"></div>
+            {% endif %}
             <!-- 目标体重设置弹窗 -->
             <div id="targetWeightPopup" style="display:none;">
                 <div class="p-3 mb-2 rounded" style="background: #f0faf8; border: 1px solid #00897B30;">
@@ -3656,7 +3661,9 @@
     // 阈值/参考线数值只来自 BODY_COMP_THRESHOLDS,本文件不写死任何数字。
     let weightChartMetric = 'weight_fat';
 
-    // 指标元数据(标题/单位/颜色)。前 3 项是页签,后 4 项收在「更多」下拉里。
+    // 指标元数据(标题/单位/颜色)。body_fat_rate 不单独占页签:它既是默认页签
+    // 「体重+体脂率」的右轴,也是「只有体脂、没有体重」时退化成的单指标。
+    // 其余 3 项是页签,最后 4 项收在「更多」下拉里。
     const BODY_COMP_METRICS = {
         body_fat_rate: { label: '体脂率', unit: '%', color: '#FF7043' },
         visceral_fat: { label: '内脏脂肪', unit: '', color: '#F4511E' },
@@ -3677,6 +3684,9 @@
                 el.classList.toggle('cal-seg-active', on);
             } else {
                 el.classList.toggle('active', on);
+            }
+            if (el.hasAttribute('aria-pressed')) {
+                el.setAttribute('aria-pressed', on ? 'true' : 'false');
             }
         });
         const moreBtn = document.getElementById('weightMoreBtn');
@@ -5492,16 +5502,17 @@
     // Initialize weight/BMI trend chart
     let weightChartInstance = null;
 
-    // 图例跟着当前指标走:双线模式两条,单指标模式一条;体脂率没有数据时不虚报
-    function updateWeightLegend(metric, hasFat) {
+    // 图例跟着当前指标走:双线模式两条,单指标模式一条;没有的系列不虚报
+    function updateWeightLegend(metric, hasFat, hasWeight) {
         const el = document.getElementById('weightChartLegend');
         if (!el) return;
         // 没有体成分数据时这张卡就是纯体重图,不显示图例(与合并前一致)
         if (!document.getElementById('weightMetricTabs')) { el.innerHTML = ''; return; }
         const dot = (color) => `<span style="width:10px;height:10px;border-radius:50%;background:${color};display:inline-block;"></span>`;
         if (metric === 'weight_fat') {
-            let html = `<span class="d-flex align-items-center gap-1">${dot('#00897B')}体重 kg（左轴）</span>`;
-            if (hasFat) html += `<span class="d-flex align-items-center gap-1">${dot('#FF7043')}体脂率 %（右轴）</span>`;
+            let html = '';
+            if (hasWeight !== false) html += `<span class="d-flex align-items-center gap-1">${dot('#00897B')}体重 kg（左轴）</span>`;
+            if (hasFat) html += `<span class="d-flex align-items-center gap-1">${dot('#FF7043')}体脂率 %（${hasWeight === false ? '左' : '右'}轴）</span>`;
             el.innerHTML = html;
             return;
         }
@@ -5520,7 +5531,6 @@
         const isWeightFat = metric === 'weight_fat';
         const meta = isWeightFat ? null : BODY_COMP_METRICS[metric];
         if (!isWeightFat && !meta) return;
-        const unitSuffix = meta && meta.unit ? ` (${meta.unit})` : '';
 
         // endDate 对齐到当天24:00（次日0点），确保x轴以完整天为单位
         const endDate = offset > 0 ? new Date(Date.now() - offset * 24 * 60 * 60 * 1000) : new Date();
@@ -5572,7 +5582,7 @@
                 if (nameEl) nameEl.textContent = '';
                 emptyHint.style.display = '';
             }
-            updateWeightLegend(metric, false);
+            updateWeightLegend(metric, false, hasWeight);
             return;
         }
         document.getElementById('weightChartCard').style.display = '';
@@ -5585,15 +5595,23 @@
                 if (nameEl) nameEl.textContent = meta.label;
                 emptyHint.style.display = '';
             }
-            updateWeightLegend(metric, false);
+            updateWeightLegend(metric, false, hasWeight);
             return;
         }
         document.getElementById('weightChart').style.display = '';
         if (emptyHint) emptyHint.style.display = 'none';
-        updateWeightLegend(metric, hasMetric);
+        updateWeightLegend(metric, hasMetric, hasWeight);
 
         weightRecords.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
         metricRecords.sort((a, b) => new Date(a.x) - new Date(b.x));
+
+        // 只有体脂率、没有体重的记录(API/导入可以写入):退化成单轴体脂图,
+        // 否则左轴标题写着「体重」,范围却按体脂率算
+        const fatOnly = isWeightFat && !hasWeight && hasMetric;
+        const chartMetric = fatOnly ? 'body_fat_rate' : metric;
+        const chartIsWeightFat = isWeightFat && !fatOnly;
+        const chartMeta = chartIsWeightFat ? null : BODY_COMP_METRICS[chartMetric];
+        const chartUnitSuffix = chartMeta && chartMeta.unit ? ` (${chartMeta.unit})` : '';
 
         const ctx = document.getElementById('weightChart').getContext('2d');
 
@@ -5606,7 +5624,7 @@
         const targetWeight = userTargetWeight || bmi22Weight;  // 优先用户设置，否则 BMI=22
 
         const datasets = [];
-        if (isWeightFat) {
+        if (chartIsWeightFat) {
             if (hasWeight) {
                 datasets.push({
                     label: '体重 (kg)',
@@ -5644,15 +5662,15 @@
             }
         } else {
             datasets.push({
-                label: meta.label + unitSuffix,
+                label: chartMeta.label + chartUnitSuffix,
                 data: metricRecords,
-                borderColor: meta.color,
-                backgroundColor: meta.color,
+                borderColor: chartMeta.color,
+                backgroundColor: chartMeta.color,
                 borderWidth: 3,
                 tension: 0.3,
                 pointRadius: 5,
                 pointHoverRadius: 8,
-                pointBackgroundColor: meta.color,
+                pointBackgroundColor: chartMeta.color,
                 pointBorderColor: '#fff',
                 pointBorderWidth: 2,
                 fill: false,
@@ -5663,7 +5681,7 @@
         // 左轴范围:双线模式跟体重走(含目标/超重线),单指标跟指标走
         let yMin;
         let yMax;
-        if (isWeightFat) {
+        if (chartIsWeightFat) {
             if (hasWeight) {
                 let wMin = Infinity;
                 let wMax = -Infinity;
@@ -5719,7 +5737,7 @@
             };
         };
 
-        if (isWeightFat) {
+        if (chartIsWeightFat) {
             if (hasWeight) {
                 annotations.overweightLine = {
                     type: 'line',
@@ -5764,23 +5782,23 @@
                 makeThresholdLine('bodyFatMaxLine', thresholds.body_fat_rate_max, '%', 'y1', false);
             }
         } else {
-            const thresholdMax = metric === 'body_fat_rate' ? thresholds.body_fat_rate_max
-                : (metric === 'visceral_fat' ? thresholds.visceral_fat_max : null);
+            const thresholdMax = chartMetric === 'body_fat_rate' ? thresholds.body_fat_rate_max
+                : (chartMetric === 'visceral_fat' ? thresholds.visceral_fat_max : null);
             if (thresholdMax !== undefined && thresholdMax !== null) {
                 yMax = Math.max(yMax, Math.ceil(Number(thresholdMax) + 1));
-                makeThresholdLine(metric + 'MaxLine', thresholdMax, meta.unit, 'y', false);
+                makeThresholdLine(chartMetric + 'MaxLine', thresholdMax, chartMeta.unit, 'y', false);
             }
-            const thresholdMin = metric === 'muscle_mass' ? thresholds.muscle_mass_min_kg : null;
+            const thresholdMin = chartMetric === 'muscle_mass' ? thresholds.muscle_mass_min_kg : null;
             if (thresholdMin !== undefined && thresholdMin !== null) {
                 yMin = Math.min(yMin, Math.floor(Number(thresholdMin) - 1));
-                makeThresholdLine('muscleMinLine', thresholdMin, meta.unit, 'y', true);
+                makeThresholdLine('muscleMinLine', thresholdMin, chartMeta.unit, 'y', true);
             }
         }
 
         // 右轴(体脂率)范围:有参考上限时把上限纳入,避免虚线飘出图外
         let y1Min;
         let y1Max;
-        if (isWeightFat && hasMetric) {
+        if (chartIsWeightFat && hasMetric) {
             let fMin = Infinity;
             let fMax = -Infinity;
             metricRecords.forEach(r => {
@@ -5822,19 +5840,19 @@
                 max: yMax,
                 title: {
                     display: !IS_MOBILE,
-                    text: isWeightFat ? '体重 (kg)' : meta.label + unitSuffix,
+                    text: chartIsWeightFat ? '体重 (kg)' : chartMeta.label + chartUnitSuffix,
                     font: { size: IS_MOBILE ? 9 : 12, weight: 'bold' },
-                    color: isWeightFat ? '#00897B' : meta.color
+                    color: chartIsWeightFat ? '#00897B' : chartMeta.color
                 },
                 ticks: {
                     stepSize: 1,
                     font: { size: 11 },
-                    color: isWeightFat ? '#00897B' : meta.color
+                    color: chartIsWeightFat ? '#00897B' : chartMeta.color
                 },
                 grid: { color: 'rgba(0,0,0,0.05)' }
             }
         };
-        if (isWeightFat && hasMetric) {
+        if (chartIsWeightFat && hasMetric) {
             scales.y1 = {
                 position: 'right',
                 beginAtZero: false,
@@ -5861,8 +5879,9 @@
             options: {
                 responsive: true,
                 interaction: {
-                    // 双线模式两条线的时间点不一定一一对应,用 nearest 避免 index 串位
-                    mode: isWeightFat ? 'nearest' : 'index',
+                    // 两条线的时间点不一定一一对应,用 nearest 避免 index 串位;
+                    // 单条线(含纯体重用户)沿用旧的 index 行为
+                    mode: datasets.length > 1 ? 'nearest' : 'index',
                     intersect: false
                 },
                 plugins: {
@@ -5877,14 +5896,14 @@
                                 return '';
                             },
                             label: (item) => {
-                                if (!isWeightFat) return `${meta.label}: ${item.raw.y}${meta.unit}`;
+                                if (!chartIsWeightFat) return `${chartMeta.label}: ${item.raw.y}${chartMeta.unit}`;
                                 if (item.dataset.yAxisID === 'y1') return `体脂率: ${item.raw.y}%`;
                                 const w = item.raw.y;
                                 const bmi = (w / (heightM * heightM)).toFixed(1);
                                 return `体重: ${w} kg · BMI: ${bmi}`;
                             },
                             afterLabel: (item) => {
-                                if (!isWeightFat || item.dataset.yAxisID === 'y1') return '';
+                                if (!chartIsWeightFat || item.dataset.yAxisID === 'y1') return '';
                                 const w = item.raw.y;
                                 const bmi = w / (heightM * heightM);
                                 if (bmi < 18.5) return '偏瘦';
