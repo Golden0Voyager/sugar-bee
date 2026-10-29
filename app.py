@@ -359,4 +359,5 @@ if __name__ == '__main__':
     with app.app_context():
         init_db()
     start_background_tasks()
-    app.run(host='0.0.0.0', debug=True, port=5001)
+    # 端口默认 5001，可用 PORT 环境变量覆盖（如本机 5001 被 Kimi 内置预览占用时）
+    app.run(host='0.0.0.0', debug=True, port=int(os.environ.get('PORT', 5001)))
