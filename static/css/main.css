@@ -2781,3 +2781,43 @@ body.elderly-mode .tutorial-tip {
 body.elderly-mode .tutorial-example {
     font-size: 1rem;
 }
+
+.avatar-choice-grid {
+    display: grid;
+    grid-template-columns: repeat(9, minmax(48px, 1fr));
+    gap: 10px;
+}
+.avatar-choice {
+    width: 52px;
+    height: 52px;
+    padding: 2px;
+    border: 2px solid transparent;
+    border-radius: 50%;
+    background: transparent;
+}
+.avatar-choice img,
+.avatar-default-preview img {
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    object-fit: cover;
+}
+.avatar-choice.is-selected {
+    border-color: var(--md-primary);
+    box-shadow: 0 0 0 3px var(--md-primary-light);
+}
+.avatar-choice:focus-visible {
+    outline: 3px solid var(--md-primary);
+    outline-offset: 2px;
+}
+.avatar-default-preview {
+    width: 52px;
+    height: 52px;
+    flex: 0 0 52px;
+}
+@media (max-width: 576px) {
+    .avatar-choice-grid {
+        grid-template-columns: repeat(5, 48px);
+        justify-content: space-between;
+    }
+}

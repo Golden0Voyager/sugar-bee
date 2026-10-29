@@ -37,7 +37,9 @@ user_config.json
 user_config.json.legacy.*
 
 # 上传文件（由宿主机挂载）
-static/avatars/
+static/avatars/*
+!static/avatars/defaults/
+!static/avatars/defaults/*.svg
 user_data/
 
 # Garmin 相关（由宿主机挂载）

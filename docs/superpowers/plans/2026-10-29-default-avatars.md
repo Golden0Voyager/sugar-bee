@@ -151,7 +151,7 @@ animals = [
     ('BAE6FD', '1F2937', '<ellipse cx="52" cy="54" rx="23" ry="27" fill="#F9FAFB"/>', '<path d="M46 57h12l-6 7z" fill="#F59E0B"/>'),
     ('FDE68A', 'B45309', '<path d="M28 42L25 21l20 14m31 7l3-21-20 14" fill="#B45309"/>', '<circle cx="42" cy="48" r="11" fill="#FEF3C7"/><circle cx="62" cy="48" r="11" fill="#FEF3C7"/><circle cx="42" cy="48" r="4" fill="#1F2937"/><circle cx="62" cy="48" r="4" fill="#1F2937"/>'),
 ]
-animal = '''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 104 104"><circle cx="52" cy="52" r="50" fill="#{bg}"/>{ears}<circle cx="52" cy="53" r="29" fill="{face}"/><circle cx="43" cy="49" r="2.5" fill="#1F2937"/><circle cx="61" cy="49" r="2.5" fill="#1F2937"/><path d="M49 59h6l-3 4z" fill="#374151"/>{extra}</svg>'''
+animal = '''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 104 104"><circle cx="52" cy="52" r="50" fill="#{bg}"/>{ears}<circle cx="52" cy="53" r="29" fill="#{face}"/><circle cx="43" cy="49" r="2.5" fill="#1F2937"/><circle cx="61" cy="49" r="2.5" fill="#1F2937"/><path d="M49 59h6l-3 4z" fill="#374151"/>{extra}</svg>'''
 for i, (bg, face, ears, extra) in enumerate(animals, 1):
     (out / f'animal_{i:02}.svg').write_text(animal.format(bg=bg, face=face, ears=ears, extra=extra), encoding='utf-8')
 PY
@@ -178,8 +178,8 @@ static/avatars/*
 - [ ] **Step 6: 验证清单测试并检查打包文件**
 
 Run: `uv run python -m pytest tests/test_avatars.py -q`
-Expected: 3 passed。
-Run: `git check-ignore -v static/avatars/defaults/person_01.svg; test $? -eq 1`
+Expected: 4 passed。
+Run: `if git check-ignore -q static/avatars/defaults/person_01.svg; then exit 1; fi`
 Expected: 无输出且命令成功，表示默认头像未被忽略。
 
 - [ ] **Step 7: 提交本任务**

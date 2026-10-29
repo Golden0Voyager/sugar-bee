@@ -2521,6 +2521,33 @@
             </div>
             <div class="modal-body">
                 <div class="mb-3">
+                    <div class="small text-muted mb-2">默认头像 · 人物</div>
+                    <div class="avatar-choice-grid mb-3">
+                        {% for item in avatar_catalog if item.group == 'person' %}
+                        <button type="button" class="avatar-choice" data-avatar="{{ item.filename }}"
+                                aria-label="选择{{ item.label }}" onclick="selectDefaultAvatar('{{ item.filename }}', this)">
+                            <img src="/static/avatars/{{ item.filename }}" alt="{{ item.label }}">
+                        </button>
+                        {% endfor %}
+                    </div>
+                    <div class="small text-muted mb-2">默认头像 · 动物</div>
+                    <div class="avatar-choice-grid">
+                        {% for item in avatar_catalog if item.group == 'animal' %}
+                        <button type="button" class="avatar-choice" data-avatar="{{ item.filename }}"
+                                aria-label="选择{{ item.label }}" onclick="selectDefaultAvatar('{{ item.filename }}', this)">
+                            <img src="/static/avatars/{{ item.filename }}" alt="{{ item.label }}">
+                        </button>
+                        {% endfor %}
+                    </div>
+                    <div class="d-flex align-items-center gap-3 mt-3">
+                        <div id="defaultAvatarPreview" class="avatar-default-preview" aria-live="polite"></div>
+                        <button type="button" class="btn btn-primary flex-fill" id="saveDefaultAvatarBtn"
+                                onclick="saveDefaultAvatar()" disabled>保存所选头像</button>
+                    </div>
+                </div>
+                <hr>
+                <label for="avatarInput" class="form-label small text-muted">上传自己的图片</label>
+                <div class="mb-3">
                     <input type="file" id="avatarInput" class="form-control" accept="image/png, image/jpeg" onchange="loadAvatarImage(this)">
                 </div>
 
@@ -8351,12 +8378,47 @@
 
     let cropper = null;
     let avatarModal = null;
+    let selectedDefaultAvatar = null;
 
     function openAvatarModal() {
         if (!avatarModal) {
             avatarModal = new bootstrap.Modal(document.getElementById('avatarModal'));
         }
         avatarModal.show();
+    }
+
+    function selectDefaultAvatar(filename, button) {
+        selectedDefaultAvatar = filename;
+        document.querySelectorAll('.avatar-choice').forEach(el => {
+            const selected = el === button;
+            el.classList.toggle('is-selected', selected);
+            el.setAttribute('aria-pressed', selected ? 'true' : 'false');
+        });
+        document.getElementById('defaultAvatarPreview').innerHTML =
+            `<img src="/static/avatars/${filename}" alt="已选头像预览">`;
+        document.getElementById('saveDefaultAvatarBtn').disabled = false;
+    }
+
+    async function saveDefaultAvatar() {
+        if (!selectedDefaultAvatar) return;
+        const button = document.getElementById('saveDefaultAvatarBtn');
+        button.disabled = true;
+        try {
+            const res = await fetch('/select_avatar', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({avatar: selectedDefaultAvatar})
+            });
+            const result = await res.json();
+            if (!res.ok || result.status !== 'success') {
+                throw new Error(result.message || '保存失败');
+            }
+            avatarModal.hide();
+            window.location.reload();
+        } catch (e) {
+            alert('头像保存失败: ' + e.message);
+            button.disabled = false;
+        }
     }
 
     function loadAvatarImage(input) {
@@ -8417,6 +8479,13 @@
         document.getElementById('cropImage').src = '';
         document.getElementById('cropArea').classList.add('d-none');
         document.getElementById('saveAvatarBtn').disabled = true;
+        selectedDefaultAvatar = null;
+        document.querySelectorAll('.avatar-choice').forEach(el => {
+            el.classList.remove('is-selected');
+            el.setAttribute('aria-pressed', 'false');
+        });
+        document.getElementById('defaultAvatarPreview').innerHTML = '';
+        document.getElementById('saveDefaultAvatarBtn').disabled = true;
     }
 
     async function cropAndUploadAvatar() {
