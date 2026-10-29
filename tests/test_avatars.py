@@ -113,3 +113,17 @@ def test_select_avatar_database_error_returns_500(client_authenticated):
     with patch('routes.api_user.get_db', side_effect=Exception('db down')):
         response = client_authenticated.post('/select_avatar', json={'avatar': 'defaults/person_01.svg'})
     assert response.status_code == 500
+
+
+def test_index_renders_all_default_avatar_choices(client_authenticated):
+    response = client_authenticated.get('/')
+    assert response.status_code == 200
+    html = response.get_data(as_text=True)
+    assert html.count('data-avatar="defaults/') == 18
+    assert html.count('data-avatar="defaults/person_') == 9
+    assert html.count('data-avatar="defaults/animal_') == 9
+    assert '默认头像 · 人物' in html
+    assert '默认头像 · 动物' in html
+    assert 'function selectDefaultAvatar' in html
+    assert "fetch('/select_avatar'" in html
+    assert 'function cropAndUploadAvatar' in html
