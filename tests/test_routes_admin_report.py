@@ -1,6 +1,8 @@
 """冲刺 85% 覆盖率: api_prediction (51%→70%), api_meds (64%→80%), api_admin (50%→75%)"""
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 # ============================================================
 # api_prediction: trigger_prediction 类型分支 + CGM/verified 状态
 # ============================================================
@@ -168,6 +170,31 @@ class TestPredictionStatusCGM:
             assert fasting['cgm'] is True
             assert fasting['value'] == 5.8
 
+    def test_status_cgm_beyond_5_min_falls_back_to_manual(self, client_authenticated):
+        with patch('routes.api_prediction.get_db') as mock_get_db, \
+             patch('routes.api_prediction.settings') as mock_settings:
+            mock_settings.get_glucose_target.return_value = {'min': 4.0, 'max': 7.0, 'optimal_max': 6.0}
+            mock_c = MagicMock()
+            mock_c.fetchall.side_effect = [
+                [
+                    {'type': '空腹', 'value': 6.5, 'timestamp': '2024-06-01 07:15:00',
+                     'is_predicted': 0, 'id': 1, 'notes': None,
+                     'verified_by_real_id': None, 'prediction_error': None},
+                    {'type': 'CGM', 'value': 5.8, 'timestamp': '2024-06-01 07:21:00',
+                     'is_predicted': 0, 'id': 3, 'notes': None,
+                     'verified_by_real_id': None, 'prediction_error': None},
+                ],
+                [],
+            ]
+            mock_db = MagicMock()
+            mock_db.cursor.return_value = mock_c
+            mock_get_db.return_value = mock_db
+            result = client_authenticated.get('/prediction_status')
+            assert result.status_code == 200
+            fasting = [s for s in result.json['slots'] if s['key'] == 'fasting'][0]
+            assert fasting.get('cgm') is not True
+            assert fasting['value'] == 6.5
+
     def test_status_cgm_with_predicted(self, client_authenticated):
         """CGM + 未验证的预测 → status=verified with CGM"""
         with patch('routes.api_prediction.get_db') as mock_get_db, \
@@ -194,6 +221,39 @@ class TestPredictionStatusCGM:
             assert fasting['cgm'] is True
             # CGM + unverified predicted → status=verified (CGM overrides)
             assert fasting['status'] in ('measured', 'verified')
+
+    def test_status_cgm_overrides_manual_and_recalculates_error(self, client_authenticated):
+        """同槽手工值和 CGM 并存时，实测值与预测误差都以 CGM 为准。"""
+        with patch('routes.api_prediction.get_db') as mock_get_db, \
+             patch('routes.api_prediction.settings') as mock_settings:
+            mock_settings.get_glucose_target.return_value = {'min': 4.0, 'max': 7.0, 'optimal_max': 6.0}
+            mock_c = MagicMock()
+            mock_c.fetchall.side_effect = [
+                [
+                    {'type': '空腹', 'value': 7.3, 'timestamp': '2024-06-01 07:15:00',
+                     'is_predicted': 0, 'id': 1, 'notes': None,
+                     'verified_by_real_id': None, 'prediction_error': None},
+                    {'type': '空腹', 'value': 6.2, 'timestamp': '2024-06-01 06:00:00',
+                     'is_predicted': 1, 'id': 2, 'notes': '预测',
+                     'verified_by_real_id': 1, 'prediction_error': 1.1},
+                    {'type': 'CGM', 'value': 6.0, 'timestamp': '2024-06-01 07:15:00',
+                     'is_predicted': 0, 'id': 3, 'notes': None,
+                     'verified_by_real_id': None, 'prediction_error': None},
+                ],
+                [],
+            ]
+            mock_db = MagicMock()
+            mock_db.cursor.return_value = mock_c
+            mock_get_db.return_value = mock_db
+            result = client_authenticated.get('/prediction_status')
+            assert result.status_code == 200
+            fasting = [s for s in result.json['slots'] if s['key'] == 'fasting'][0]
+            assert fasting['status'] == 'verified'
+            assert fasting['cgm'] is True
+            assert fasting['value'] == 6.0
+            assert fasting['real_value'] == 6.0
+            assert fasting['predicted_value'] == 6.2
+            assert fasting['error'] == pytest.approx(-0.2)
 
     def test_accuracy_by_type(self, client_authenticated):
         """近7天预测准确性按类型分组"""

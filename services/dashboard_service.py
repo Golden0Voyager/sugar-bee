@@ -268,7 +268,7 @@ def get_dashboard_stats(db, user_id):
                 elif is_pred and predicted_match is None:
                     predicted_match = record
 
-        # CGM 匹配
+        # CGM 匹配：仅采用距槽位 5 分钟内最近的读数
         cgm_match = None
         cgm_min_diff = float('inf')
         slot_target_minutes = int(slot['time'].split(':')[0]) * 60 + int(slot['time'].split(':')[1])
@@ -284,7 +284,7 @@ def get_dashboard_stats(db, user_id):
             except (ValueError, IndexError):
                 continue
             diff = abs(r_minutes - slot_target_minutes)
-            if diff < cgm_min_diff and diff <= 30:
+            if diff < cgm_min_diff and diff <= 5:
                 cgm_min_diff = diff
                 cgm_match = record
 

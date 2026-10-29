@@ -311,28 +311,38 @@ def prediction_status():
                         if predicted_record is None:
                             predicted_record = record
 
-            # CGM 匹配
+            # CGM 优先：同槽存在手工记录时，也以最近 5 分钟内的 CGM 为准
             cgm_record = None
-            if measured_record is None:
-                slot_target_minutes = int(slot['time'].split(':')[0]) * 60 + int(slot['time'].split(':')[1])
-                cgm_min_diff = float('inf')
-                for record in today_records:
-                    if (record['type'] or '') != 'CGM':
-                        continue
-                    record_time = record['timestamp'].split(' ')[1][:5] if ' ' in record['timestamp'] else ''
-                    if not record_time or ':' not in record_time:
-                        continue
-                    try:
-                        parts = record_time.split(':')
-                        record_minutes = int(parts[0]) * 60 + int(parts[1])
-                    except (ValueError, IndexError):
-                        continue
-                    diff = abs(record_minutes - slot_target_minutes)
-                    if diff < cgm_min_diff and diff <= 30:
-                        cgm_min_diff = diff
-                        cgm_record = record
+            slot_target_minutes = int(slot['time'].split(':')[0]) * 60 + int(slot['time'].split(':')[1])
+            cgm_min_diff = float('inf')
+            for record in today_records:
+                if (record['type'] or '') != 'CGM':
+                    continue
+                record_time = record['timestamp'].split(' ')[1][:5] if ' ' in record['timestamp'] else ''
+                if not record_time or ':' not in record_time:
+                    continue
+                try:
+                    parts = record_time.split(':')
+                    record_minutes = int(parts[0]) * 60 + int(parts[1])
+                except (ValueError, IndexError):
+                    continue
+                diff = abs(record_minutes - slot_target_minutes)
+                if diff < cgm_min_diff and diff <= 5:
+                    cgm_min_diff = diff
+                    cgm_record = record
 
-            if measured_record:
+            if cgm_record:
+                slot_data['status'] = 'measured'
+                slot_data['value'] = round(cgm_record['value'], 2)
+                slot_data['real_value'] = round(cgm_record['value'], 2)
+                slot_data['timestamp'] = cgm_record['timestamp']
+                slot_data['cgm'] = True
+                if predicted_record:
+                    slot_data['status'] = 'verified'
+                    slot_data['predicted_value'] = round(predicted_record['value'], 2)
+                    slot_data['error'] = round(cgm_record['value'] - predicted_record['value'], 2)
+                    slot_data['notes'] = predicted_record['notes']
+            elif measured_record:
                 slot_data['status'] = 'measured'
                 slot_data['value'] = round(measured_record['value'], 2)
                 slot_data['real_value'] = round(measured_record['value'], 2)
@@ -342,23 +352,6 @@ def prediction_status():
                     slot_data['predicted_value'] = round(predicted_record['value'], 2)
                     slot_data['error'] = round(predicted_record['prediction_error'], 2) if predicted_record['prediction_error'] else None
                     slot_data['notes'] = predicted_record['notes']
-            elif cgm_record:
-                slot_data['status'] = 'measured'
-                slot_data['value'] = round(cgm_record['value'], 2)
-                slot_data['real_value'] = round(cgm_record['value'], 2)
-                slot_data['timestamp'] = cgm_record['timestamp']
-                slot_data['cgm'] = True
-                if predicted_record:
-                    if predicted_record['verified_by_real_id']:
-                        slot_data['status'] = 'verified'
-                        slot_data['predicted_value'] = round(predicted_record['value'], 2)
-                        slot_data['error'] = round(predicted_record['prediction_error'], 2) if predicted_record['prediction_error'] else None
-                        slot_data['notes'] = predicted_record['notes']
-                    else:
-                        slot_data['status'] = 'verified'
-                        slot_data['predicted_value'] = round(predicted_record['value'], 2)
-                        slot_data['error'] = round(cgm_record['value'] - predicted_record['value'], 2)
-                        slot_data['notes'] = predicted_record['notes']
             elif predicted_record:
                 slot_data['status'] = 'predicted'
                 slot_data['value'] = round(predicted_record['value'], 2)

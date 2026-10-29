@@ -503,7 +503,7 @@ class TestDayOverviewGlucoseMatching:
             assert fasting['status'] == 'predicted'
 
     def test_cgm_matches(self, client_authenticated):
-        """CGM 记录距槽位 ≤ 30 分钟 → 优先使用 CGM"""
+        """CGM 记录距槽位 ≤ 5 分钟 → 优先使用 CGM"""
         with patch('routes.api_dashboard.get_db') as mock_get_db, \
              patch('routes.api_dashboard.settings') as mock_settings:
             mock_day_settings(mock_settings)
@@ -521,6 +521,28 @@ class TestDayOverviewGlucoseMatching:
             fasting = [s for s in result.json['overview'] if s['key'] == 'fasting'][0]
             assert fasting['cgm'] is True
             assert fasting['value'] == 5.8
+
+    def test_cgm_beyond_5_min_falls_back_to_manual(self, client_authenticated):
+        with patch('routes.api_dashboard.get_db') as mock_get_db, \
+             patch('routes.api_dashboard.settings') as mock_settings:
+            mock_day_settings(mock_settings)
+            mock_c = MagicMock()
+            mock_c.fetchall.side_effect = [
+                [
+                    {'value': 5.8, 'type': 'CGM', 'timestamp': '2024-06-01 07:21:00', 'is_predicted': 0},
+                    {'value': 6.5, 'type': '空腹', 'timestamp': '2024-06-01 07:15:00', 'is_predicted': 0},
+                ],
+                [], [], [], [], [{'plan_id': 1, 'count': 1}], []
+            ]
+            mock_db = MagicMock()
+            mock_db.cursor.return_value = mock_c
+            mock_get_db.return_value = mock_db
+
+            result = client_authenticated.get('/api/day_overview?date=2024-06-01')
+            assert result.status_code == 200
+            fasting = [s for s in result.json['overview'] if s['key'] == 'fasting'][0]
+            assert fasting.get('cgm') is not True
+            assert fasting['value'] == 6.5
 
     def test_pending_slot(self, client_authenticated):
         """无匹配记录 → status='pending'"""

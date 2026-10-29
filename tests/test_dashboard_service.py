@@ -334,7 +334,7 @@ class TestCGMMatching:
 
     @patch('services.dashboard_service.UserManager')
     @patch('services.dashboard_service.settings')
-    def test_cgm_within_30_min_matches(self, mock_settings, mock_um):
+    def test_cgm_within_5_min_matches(self, mock_settings, mock_um):
         _setup_mocks(mock_settings, mock_um)
         mock_c = _make_minimal_cursor(today_records=[self._rec(5.8, 'CGM', '2024-06-01 07:20:00')])
         from services.dashboard_service import get_dashboard_stats
@@ -343,6 +343,21 @@ class TestCGMMatching:
         fasting = [s for s in result['today_overview'] if s['key'] == 'fasting'][0]
         assert fasting['cgm'] is True
         assert fasting['value'] == 5.8
+
+    @patch('services.dashboard_service.UserManager')
+    @patch('services.dashboard_service.settings')
+    def test_cgm_beyond_5_min_falls_back_to_manual(self, mock_settings, mock_um):
+        _setup_mocks(mock_settings, mock_um)
+        mock_c = _make_minimal_cursor(today_records=[
+            self._rec(5.8, 'CGM', '2024-06-01 07:21:00'),
+            self._rec(6.5, '空腹', '2024-06-01 07:15:00'),
+        ])
+        from services.dashboard_service import get_dashboard_stats
+        mock_db = MagicMock(); mock_db.cursor.return_value = mock_c
+        result = get_dashboard_stats(mock_db, user_id=1)
+        fasting = [s for s in result['today_overview'] if s['key'] == 'fasting'][0]
+        assert fasting.get('cgm') is not True
+        assert fasting['value'] == 6.5
 
     @patch('services.dashboard_service.UserManager')
     @patch('services.dashboard_service.settings')
