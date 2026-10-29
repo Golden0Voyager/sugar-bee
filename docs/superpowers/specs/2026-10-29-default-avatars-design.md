@@ -40,7 +40,7 @@
 - `person_01.svg` 至 `person_09.svg`：彩色人物插画。
 - `animal_01.svg` 至 `animal_09.svg`：可爱动物，包含蜜蜂、虎、兔、熊、熊猫、考拉、狐狸、企鹅、猫头鹰。
 
-`.gitignore` 继续忽略用户上传的 `static/avatars/` 内容，但为 `static/avatars/defaults/` 及其 SVG 文件增加例外，确保默认头像进入版本控制和部署包。
+`.gitignore` 继续忽略用户上传的 `static/avatars/` 内容，但为 `static/avatars/defaults/` 及其 SVG 文件增加例外；`.dockerignore` 同步增加例外，确保默认头像既进入版本控制，也不会在 Docker 构建上下文中被排除。
 
 新增一个小型头像工具模块作为唯一清单来源，负责：
 
@@ -134,4 +134,4 @@
 
 ## 实施边界
 
-预计改动：头像工具模块、`user_manager.py`、`routes/api_user.py`、`templates/index.html`、必要的 CSS、`.gitignore`、18 个 SVG 和现有测试文件。不改动健康记录、CGM、报告解析或其他业务模块。
+预计改动：头像工具模块、`user_manager.py`、`routes/api_user.py`、`templates/index.html`、必要的 CSS、`.gitignore`、`.dockerignore`、18 个 SVG 和现有测试文件。不改动健康记录、CGM、报告解析或其他业务模块。
