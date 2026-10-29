@@ -59,7 +59,7 @@ class UserManager:
                u.phone, u.email,
                p.name, p.birth_year, p.birth_month, p.birth_day, p.height, p.weight, p.gender, p.target_weight,
                p.default_meals, p.target_ranges, p.enabled_modules,
-               p.app_name, p.app_emoji, p.app_tagline, p.persona
+               p.app_name, p.app_emoji, p.app_tagline, p.persona, p.garmin_sync_days
         FROM app_users u
         LEFT JOIN user_profiles p ON u.id = p.user_id
     """
@@ -79,6 +79,9 @@ class UserManager:
         # 品牌个性化字段：缺列（旧库未迁移）时补空值，避免模板取值报错
         for field in ('app_name', 'app_emoji', 'app_tagline', 'persona'):
             user.setdefault(field, None)
+        # Garmin 同步天数：旧库未迁移时按默认 30 处理
+        if not user.get('garmin_sync_days'):
+            user['garmin_sync_days'] = 30
         return user
 
     def get_all_users(self):
@@ -214,7 +217,7 @@ class UserManager:
 
         json_fields = {'default_meals', 'target_ranges', 'enabled_modules'}
         scalar_fields = {'name', 'birth_year', 'birth_month', 'birth_day', 'height', 'weight', 'gender', 'target_weight',
-                         'app_name', 'app_emoji', 'app_tagline', 'persona'}
+                         'app_name', 'app_emoji', 'app_tagline', 'persona', 'garmin_sync_days'}
         aliases = {'target': 'target_ranges'}
 
         set_clauses = []
@@ -223,7 +226,16 @@ class UserManager:
             col = aliases.get(key, key)
             if not re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', col):
                 continue
-            if col in scalar_fields:
+            if col == 'garmin_sync_days':
+                # 允许的档位：30/60/90/180/210/240，越界就近取整，非法值忽略
+                try:
+                    v = int(value)
+                except (TypeError, ValueError):
+                    continue
+                v = max(30, min(240, v))
+                set_clauses.append(f"{col} = ?")
+                values.append(v)
+            elif col in scalar_fields:
                 set_clauses.append(f"{col} = ?")
                 values.append(value)
             elif col in json_fields:
@@ -283,6 +295,7 @@ class UserManager:
             'target_weight': user.get('target_weight'),
             'gender': user.get('gender') or 'male',
             'avatar': user.get('avatar') or default_avatar_for_user(user_id),
+            'garmin_sync_days': user.get('garmin_sync_days') or 30,
             'default_meals': user.get('default_meals') or {},
             'target': user.get('target_ranges') or {
                 'fasting_min': 3.9,
@@ -308,6 +321,7 @@ class UserManager:
             'weight': 75,
             'target_weight': None,
             'gender': 'male',
+            'garmin_sync_days': 30,
             'default_meals': {},
             'target': {
                 'fasting_min': 3.9,

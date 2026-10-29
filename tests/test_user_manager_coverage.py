@@ -48,7 +48,8 @@ def real_um():
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             target_weight REAL, birth_month INTEGER, birth_day INTEGER,
-            app_name TEXT, app_emoji TEXT, app_tagline TEXT, persona TEXT
+            app_name TEXT, app_emoji TEXT, app_tagline TEXT, persona TEXT,
+            garmin_sync_days INTEGER DEFAULT 30
         )
     ''')
     c.execute("INSERT INTO app_users (username, display_name) VALUES ('test', 'Test')")

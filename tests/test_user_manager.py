@@ -59,7 +59,8 @@ def um(module_db_path, monkeypatch):
         app_name TEXT,
         app_emoji TEXT,
         app_tagline TEXT,
-        persona TEXT
+        persona TEXT,
+        garmin_sync_days INTEGER DEFAULT 30
     )''')
     c.execute('''CREATE TABLE IF NOT EXISTS user_auth_providers (
         id INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -765,7 +765,8 @@ def _init_db_postgres():
                 app_name TEXT,
                 app_emoji TEXT,
                 app_tagline TEXT,
-                persona TEXT
+                persona TEXT,
+                garmin_sync_days INTEGER DEFAULT 30
             )
         ''')
 
@@ -773,6 +774,10 @@ def _init_db_postgres():
         for col_name in ('app_name', 'app_emoji', 'app_tagline', 'persona'):
             with contextlib.suppress(Exception):
                 c.execute(f'ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS {col_name} TEXT')
+
+        # Garmin 同步天数（每个用户可自定义，30~240）
+        with contextlib.suppress(Exception):
+            c.execute('ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS garmin_sync_days INTEGER DEFAULT 30')
 
         # 体成分字段:对已存在的线上库补列(CREATE TABLE IF NOT EXISTS 对老库无效)
         for col_name, col_type in [
@@ -1089,6 +1094,10 @@ def _init_db_sqlite():
         for col_name in ("app_name", "app_emoji", "app_tagline", "persona"):
             with contextlib.suppress(sqlite3.OperationalError):
                 c.execute(f"ALTER TABLE user_profiles ADD COLUMN {col_name} TEXT")
+
+        # 用户档案表迁移：Garmin 同步天数（30~240，默认 30）
+        with contextlib.suppress(sqlite3.OperationalError):
+            c.execute("ALTER TABLE user_profiles ADD COLUMN garmin_sync_days INTEGER DEFAULT 30")
 
         # 用户表迁移
         with contextlib.suppress(sqlite3.OperationalError):

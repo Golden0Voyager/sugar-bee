@@ -1919,6 +1919,19 @@
                                     <label class="form-label">目标体重 (kg)</label>
                                     <input type="number" step="0.1" id="set_target_weight" class="form-control" value="{{ stats.target_weight or '' }}" placeholder="选填">
                                 </div>
+                                {% set _day_opts = [30, 60, 90, 180, 210, 240] %}
+                                {% set _cur_days = stats.user.garmin_sync_days or 30 %}
+                                {% set _day_idx = _day_opts.index(_cur_days) if _cur_days in _day_opts else 0 %}
+                                <div class="col-12 mt-2">
+                                    <label class="form-label"><i class="bi bi-smartwatch me-1"></i>Garmin 同步范围</label>
+                                    <div class="d-flex align-items-center gap-3">
+                                        <input type="range" class="form-range flex-grow-1" id="set_garmin_days_slider"
+                                               min="0" max="5" step="1" value="{{ _day_idx }}"
+                                               oninput="updateSyncDaysLabel()">
+                                        <span class="badge bg-primary" id="set_garmin_days_label" style="min-width:70px;">{{ _day_opts[_day_idx] }} 天</span>
+                                    </div>
+                                    <small class="text-muted">每次同步回溯多久的数据。范围越大首次同步越久，也可能触发 Garmin 限流。</small>
+                                </div>
                                 <div class="col-12 mt-2">
                                     <button type="button" class="btn btn-primary w-100" onclick="saveUserSettings()">
                                         <i class="bi bi-check-lg me-2"></i>保存资料
@@ -8344,6 +8357,17 @@
 
     // ========== 用户设置功能 ==========
 
+    // Garmin 同步天数档位（与后端 garmin_service.SYNC_DAY_OPTIONS 保持一致）
+    const SYNC_DAYS_OPTS = [30, 60, 90, 180, 210, 240];
+
+    function updateSyncDaysLabel() {
+        const el = document.getElementById('set_garmin_days_slider');
+        const lb = document.getElementById('set_garmin_days_label');
+        if (!el || !lb) return;
+        const days = SYNC_DAYS_OPTS[Number(el.value)];
+        if (days) lb.textContent = days + ' 天';
+    }
+
     async function saveUserSettings() {
         try {
             const birthDate = document.getElementById('set_birth_date').value;
@@ -8357,7 +8381,8 @@
                 height: parseInt(document.getElementById('set_height').value),
                 weight: parseFloat(document.getElementById('set_weight').value),
                 gender: document.getElementById('set_gender').value,
-                target_weight: parseFloat(document.getElementById('set_target_weight').value) || null
+                target_weight: parseFloat(document.getElementById('set_target_weight').value) || null,
+                garmin_sync_days: SYNC_DAYS_OPTS[Number(document.getElementById('set_garmin_days_slider').value)] || 30
             };
 
             // 验证数据

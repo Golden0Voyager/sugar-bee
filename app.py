@@ -277,7 +277,7 @@ def auto_garmin_sync():
         acquired = _garmin_lock.acquire(blocking=False)
         if acquired:
             try:
-                results = garmin_service.sync_all_bindings(days=30)
+                results = garmin_service.sync_all_bindings()
                 if results:
                     print(f'[Garmin] 定时同步: {results}')
             finally:

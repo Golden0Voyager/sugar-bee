@@ -23,7 +23,6 @@ from garminconnect import (
 from services.gcs_sync import sync_file_from_gcs
 from utils.db import get_raw_conn, put_raw_conn
 from utils.timezone import today as app_today
-
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TOKEN_DIR = os.environ.get('GARMIN_TOKEN_DIR', os.path.join(_PROJECT_ROOT, '.garmin_tokens'))
 TOKEN_GCS_PATH = 'garmin_tokens/garmin_tokens.json'
@@ -236,21 +235,42 @@ def unbind_account(user_id):
     shutil.rmtree(_user_token_dir(user_id), ignore_errors=True)
 
 
-def sync_all_bindings(days=30):
-    """遍历所有绑定用户逐个同步，单个失败不影响其他人。返回 {user_id: 结果}。"""
+# 设置页滑块的可选档位（天），与前端保持一致
+SYNC_DAY_OPTIONS = (30, 60, 90, 180, 210, 240)
+DEFAULT_SYNC_DAYS = 30
+
+
+def get_sync_days(user_id):
+    """读取该用户的同步天数：未设置/非法值回落到 30，越界夹到 30~240 并就近吸附档位。"""
+    try:
+        from user_manager import UserManager  # 延迟导入，避免与 app 初始化循环依赖
+        cfg = UserManager().get_user_config(user_id) or {}
+        raw = cfg.get('garmin_sync_days')
+        days = int(raw) if raw else DEFAULT_SYNC_DAYS
+    except Exception:
+        days = DEFAULT_SYNC_DAYS
+    days = max(SYNC_DAY_OPTIONS[0], min(SYNC_DAY_OPTIONS[-1], days))
+    return min(SYNC_DAY_OPTIONS, key=lambda x: abs(x - days))
+
+
+def sync_all_bindings(days=None):
+    """遍历所有绑定用户逐个同步，单个失败不影响其他人。返回 {user_id: 结果}。
+
+    days 为空时按每个用户自己的设置（默认 30 天）同步。
+    """
     results = {}
     seen = set()
     for binding in list_bindings():
         uid = binding['user_id']
         seen.add(uid)
         try:
-            results[uid] = sync_activities(uid, days=days)
+            results[uid] = sync_activities(uid, days=days or get_sync_days(uid))
         except Exception as e:
             results[uid] = {'error': str(e)}
     legacy_uid = _legacy_user_id()
     if legacy_uid and legacy_uid not in seen and os.environ.get('GARMIN_EMAIL'):
         try:
-            results[legacy_uid] = sync_activities(legacy_uid, days=days)
+            results[legacy_uid] = sync_activities(legacy_uid, days=days or get_sync_days(legacy_uid))
         except Exception as e:
             results[legacy_uid] = {'error': str(e)}
     return results

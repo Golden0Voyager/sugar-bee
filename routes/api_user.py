@@ -332,10 +332,11 @@ def sync_garmin():
     if not garmin_service.has_garmin_binding(current_uid):
         return api_error("当前用户未绑定 Garmin 账号", status_code=403)
     try:
-        result = garmin_service.sync_activities(current_uid, days=30)
+        days = garmin_service.get_sync_days(current_uid)
+        result = garmin_service.sync_activities(current_uid, days=days)
         return api_success(
             data=result,
-            message=f"同步完成：新增 {result['inserted']} 条，跳过 {result['skipped']} 条"
+            message=f"同步完成（近 {days} 天）：新增 {result['inserted']} 条，跳过 {result['skipped']} 条"
         )
     except Exception as e:
         traceback.print_exc()
