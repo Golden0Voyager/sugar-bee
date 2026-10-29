@@ -68,6 +68,15 @@ def test_cgm_recent_range_does_not_silently_jump_to_stale_data():
     assert "该区间暂无连续血糖记录，可点击左上角 ← 查看更早数据" in body
 
 
+def test_bone_trend_uses_one_site_and_requires_distinct_dates():
+    html = INDEX.read_text(encoding="utf-8")
+    assert 'id="boneTrendSite"' in html
+    body = _function_body(html, "renderBoneChart", "saveBoneRecord")
+    assert "trend.filter" in body
+    assert "new Set" in body
+    assert "trend.map(t => t.date)" not in body
+
+
 def test_chart_controls_have_touch_targets_and_visible_focus():
     css = CSS.read_text(encoding="utf-8")
     assert "min-width: 44px" in css
