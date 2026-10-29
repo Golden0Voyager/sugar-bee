@@ -32,7 +32,9 @@ data/
 .env.*.bak
 user_config.json
 user_config.json.legacy.*
-static/avatars/
+static/avatars/*
+!static/avatars/defaults/
+!static/avatars/defaults/*.svg
 user_data/
 .garmin_tokens/
 garmin_cookies.json

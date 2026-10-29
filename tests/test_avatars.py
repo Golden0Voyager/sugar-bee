@@ -1,0 +1,45 @@
+from pathlib import Path
+
+import utils.avatars as avatars
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_catalog_has_nine_people_and_nine_animals_with_existing_svg_files():
+    assert len(avatars.DEFAULT_AVATARS) == 18
+    assert sum(a['group'] == 'person' for a in avatars.DEFAULT_AVATARS) == 9
+    assert sum(a['group'] == 'animal' for a in avatars.DEFAULT_AVATARS) == 9
+    filenames = [a['filename'] for a in avatars.DEFAULT_AVATARS]
+    assert len(set(filenames)) == 18
+    for filename in filenames:
+        path = ROOT / 'static' / 'avatars' / filename
+        assert path.is_file(), filename
+        assert path.read_text(encoding='utf-8').startswith('<svg')
+
+
+def test_default_avatar_is_stable_and_uses_user_id_modulo():
+    assert avatars.default_avatar_for_user(1) == 'defaults/person_02.svg'
+    assert avatars.default_avatar_for_user(19) == 'defaults/person_02.svg'
+    assert avatars.default_avatar_for_user(17) == 'defaults/animal_09.svg'
+    assert avatars.default_avatar_for_user(1) == avatars.default_avatar_for_user(1)
+
+
+def test_default_avatar_whitelist_rejects_paths_and_non_strings():
+    assert avatars.is_default_avatar('defaults/person_01.svg')
+    assert avatars.is_default_avatar('defaults/animal_09.svg')
+    for value in (None, '', 1, 'person_01.svg', '/etc/passwd', '../person_01.svg',
+                  'defaults/../person_01.svg', 'defaults/unknown.svg'):
+        assert not avatars.is_default_avatar(value)
+
+
+def test_svg_color_attributes_are_valid_hex_colors():
+    import xml.etree.ElementTree as ET
+
+    for avatar in avatars.DEFAULT_AVATARS:
+        path = ROOT / 'static' / 'avatars' / avatar['filename']
+        root = ET.fromstring(path.read_text(encoding='utf-8'))
+        for element in root.iter():
+            for attribute in ('fill', 'stroke'):
+                value = element.get(attribute)
+                if value is not None and value != 'none':
+                    assert value.startswith('#'), (path.name, attribute, value)
