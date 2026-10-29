@@ -43,3 +43,34 @@ def test_svg_color_attributes_are_valid_hex_colors():
                 value = element.get(attribute)
                 if value is not None and value != 'none':
                     assert value.startswith('#'), (path.name, attribute, value)
+
+
+def _profile_with_avatar(avatar):
+    return {
+        'id': 1, 'name': '测试', 'display_name': '测试',
+        'birth_year': 1980, 'birth_month': 1, 'birth_day': 1,
+        'height': 170, 'weight': 70, 'gender': 'male', 'avatar': avatar,
+        'default_meals': {}, 'target_ranges': None,
+    }
+
+
+def test_blank_avatar_uses_stable_default_without_overwriting_database_value():
+    from unittest.mock import patch
+
+    from user_manager import UserManager
+
+    um = UserManager(':memory:')
+    with patch.object(um, 'get_user', return_value=_profile_with_avatar(None)):
+        config = um.get_user_config(1)
+    assert config['avatar'] == 'defaults/person_02.svg'
+
+
+def test_uploaded_avatar_is_not_replaced_by_default():
+    from unittest.mock import patch
+
+    from user_manager import UserManager
+
+    um = UserManager(':memory:')
+    with patch.object(um, 'get_user', return_value=_profile_with_avatar('avatar_custom.png')):
+        config = um.get_user_config(1)
+    assert config['avatar'] == 'avatar_custom.png'

@@ -12,6 +12,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 
 import branding
 from core import config
+from utils.avatars import default_avatar_for_user
 from utils.db import ConnectionWrapper, get_raw_conn, put_raw_conn
 from utils.sql_dialect import insert_or_ignore_sql
 from utils.timezone import today as app_today
@@ -281,7 +282,7 @@ class UserManager:
             'weight': user.get('weight') or 75,
             'target_weight': user.get('target_weight'),
             'gender': user.get('gender') or 'male',
-            'avatar': user.get('avatar'),
+            'avatar': user.get('avatar') or default_avatar_for_user(user_id),
             'default_meals': user.get('default_meals') or {},
             'target': user.get('target_ranges') or {
                 'fasting_min': 3.9,
