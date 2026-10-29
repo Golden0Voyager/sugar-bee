@@ -136,6 +136,29 @@ class TestGarminMapActivity:
         assert r['source'] == 'garmin'
         assert r['notes'] == '晨跑'
 
+    def test_swimming_pace_uses_100m(self):
+        """游泳配速按 /100m 计算，不能套用 /km"""
+        from services.garmin_service import _map_activity
+        act = self._make_act(
+            activityType={'typeKey': 'lap_swimming'},
+            averageSpeed=1.0,    # 1 m/s → 100m 用 100s = 01:40
+            maxSpeed=1.5,        # 100/1.5 = 66s → 01:06
+        )
+        r = _map_activity(act, user_id=1)
+        assert r['type'] == '游泳'
+        assert r['pace'] == '01:40/100m'
+        assert r['max_pace'] == '01:06/100m'
+
+    def test_elevation_gain(self):
+        from services.garmin_service import _map_activity
+        r = _map_activity(self._make_act(elevationGain=128.44), user_id=1)
+        assert r['elevation_gain'] == 128.4
+
+    def test_no_elevation_when_absent(self):
+        from services.garmin_service import _map_activity
+        r = _map_activity(self._make_act(), user_id=1)
+        assert r['elevation_gain'] is None
+
     def test_strength_training_fields(self):
         """力量训练应带上 组数/次数/训练负荷/强度分钟/有氧无氧效果"""
         from services.garmin_service import _map_activity

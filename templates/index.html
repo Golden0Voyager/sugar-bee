@@ -418,7 +418,7 @@
                         {% set ex = stats.today_exercise %}
                         {% set is_strength = ex.total_sets %}
                         <div style="font-size: 0.85rem;" class="text-muted">
-                            <div class="fw-semibold text-dark mb-1">{{ ex.type }}{% if ex.total_sets %} · {{ ex.total_sets }}组{% endif %}{% if ex.total_reps %} / {{ ex.total_reps }}次{% endif %}</div>
+                            <div class="fw-semibold text-dark mb-1">{{ ex.type }}{% if ex.notes and ex.notes != ex.type %} · {{ ex.notes }}{% endif %}{% if ex.total_sets %} · {{ ex.total_sets }}组{% endif %}{% if ex.total_reps %} / {{ ex.total_reps }}次{% endif %}</div>
                             {% if ex.distance %}
                             <div>📏 {{ ex.distance }}km · {{ ex.duration or '--' }}</div>
                             {% else %}
@@ -444,6 +444,9 @@
                             {% endif %}
                             {% if ex.intensity_minutes %}
                             <div>⚡ 中高强度 {{ ex.intensity_minutes }}min</div>
+                            {% endif %}
+                            {% if ex.elevation_gain %}
+                            <div>⛰️ 爬升 {{ ex.elevation_gain|round|int }}m</div>
                             {% endif %}
                             {% if ex.cadence %}
                             <div>👟 步频 {{ ex.cadence }}spm</div>
@@ -3247,8 +3250,9 @@
         if (!items.length) { el.innerHTML = '<div class="text-muted small">暂无运动记录</div>'; return; }
         const e = items[idx];
         const isStrength = !!e.total_sets;
+        const rawName = (e.notes && e.notes !== e.type) ? ` · ${e.notes}` : '';
         let h = `<div style="font-size:0.85rem;" class="text-muted">
-            <div class="fw-semibold text-dark mb-1">${e.type}${e.total_sets ? ` · ${e.total_sets}组` : ''}${e.total_reps ? ` / ${e.total_reps}次` : ''}</div>`;
+            <div class="fw-semibold text-dark mb-1">${e.type}${rawName}${e.total_sets ? ` · ${e.total_sets}组` : ''}${e.total_reps ? ` / ${e.total_reps}次` : ''}</div>`;
         if (e.distance) h += `<div>📏 ${e.distance}km · ${e.duration||'--'}</div>`;
         else h += `<div>⏱️ ${e.duration||'--'}</div>`;
         if (e.pace) h += `<div>⏱️ 平均配速 ${e.pace}${String(e.pace).includes('/km') ? '' : '/km'}</div>`;
@@ -3258,6 +3262,7 @@
         if (e.training_load) h += `<div>🏋️ 训练负荷 ${e.training_load}</div>`;
         if (e.te_aerobic !== null && e.te_aerobic !== undefined) h += `<div>🫀 训练效果 有氧 ${e.te_aerobic} / 无氧 ${e.te_anaerobic ?? 0}</div>`;
         if (e.intensity_minutes) h += `<div>⚡ 中高强度 ${e.intensity_minutes}min</div>`;
+        if (e.elevation_gain) h += `<div>⛰️ 爬升 ${Math.round(e.elevation_gain)}m</div>`;
         if (e.cadence) h += `<div>👟 步频 ${e.cadence}spm</div>`;
         if (e.steps && !isStrength) h += `<div>👣 ${e.steps}步</div>`;
         if (e.calories) h += `<div>🔥 ${e.calories}kcal</div>`;

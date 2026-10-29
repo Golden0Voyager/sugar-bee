@@ -327,16 +327,19 @@ def _map_activity(act, user_id):
     distance_km = round(distance_m / 1000, 2) if distance_m else None
 
     avg_speed = act.get('averageSpeed')  # m/s
-    pace_str = None
-    if avg_speed and avg_speed > 0:
-        pace_s_per_km = 1000 / avg_speed
-        pace_str = f"{int(pace_s_per_km // 60):02d}:{int(pace_s_per_km % 60):02d}"
+    # 游泳习惯用 /100m 而不是 /km，否则会出现「30:00/km」这种失真的配速
+    is_swim = 'swimming' in type_key
+    base_m = 100 if is_swim else 1000
+    suffix = '/100m' if is_swim else ''
 
-    max_speed = act.get('maxSpeed')
-    max_pace_str = None
-    if max_speed and max_speed > 0:
-        mp_s = 1000 / max_speed
-        max_pace_str = f"{int(mp_s // 60):02d}:{int(mp_s % 60):02d}"
+    def _fmt_pace(speed):
+        if not speed or speed <= 0:
+            return None
+        sec = base_m / speed
+        return f"{int(sec // 60):02d}:{int(sec % 60):02d}{suffix}"
+
+    pace_str = _fmt_pace(avg_speed)
+    max_pace_str = _fmt_pace(act.get('maxSpeed'))
 
     # 力量/训练类专属指标：Garmin 提供但过去被丢弃
     moderate_min = act.get('moderateIntensityMinutes') or 0
@@ -368,6 +371,7 @@ def _map_activity(act, user_id):
         'intensity_minutes': int(intensity_minutes) if intensity_minutes else None,
         'te_aerobic': round(float(act['aerobicTrainingEffect']), 2) if act.get('aerobicTrainingEffect') is not None else None,
         'te_anaerobic': round(float(act['anaerobicTrainingEffect']), 2) if act.get('anaerobicTrainingEffect') is not None else None,
+        'elevation_gain': round(float(act['elevationGain']), 1) if act.get('elevationGain') else None,
     }
 
 
@@ -413,10 +417,12 @@ def sync_activities(user_id, days=30):
                                  training_load = COALESCE(training_load, ?),
                                  intensity_minutes = COALESCE(intensity_minutes, ?),
                                  te_aerobic = COALESCE(te_aerobic, ?),
-                                 te_anaerobic = COALESCE(te_anaerobic, ?)
+                                 te_anaerobic = COALESCE(te_anaerobic, ?),
+                                 elevation_gain = COALESCE(elevation_gain, ?)
                                WHERE id = ?""",
                             (r['total_sets'], r['total_reps'], r['training_load'],
                              r['intensity_minutes'], r['te_aerobic'], r['te_anaerobic'],
+                             r['elevation_gain'],
                              existing[0] if not hasattr(existing, 'keys') else existing['id'])
                         ).rowcount
                         if filled:
@@ -438,14 +444,15 @@ def sync_activities(user_id, days=30):
                         heart_rate, max_heart_rate, cadence, calories, vo2max, steps, pace,
                         max_pace, external_id, source,
                         total_sets, total_reps, training_load, intensity_minutes,
-                        te_aerobic, te_anaerobic)
-                       VALUES (?, 0, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                        te_aerobic, te_anaerobic, elevation_gain)
+                       VALUES (?, 0, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     (r['user_id'], r['type'], r['notes'], r['timestamp'], r['distance'],
                      r['duration'], r['heart_rate'], r['max_heart_rate'], r['cadence'],
                      r['calories'], r['vo2max'], r['steps'], r['pace'],
                      r['max_pace'], r['external_id'], r['source'],
                      r['total_sets'], r['total_reps'], r['training_load'],
-                     r['intensity_minutes'], r['te_aerobic'], r['te_anaerobic'])
+                     r['intensity_minutes'], r['te_aerobic'], r['te_anaerobic'],
+                     r['elevation_gain'])
                 )
                 inserted += 1
             conn.commit()

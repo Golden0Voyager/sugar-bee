@@ -652,7 +652,8 @@ def _init_db_postgres():
                 training_load {double_type()},
                 intensity_minutes INTEGER,
                 te_aerobic {double_type()},
-                te_anaerobic {double_type()}
+                te_anaerobic {double_type()},
+                elevation_gain {double_type()}
             )
         ''')
 
@@ -793,6 +794,7 @@ def _init_db_postgres():
             ("intensity_minutes", "INTEGER"),
             ("te_aerobic", "DOUBLE PRECISION"),
             ("te_anaerobic", "DOUBLE PRECISION"),
+            ("elevation_gain", "DOUBLE PRECISION"),
         ]:
             c.execute(f"ALTER TABLE records ADD COLUMN IF NOT EXISTS {col_name} {col_type}")
 
@@ -969,6 +971,7 @@ def _init_db_sqlite():
             ("intensity_minutes", "INTEGER"),
             ("te_aerobic", "REAL"),
             ("te_anaerobic", "REAL"),
+            ("elevation_gain", "REAL"),
         ]
 
         for col_name, col_type in mig_cols:
