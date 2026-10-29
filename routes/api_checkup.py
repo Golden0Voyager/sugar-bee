@@ -4,6 +4,7 @@
 → ``/api/checkup/save`` 落库。两步分开是为了让用户能纠正 AI 抄错的数值。
 """
 import traceback
+from contextlib import suppress
 
 from flask import Blueprint, request
 
@@ -254,12 +255,12 @@ def merge_reports():
         c.execute(f"UPDATE checkup_items SET report_id = ? WHERE report_id IN ({placeholders})",
                   (merged_id, *report_ids))
 
-        # 项目+数值+单位完全相同的行只保留一条
+        # 项目+数值+单位+参考范围完全相同的行只保留一条（参考范围不同不算重复）
         c.execute("""
             DELETE FROM checkup_items
             WHERE report_id = ? AND id NOT IN (
                 SELECT MIN(id) FROM checkup_items
-                WHERE report_id = ? GROUP BY category, name, value, unit
+                WHERE report_id = ? GROUP BY category, name, value, unit, ref_range
             )
         """, (merged_id, merged_id))
 
@@ -276,5 +277,8 @@ def merge_reports():
 
         return api_success(data=_report_detail(db, user_id, merged_id), message='已合并为一份报告')
     except Exception as e:
+        # 多步写操作中途失败必须回滚，避免留下半合并状态（孤儿报告/悬空指标）
+        with suppress(Exception):
+            get_db().rollback()
         traceback.print_exc()
         return api_error(str(e), status_code=500)
