@@ -13,7 +13,8 @@ class TestLinkPredictionToRealRecord:
 
     def _make_cursor(self, prediction_row=None):
         mock_c = MagicMock()
-        mock_c.fetchone.return_value = prediction_row
+        # 链接逻辑改用 fetchall 一次认领全部同槽预测
+        mock_c.fetchall.return_value = [prediction_row] if prediction_row else []
         mock_db = MagicMock()
         mock_db.cursor.return_value = mock_c
         return mock_db, mock_c
@@ -104,6 +105,37 @@ class TestLinkPredictionToRealRecord:
         mock_db = MagicMock()
         mock_db.cursor.side_effect = Exception("DB error")
         result = link_prediction_to_real_record(mock_db, 1, 1, '2024-01-01', '空腹', 6.0)
+        assert result is None
+
+    def test_links_all_predictions_in_slot(self):
+        """同一槽位堆多条预测时，一条实测要全部认领，不能只认领第一条。"""
+        from services.prediction_service import link_prediction_to_real_record
+        mock_c = MagicMock()
+        mock_c.fetchall.return_value = [(10, 7.3), (24, 7.5), (31, 7.6)]
+        mock_db = MagicMock()
+        mock_db.cursor.return_value = mock_c
+        result = link_prediction_to_real_record(
+            mock_db, real_record_id=5, user_id=1,
+            record_date='2024-06-01', record_type='午餐后2小时',
+            real_value=8.0, record_timestamp='2024-06-01 14:30:00',
+        )
+        assert result is not None
+        assert result['predicted_value'] == 7.3  # 返回值用第一条
+        assert abs(result['error'] - 0.7) < 0.01
+        # 三条预测各执行一次 UPDATE（带各自的误差）
+        updates = [call for call in mock_c.execute.call_args_list
+                   if 'UPDATE records SET verified_by_real_id' in str(call)]
+        assert len(updates) == 3
+
+    def test_cgm_record_type_skips_link(self):
+        """CGM 是设备连续回传，不是手动实测——预测不能认领它。"""
+        from services.prediction_service import link_prediction_to_real_record
+        mock_db, mock_c = self._make_cursor(prediction_row=(10, 7.3))
+        result = link_prediction_to_real_record(
+            mock_db, real_record_id=5, user_id=1,
+            record_date='2024-06-01', record_type='CGM',
+            real_value=7.3, record_timestamp='2024-06-01 14:30:00',
+        )
         assert result is None
 
 

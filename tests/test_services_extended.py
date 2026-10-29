@@ -23,7 +23,8 @@ class TestLinkPredictionEdgeCases:
 
     def _make_cursor(self, prediction_row=None):
         mock_c = MagicMock()
-        mock_c.fetchone.return_value = prediction_row
+        # 链接逻辑改用 fetchall 一次认领全部同槽预测
+        mock_c.fetchall.return_value = [prediction_row] if prediction_row else []
         mock_db = MagicMock()
         mock_db.cursor.return_value = mock_c
         return mock_db, mock_c

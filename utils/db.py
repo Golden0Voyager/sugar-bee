@@ -550,6 +550,49 @@ def _apply_prediction_cleanup(c):
         print(f'[migrate] 已清理非血糖用户的 AI 预测记录 {removed} 条')
 
 
+MIGRATION_LINK_STALE_PREDICTIONS = 'link_stale_predictions_v1'
+
+
+def _apply_stale_prediction_link(c):
+    """给「预测值与实测值完全相同」的历史预测补标已验证（只执行一次）。
+
+    历史遗留：预测验证机制上线前的旧预测从没被标记，实测录入后界面上
+    同一天同一时间会并排显示两条一样的数值。前端会把「已验证预测」折叠，
+    所以补标 verified_by_real_id 后这些重复条目就不再显示。
+    只 UPDATE is_predicted = 1 的行，实测记录一条不动。
+    """
+    c.execute('CREATE TABLE IF NOT EXISTS app_migrations (name TEXT PRIMARY KEY, applied_at TEXT)')
+    if c.execute(
+        f"SELECT 1 FROM app_migrations WHERE name = '{MIGRATION_LINK_STALE_PREDICTIONS}'"
+    ).fetchone():
+        return
+
+    c.execute("""
+        UPDATE records SET
+            verified_by_real_id = (
+                SELECT MIN(r.id) FROM records r
+                WHERE r.user_id = records.user_id
+                  AND r.timestamp = records.timestamp
+                  AND r.value = records.value
+                  AND (r.is_predicted = 0 OR r.is_predicted IS NULL)
+            ),
+            prediction_error = 0
+        WHERE is_predicted = 1 AND verified_by_real_id IS NULL
+          AND EXISTS (
+              SELECT 1 FROM records r
+              WHERE r.user_id = records.user_id
+                AND r.timestamp = records.timestamp
+                AND r.value = records.value
+                AND (r.is_predicted = 0 OR r.is_predicted IS NULL)
+          )
+    """)
+
+    c.execute(
+        f"INSERT INTO app_migrations (name, applied_at) VALUES "
+        f"('{MIGRATION_LINK_STALE_PREDICTIONS}', CURRENT_TIMESTAMP)"
+    )
+
+
 def _init_db_postgres():
     """PostgreSQL schema 初始化（一次性创建完整表结构）。"""
     import psycopg2
@@ -831,6 +874,8 @@ def _init_db_postgres():
         _apply_module_backfill(c)
         # 一次性数据迁移：清理非血糖用户被 AI 塞进来的假血糖记录
         _apply_prediction_cleanup(c)
+        # 一次性数据迁移：给「预测与实测同值」的历史预测补标已验证，消除重复显示
+        _apply_stale_prediction_link(c)
 
         conn.commit()
     except Exception as e:
@@ -1095,6 +1140,8 @@ def _init_db_sqlite():
         _apply_module_backfill(c)
         # 一次性数据迁移：清理非血糖用户被 AI 塞进来的假血糖记录
         _apply_prediction_cleanup(c)
+        # 一次性数据迁移：给「预测与实测同值」的历史预测补标已验证，消除重复显示
+        _apply_stale_prediction_link(c)
 
         conn.commit()
     except Exception as e:

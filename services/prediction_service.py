@@ -19,6 +19,11 @@ def link_prediction_to_real_record(db, real_record_id, user_id, record_date, rec
         print(f"WARNING: Invalid glucose value {real_value}, skipping prediction link")
         return None
 
+    # CGM 是连续监测设备回传的数据，不是用户手动实测——不能让预测认领它，
+    # 否则预测准确率统计会被 CGM 污染（曾出现预测关联到 CGM 记录的错配）
+    if record_type and 'CGM' in record_type:
+        return None
+
     try:
         c = db.cursor()
         record_hour = None
@@ -66,7 +71,6 @@ def link_prediction_to_real_record(db, real_record_id, user_id, record_date, rec
                     WHERE user_id = ? AND {} = ? AND ({})
                     AND is_predicted = 1 AND verified_by_real_id IS NULL AND value > 0 AND systolic_pressure IS NULL
                     ORDER BY ABS({} - {})
-                    LIMIT 1
                 """.format(date_sql('timestamp'), type_condition, epoch_sql('timestamp'), epoch_sql('?')),
                     (user_id, record_date) + (f'%{record_type}%', record_timestamp) if '?' in type_condition
                     else (user_id, record_date, record_timestamp))
@@ -79,22 +83,25 @@ def link_prediction_to_real_record(db, real_record_id, user_id, record_date, rec
                     WHERE user_id = ? AND {date_sql('timestamp')} = ? AND ({type_condition})
                     AND is_predicted = 1 AND verified_by_real_id IS NULL AND value > 0 AND systolic_pressure IS NULL
                     ORDER BY timestamp ASC
-                    LIMIT 1
                 """, (user_id, record_date, f'%{record_type}%') if '?' in type_condition
                     else (user_id, record_date))
             except Exception:
                 return None
-        prediction = c.fetchone()
-        if prediction:
-            pred_id = prediction[0]
-            pred_value = prediction[1]
+        # 同一槽位可能堆了多条预测（历史遗留），一条实测要全部认领，
+        # 否则没被认领的预测仍会和实测并排显示成重复
+        predictions = c.fetchall()
+        if not predictions:
+            return None
+        first_pred = predictions[0]
+        for pred in predictions:
+            pred_id = pred[0]
+            pred_value = pred[1]
             error = real_value - pred_value
             c.execute("""
                 UPDATE records SET verified_by_real_id = ?, prediction_error = ?
                 WHERE id = ?
             """, (real_record_id, error, pred_id))
-            return {'predicted_value': pred_value, 'error': error}
-        return None
+        return {'predicted_value': first_pred[1], 'error': real_value - first_pred[1]}
     except Exception as e:
         print(f"ERROR in link_prediction_to_real_record: {e}")
         return None
@@ -383,10 +390,10 @@ def predict_post_exercise_glucose(db, user_id=1, target_date=None, force_update=
             result = json.loads(match.group(0))
             pred_v = result.get('predicted_value')
             if settings.is_valid_prediction(pred_v, 'post_exercise'):
-                if existing:
-                    c.execute("UPDATE records SET value = ?, notes = ? WHERE id = ?", (pred_v, f"AI预测: {result.get('reasoning')}", existing[0]))
-                else:
-                    c.execute("INSERT INTO records (user_id, value, unit, type, notes, timestamp, is_predicted) VALUES (?, ?, 'mmol/L', '运动后', ?, ?, 1)", (user_id, pred_v, f"AI预测: {result.get('reasoning')}", f"{target_date} 08:45:00"))
+                # 先删该日全部旧预测再插入：历史版本可能堆过多条同槽预测，
+                # 只 UPDATE 第一条的话其余永远晾在库里重复显示
+                c.execute("DELETE FROM records WHERE user_id = ? AND DATE(timestamp) = ? AND type = '运动后' AND is_predicted = 1", (user_id, target_date))
+                c.execute("INSERT INTO records (user_id, value, unit, type, notes, timestamp, is_predicted) VALUES (?, ?, 'mmol/L', '运动后', ?, ?, 1)", (user_id, pred_v, f"AI预测: {result.get('reasoning')}", f"{target_date} 08:45:00"))
                 db.commit()
                 return pred_v
     except Exception as e:

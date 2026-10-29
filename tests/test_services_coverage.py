@@ -182,7 +182,7 @@ class TestPredictionLinkExceptions:
         """L25-26: record_timestamp 有空格但时间部分无法解析"""
         from services.prediction_service import link_prediction_to_real_record
         mock_c = MagicMock()
-        mock_c.fetchone.return_value = (10, 7.0)  # found prediction
+        mock_c.fetchall.return_value = [(10, 7.0)]  # found prediction
         mock_db = MagicMock()
         mock_db.cursor.return_value = mock_c
         result = link_prediction_to_real_record(
@@ -196,7 +196,7 @@ class TestPredictionLinkExceptions:
         """L49: '餐后' type 且 record_hour=None（无 record_timestamp）"""
         from services.prediction_service import link_prediction_to_real_record
         mock_c = MagicMock()
-        mock_c.fetchone.return_value = (10, 7.0)
+        mock_c.fetchall.return_value = [(10, 7.0)]
         mock_db = MagicMock()
         mock_db.cursor.return_value = mock_c
         result = link_prediction_to_real_record(
@@ -210,7 +210,7 @@ class TestPredictionLinkExceptions:
         """L152-153: '晚餐' in record_type -> has_dinner = True (via type_condition)"""
         from services.prediction_service import link_prediction_to_real_record
         mock_c = MagicMock()
-        mock_c.fetchone.return_value = None  # no prediction found
+        mock_c.fetchall.return_value = []  # no prediction found
         mock_db = MagicMock()
         mock_db.cursor.return_value = mock_c
         result = link_prediction_to_real_record(

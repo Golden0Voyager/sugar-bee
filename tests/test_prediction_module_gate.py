@@ -322,3 +322,178 @@ class TestFrontendGating:
 
     def test_base_modules_exclude_glucose(self):
         assert 'glucose' not in branding.BASE_MODULES
+
+
+class TestStalePredictionLink:
+    """「预测与实测同值」的历史预测补标已验证的一次性迁移。
+
+    背景：预测验证机制上线前的旧预测从没被标记 verified_by_real_id，
+    实测录入后同一天同一时间并排显示两条一样的数值。补标后前端折叠已验证预测，
+    重复条目不再显示。只 UPDATE is_predicted = 1 的行，实测记录一条不动。
+    """
+
+    @staticmethod
+    def _run(db_path, monkeypatch):
+        import core.config as config
+        import utils.db as db_mod
+
+        monkeypatch.setenv('SUGAR_BEE_DB_PATH', db_path)
+        monkeypatch.setattr(config, 'DB_TYPE', 'sqlite')
+        conn = sqlite3.connect(db_path)
+        conn.execute('DELETE FROM app_migrations')  # 模拟「尚未跑过」
+        conn.commit()
+        db_mod._apply_stale_prediction_link(conn.cursor())
+        conn.commit()
+        conn.close()
+
+    @staticmethod
+    def _link_state(db_path, record_id):
+        conn = sqlite3.connect(db_path)
+        row = conn.execute(
+            'SELECT is_predicted, verified_by_real_id, prediction_error FROM records WHERE id = ?',
+            (record_id,),
+        ).fetchone()
+        conn.close()
+        return row
+
+    def test_identical_prediction_gets_verified(self, isolate_db, monkeypatch):
+        """预测与实测同人同时同值 → 预测补标 verified，实测不受影响。"""
+        from core.config import get_db_name
+
+        db_path = get_db_name()
+        conn = sqlite3.connect(db_path)
+        # 实测记录
+        conn.execute(
+            "INSERT INTO records (user_id, value, unit, type, timestamp, is_predicted) "
+            "VALUES (40, 6.9, 'mmol/L', '空腹', '2026-06-20 07:15:00', 0)"
+        )
+        real_id = conn.execute("SELECT MAX(id) FROM records").fetchone()[0]
+        # 同人同时同值的预测（历史遗留未标记）
+        conn.execute(
+            "INSERT INTO records (user_id, value, unit, type, timestamp, is_predicted) "
+            "VALUES (40, 6.9, 'mmol/L', '空腹', '2026-06-20 07:15:00', 1)"
+        )
+        pred_id = conn.execute("SELECT MAX(id) FROM records").fetchone()[0]
+        conn.commit()
+        conn.close()
+
+        self._run(db_path, monkeypatch)
+
+        pred = self._link_state(db_path, pred_id)
+        assert pred[1] == real_id, '预测应补标指向实测记录'
+        assert pred[2] == 0, '同值预测误差为 0'
+
+    def test_different_value_prediction_untouched(self, isolate_db, monkeypatch):
+        """预测值与实测不同 → 不算重复，不动。"""
+        from core.config import get_db_name
+
+        db_path = get_db_name()
+        conn = sqlite3.connect(db_path)
+        conn.execute(
+            "INSERT INTO records (user_id, value, unit, type, timestamp, is_predicted) "
+            "VALUES (41, 6.5, 'mmol/L', '空腹', '2026-06-21 07:15:00', 1)"
+        )
+        pred_id = conn.execute("SELECT MAX(id) FROM records").fetchone()[0]
+        conn.execute(
+            "INSERT INTO records (user_id, value, unit, type, timestamp, is_predicted) "
+            "VALUES (41, 7.1, 'mmol/L', '空腹', '2026-06-21 07:15:00', 0)"
+        )
+        conn.commit()
+        conn.close()
+
+        self._run(db_path, monkeypatch)
+
+        pred = self._link_state(db_path, pred_id)
+        assert pred[1] is None, '不同值的预测是正常预测，不应被标记'
+
+    def test_already_verified_prediction_preserved(self, isolate_db, monkeypatch):
+        """已验证的预测 verified_by_real_id 不能被改写。"""
+        from core.config import get_db_name
+
+        db_path = get_db_name()
+        conn = sqlite3.connect(db_path)
+        conn.execute(
+            "INSERT INTO records (user_id, value, unit, type, timestamp, is_predicted) "
+            "VALUES (42, 8.0, 'mmol/L', '早餐后2小时', '2026-06-22 11:00:00', 0)"
+        )
+        conn.execute(
+            "INSERT INTO records (user_id, value, unit, type, timestamp, is_predicted, "
+            "verified_by_real_id, prediction_error) VALUES (42, 8.0, 'mmol/L', '早餐后2小时', "
+            "'2026-06-22 11:00:00', 1, 99999, -0.3)"
+        )
+        pred_id = conn.execute("SELECT MAX(id) FROM records").fetchone()[0]
+        conn.commit()
+        conn.close()
+
+        self._run(db_path, monkeypatch)
+
+        pred = self._link_state(db_path, pred_id)
+        assert pred[1] == 99999, '已验证预测的关联不能被改写'
+        assert pred[2] == -0.3
+
+    def test_real_record_never_modified(self, isolate_db, monkeypatch):
+        """实测记录（is_predicted=0）无论如何都不会被迁移动 verified 字段。"""
+        from core.config import get_db_name
+
+        db_path = get_db_name()
+        conn = sqlite3.connect(db_path)
+        conn.execute(
+            "INSERT INTO records (user_id, value, unit, type, timestamp, is_predicted) "
+            "VALUES (43, 6.9, 'mmol/L', '空腹', '2026-06-23 07:15:00', 0)"
+        )
+        real_id = conn.execute("SELECT MAX(id) FROM records").fetchone()[0]
+        conn.commit()
+        conn.close()
+
+        self._run(db_path, monkeypatch)
+
+        real = self._link_state(db_path, real_id)
+        assert real[0] == 0
+        assert real[1] is None
+
+    def test_runs_only_once(self, isolate_db, monkeypatch):
+        """标记写入后重跑直接返回：之后新产生的同值预测不再被自动标记。"""
+        from core.config import get_db_name
+
+        db_path = get_db_name()
+        conn = sqlite3.connect(db_path)
+        conn.execute(
+            "INSERT INTO records (user_id, value, unit, type, timestamp, is_predicted) "
+            "VALUES (44, 6.9, 'mmol/L', '空腹', '2026-06-24 07:15:00', 1)"
+        )
+        pred_id = conn.execute("SELECT MAX(id) FROM records").fetchone()[0]
+        conn.execute(
+            "INSERT INTO records (user_id, value, unit, type, timestamp, is_predicted) "
+            "VALUES (44, 6.9, 'mmol/L', '空腹', '2026-06-24 07:15:00', 0)"
+        )
+        conn.commit()
+        conn.close()
+
+        self._run(db_path, monkeypatch)
+
+        # 之后又出现一条同值预测（比如老版本应用写入的）
+        conn = sqlite3.connect(db_path)
+        conn.execute(
+            "INSERT INTO records (user_id, value, unit, type, timestamp, is_predicted) "
+            "VALUES (44, 6.9, 'mmol/L', '空腹', '2026-06-25 07:15:00', 1)"
+        )
+        conn.execute(
+            "INSERT INTO records (user_id, value, unit, type, timestamp, is_predicted) "
+            "VALUES (44, 6.9, 'mmol/L', '空腹', '2026-06-25 07:15:00', 0)"
+        )
+        new_pred = conn.execute("SELECT MAX(id) FROM records WHERE is_predicted = 1").fetchone()[0]
+        conn.commit()
+        conn.close()
+
+        # 再跑一次（标记已存在，应直接返回）
+        import utils.db as db_mod
+
+        conn = sqlite3.connect(db_path)
+        db_mod._apply_stale_prediction_link(conn.cursor())
+        conn.commit()
+        conn.close()
+
+        new = self._link_state(db_path, new_pred)
+        assert new[1] is None, '迁移只跑一次，新数据不被追溯处理'
+        old = self._link_state(db_path, pred_id)
+        assert old[1] is not None, '第一次跑时已标记的应保持'
