@@ -158,7 +158,7 @@ class TestUserRoutes:
         monkeypatch.delenv('GARMIN_USER_ID', raising=False)
         monkeypatch.delenv('GARMIN_EMAIL', raising=False)
         resp = client_authenticated.post('/sync_garmin')
-        assert resp.status_code == 400
+        assert resp.status_code == 403
 
 
 class TestMedsRoutes:

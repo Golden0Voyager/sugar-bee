@@ -287,6 +287,7 @@ class TestUserSyncGarmin:
         current_uid = self._get_current_user_id(client_authenticated)
 
         with patch('routes.api_user.os.environ.get') as mock_get, \
+             patch('services.garmin_service.has_garmin_binding', return_value=True), \
              patch('services.garmin_service.sync_activities') as mock_sync:
             # 动态匹配当前用户的 ID
             mock_get.side_effect = lambda k, d=None: {
@@ -307,6 +308,7 @@ class TestUserSyncGarmin:
         current_uid = self._get_current_user_id(client_authenticated)
 
         with patch('routes.api_user.os.environ.get') as mock_get, \
+             patch('services.garmin_service.has_garmin_binding', return_value=True), \
              patch('services.garmin_service.sync_activities') as mock_sync:
             mock_get.side_effect = lambda k, d=None: {
                 'GARMIN_USER_ID': str(current_uid),

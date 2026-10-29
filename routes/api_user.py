@@ -326,16 +326,13 @@ def unbind_provider():
 @bp_user.route('/sync_garmin', methods=['POST'])
 @login_required
 def sync_garmin():
-    """手动触发 Garmin 同步 — 仅允许绑定 Garmin 的用户调用"""
-    target_uid = int(os.environ.get('GARMIN_USER_ID', 0) or 0)
+    """手动触发 Garmin 同步 — 仅允许已绑定 Garmin 的用户调用，数据只进本人账号"""
     current_uid = user_manager.get_current_user_id()
-    if not target_uid or not os.environ.get('GARMIN_EMAIL'):
-        return api_error("服务端未配置 Garmin 集成", status_code=400)
-    if current_uid != target_uid:
+    from services import garmin_service
+    if not garmin_service.has_garmin_binding(current_uid):
         return api_error("当前用户未绑定 Garmin 账号", status_code=403)
     try:
-        from services.garmin_service import sync_activities
-        result = sync_activities(current_uid, days=30)
+        result = garmin_service.sync_activities(current_uid, days=30)
         return api_success(
             data=result,
             message=f"同步完成：新增 {result['inserted']} 条，跳过 {result['skipped']} 条"
@@ -343,3 +340,54 @@ def sync_garmin():
     except Exception as e:
         traceback.print_exc()
         return api_error(f"Garmin 同步失败：{e}", status_code=500)
+
+
+@bp_user.route('/api/garmin/status', methods=['GET'])
+@login_required
+def garmin_status():
+    """当前用户的 Garmin 绑定状态（只返回本人信息）。"""
+    from services import garmin_service
+    uid = user_manager.get_current_user_id()
+    account = garmin_service._account_for(uid)
+    return api_success(data={
+        'bound': bool(account),
+        'email': account['email'] if account else '',
+        'is_cn': account['is_cn'] if account else False,
+    })
+
+
+@bp_user.route('/api/garmin/bind', methods=['POST'])
+@login_required
+def garmin_bind():
+    """绑定当前用户的 Garmin 账号：服务端登录成功后只保存 token，不存密码。"""
+    from services import garmin_service
+    data = request.get_json(silent=True) or {}
+    email = str(data.get('email') or '').strip()
+    password = str(data.get('password') or '')
+    is_cn = bool(data.get('is_cn'))
+    if not email or not password:
+        return api_error('请填写 Garmin 账号和密码', status_code=400, error_type='validation_error')
+    if len(email) > 120 or len(password) > 120:
+        return api_error('账号或密码过长', status_code=400, error_type='validation_error')
+    uid = user_manager.get_current_user_id()
+    try:
+        result = garmin_service.bind_account(uid, email, password, is_cn)
+        return api_success(data=result, message='Garmin 绑定成功')
+    except RuntimeError as e:
+        return api_error(str(e), status_code=400, error_type='garmin_auth')
+    except Exception as e:
+        traceback.print_exc()
+        return api_error(f'Garmin 绑定失败：{e}', status_code=500)
+
+
+@bp_user.route('/api/garmin/unbind', methods=['POST'])
+@login_required
+def garmin_unbind():
+    """解绑当前用户的 Garmin 账号，删除本人 token，不影响其他用户。"""
+    from services import garmin_service
+    uid = user_manager.get_current_user_id()
+    try:
+        garmin_service.unbind_account(uid)
+    except RuntimeError as e:
+        return api_error(str(e), status_code=409, error_type='garmin_managed')
+    return api_success(message='已解绑 Garmin 账号')

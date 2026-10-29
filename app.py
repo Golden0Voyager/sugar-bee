@@ -23,7 +23,6 @@ from services import (  # noqa: E402
 )
 from services.gcs_sync import (  # noqa: E402
     backup_db_to_gcs,
-    sync_file_from_gcs,
     sync_file_to_gcs,
 )
 from user_manager import UserManager  # noqa: E402
@@ -181,9 +180,9 @@ def index():
         # 3.1 应用品牌个性化（应用名/图标/标语/使用场景），未自定义时回落默认品牌
         brand = branding.resolve_branding(user)
 
-        # 4. 是否为绑定 Garmin 的用户（控制运动卡片上的"同步 Garmin"按钮显示）
-        garmin_uid = int(os.environ.get('GARMIN_USER_ID', 0) or 0)
-        is_garmin_user = bool(garmin_uid and os.environ.get('GARMIN_EMAIL') and current_user_id == garmin_uid)
+        # 4. 是否已绑定 Garmin（控制运动卡片上的"同步 Garmin"按钮显示）
+        from services.garmin_service import has_garmin_binding
+        is_garmin_user = has_garmin_binding(current_user_id)
 
         return render_template('index.html', records=records, stats=stats, timeline=sorted_dates,
                                enabled_modules=enabled_modules, is_garmin_user=is_garmin_user,
@@ -272,30 +271,19 @@ _garmin_lock = threading.Lock()
 def auto_garmin_sync():
     global _garmin_sync_timer
     try:
-        user_id = int(os.environ.get('GARMIN_USER_ID', 0) or 0)
-        if user_id and os.environ.get('GARMIN_EMAIL'):
-            _app_dir = os.path.dirname(os.path.abspath(__file__))
-            token_dir = os.environ.get('GARMIN_TOKEN_DIR', os.path.join(_app_dir, '.garmin_tokens'))
-            token_file = os.path.join(token_dir, 'garmin_tokens.json')
-            if not os.path.isfile(token_file):
-                # Cloud Run 实例重启后本地 token 可能丢失，先尝试从 GCS 恢复
-                try:
-                    sync_file_from_gcs('garmin_tokens/garmin_tokens.json', token_file)
-                except Exception as e:
-                    print(f'[Garmin] 自动同步时 GCS token 恢复失败: {e}')
-            if not os.path.isfile(token_file):
-                print('[Garmin] 未找到持久化 token，跳过自动同步；请先手动触发一次以完成首次登录')
-            else:
-                acquired = _garmin_lock.acquire(blocking=False)
-                if acquired:
-                    try:
-                        from services.garmin_service import sync_activities
-                        result = sync_activities(user_id, days=30)
-                        print(f'[Garmin] 定时同步: {result}')
-                    finally:
-                        _garmin_lock.release()
-                else:
-                    print('[Garmin] 上次同步未完成，跳过本轮')
+        from services import garmin_service
+        # 老配置（GARMIN_USER_ID + 全局 token）先登记成绑定，之后按绑定逐用户同步
+        garmin_service.ensure_legacy_binding()
+        acquired = _garmin_lock.acquire(blocking=False)
+        if acquired:
+            try:
+                results = garmin_service.sync_all_bindings(days=30)
+                if results:
+                    print(f'[Garmin] 定时同步: {results}')
+            finally:
+                _garmin_lock.release()
+        else:
+            print('[Garmin] 上次同步未完成，跳过本轮')
     except Exception as e:
         print(f'[Garmin] 同步出错: {e}')
     finally:
@@ -313,8 +301,8 @@ def start_background_tasks():
     或在开发模式（python app.py）下直接调用。
     """
     auto_backup()
-    if os.environ.get('GARMIN_EMAIL'):
-        auto_garmin_sync()
+    # 绑定关系存数据库，不能再用 GARMIN_EMAIL 判断是否启动；无绑定时本轮为空
+    auto_garmin_sync()
     # Cloud Run / 生产环境启用更频繁的 GCS 备份
     if os.environ.get('GCS_BUCKET_NAME'):
         periodic_gcs_backup()

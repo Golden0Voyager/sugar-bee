@@ -2032,18 +2032,36 @@
                                 <button class="btn btn-outline-secondary" onclick="document.getElementById('importCsvInput').click()">导入</button>
                                 <input type="file" id="importCsvInput" accept=".csv,.xlsx,.xls" style="display:none" onchange="importCsvFile(this)">
                             </div>
-                            {% if is_garmin_user %}
-                            <div class="d-flex align-items-center justify-content-between p-3 bg-light rounded-3">
-                                <div class="d-flex align-items-center gap-3">
+                            <div class="p-3 bg-light rounded-3" id="garminBindingCard">
+                                <div class="d-flex align-items-center gap-3 mb-2">
                                     <i class="bi bi-watch text-secondary fs-4"></i>
                                     <div>
                                         <div class="fw-medium">Garmin 运动同步</div>
-                                        <div class="text-muted small">从 Garmin Connect 同步运动数据</div>
+                                        <div class="text-muted small" id="garminBindStatus">每个人绑定自己的 Garmin 账号，运动数据只同步到自己名下</div>
                                     </div>
                                 </div>
-                                <button class="btn btn-primary" onclick="syncGarmin()">同步</button>
+                                <div id="garminBoundActions" class="d-none d-flex gap-2">
+                                    <button class="btn btn-primary btn-sm" onclick="syncGarmin()">立即同步</button>
+                                    <button class="btn btn-outline-danger btn-sm" onclick="unbindGarmin()">解绑</button>
+                                </div>
+                                <div id="garminBindForm" class="d-none">
+                                    <div class="row g-2">
+                                        <div class="col-12">
+                                            <input type="email" id="garminEmail" class="form-control form-control-sm" placeholder="Garmin 登录邮箱" autocomplete="off">
+                                        </div>
+                                        <div class="col-12">
+                                            <input type="password" id="garminPassword" class="form-control form-control-sm" placeholder="Garmin 密码（只用于登录，不会保存）" autocomplete="new-password">
+                                        </div>
+                                        <div class="col-12 form-check ms-2">
+                                            <input class="form-check-input" type="checkbox" id="garminIsCn">
+                                            <label class="form-check-label small text-muted" for="garminIsCn">中国区账号（garmin.cn）</label>
+                                        </div>
+                                        <div class="col-12">
+                                            <button class="btn btn-outline-primary btn-sm w-100" id="garminBindBtn" onclick="bindGarmin()">绑定 Garmin 账号</button>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
-                            {% endif %}
                             <!-- Apple Health 绑定（未绑定） -->
                             <div class="d-flex align-items-center justify-content-between p-3 bg-light rounded-3" id="ios-device-unbound-card">
                                 <div class="d-flex align-items-center gap-3">
@@ -10162,7 +10180,68 @@
         loadAccountBindings();
         loadEnabledModules();
         initBrandingSettings();
+        loadGarminStatus();
     });
+
+    // ── Garmin 绑定：每个人绑自己的账号，数据各进各的 ──
+    async function loadGarminStatus() {
+        const statusEl = document.getElementById('garminBindStatus');
+        const form = document.getElementById('garminBindForm');
+        const actions = document.getElementById('garminBoundActions');
+        if (!statusEl || !form || !actions) return;
+        try {
+            const res = await apiCall('/api/garmin/status', { method: 'GET' }, { showLoading: false });
+            const bound = res && res.data && res.data.bound;
+            statusEl.textContent = bound
+                ? `已绑定 ${res.data.email}，运动数据只同步到当前账号`
+                : '每个人绑定自己的 Garmin 账号，运动数据只同步到自己名下';
+            form.classList.toggle('d-none', !!bound);
+            actions.classList.toggle('d-none', !bound);
+            if (!bound) {
+                document.getElementById('garminPassword').value = '';
+            }
+        } catch (e) {
+            statusEl.textContent = '绑定状态加载失败，请稍后重试';
+        }
+    }
+
+    async function bindGarmin() {
+        const email = document.getElementById('garminEmail').value.trim();
+        const password = document.getElementById('garminPassword').value;
+        const is_cn = document.getElementById('garminIsCn').checked;
+        if (!email || !password) {
+            showToast('请填写 Garmin 账号和密码', 'warning');
+            return;
+        }
+        const btn = document.getElementById('garminBindBtn');
+        btn.disabled = true;
+        btn.textContent = '正在登录 Garmin...';
+        try {
+            const res = await apiCall('/api/garmin/bind', {
+                method: 'POST',
+                body: JSON.stringify({ email, password, is_cn })
+            }, { showLoading: false });
+            showToast(res.message || '绑定成功', 'success');
+            document.getElementById('garminPassword').value = '';
+            await loadGarminStatus();
+        } catch (e) {
+            showToast(e.message || '绑定失败', 'danger');
+        } finally {
+            btn.disabled = false;
+            btn.textContent = '绑定 Garmin 账号';
+        }
+    }
+
+    async function unbindGarmin() {
+        if (!confirm('解绑后不再同步这个 Garmin 账号的运动数据，已同步的记录会保留。确定解绑吗？')) return;
+        try {
+            await apiCall('/api/garmin/unbind', { method: 'POST' }, { showLoading: false });
+            showToast('已解绑 Garmin 账号', 'success');
+            await loadGarminStatus();
+        } catch (e) {
+            showToast(e.message || '解绑失败', 'danger');
+        }
+    }
 
     // ========== 功能模块开关 ==========
     const MODULE_LABELS = {

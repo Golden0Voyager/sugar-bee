@@ -297,7 +297,8 @@ class TestAutoGarminSync:
 class TestStartBackgroundTasks:
     """start_background_tasks"""
 
-    def test_starts_backup_only(self, monkeypatch):
+    def test_starts_garmin_without_legacy_env(self, monkeypatch):
+        """仅使用数据库绑定的新用户也必须启动定时同步。"""
         from app import start_background_tasks
         calls = []
         monkeypatch.setattr('app.auto_backup', lambda: calls.append('backup'))
@@ -305,7 +306,7 @@ class TestStartBackgroundTasks:
         monkeypatch.setattr('os.environ', {})
         start_background_tasks()
         assert 'backup' in calls
-        assert 'garmin' not in calls
+        assert 'garmin' in calls
 
     def test_starts_both_with_garmin(self, monkeypatch):
         from app import start_background_tasks
@@ -457,6 +458,7 @@ class TestIndexPredictionRunning:
              patch('app.get_dashboard_stats'), \
              patch('app.user_manager.get_user', return_value=None), \
              patch('app.os.environ.get', return_value=''), \
+             patch('services.garmin_service.has_garmin_binding', return_value=False), \
              patch('app.render_template', return_value='rendered'):
 
             mock_c = MagicMock()
@@ -486,6 +488,7 @@ class TestPredictionThreadException:
              patch('app.get_dashboard_stats'), \
              patch('app.user_manager.get_user', return_value=None), \
              patch('app.os.environ.get', return_value=''), \
+             patch('services.garmin_service.has_garmin_binding', return_value=False), \
              patch('app.render_template', return_value='rendered'):
 
             mock_c = MagicMock()
@@ -554,27 +557,18 @@ class TestAutoGarminSyncNoToken:
     """Garmin 自动同步无 token"""
 
     def test_garmin_sync_no_token(self):
-        """无 token -> 跳过同步，打印提示"""
+        """单用户 token 缺失只记录该用户的错误，不中断定时任务。"""
         import app
 
-        with patch('app.os.environ.get') as mock_get, \
-             patch('app.os.path.isfile', return_value=False), \
-             patch('app.threading.Timer') as mock_timer:
+        results = {1: {'error': '未找到 Garmin token'}}
+        with patch('services.garmin_service.ensure_legacy_binding'), \
+             patch('services.garmin_service.sync_all_bindings', return_value=results), \
+             patch('app.threading.Timer') as mock_timer, \
+             patch('builtins.print') as mock_print:
+            app.auto_garmin_sync()
 
-            mock_get.side_effect = lambda k, d=None: {
-                'GARMIN_USER_ID': '1',
-                'GARMIN_EMAIL': 'test@garmin.com',
-                'GARMIN_TOKEN_DIR': '/tmp/garmin_tokens',
-            }.get(k, d)
-
-            with patch('builtins.print') as mock_print:
-                app.auto_garmin_sync()
-
-                mock_print.assert_any_call(
-                    '[Garmin] 未找到持久化 token，跳过自动同步；'
-                    '请先手动触发一次以完成首次登录'
-                )
-                mock_timer.assert_called_once()
+            mock_print.assert_any_call(f'[Garmin] 定时同步: {results}')
+            mock_timer.assert_called_once()
 
 
 class TestAutoGarminSyncException:
