@@ -90,17 +90,6 @@ class TestInternalGarminSync:
         monkeypatch.setenv('GARMIN_EMAIL', 'test@example.com')
         monkeypatch.setenv('GARMIN_USER_ID', '1')
         monkeypatch.setenv('GARMIN_TOKEN_DIR', str(tmp_path))
-        restored = []
-
-        def fake_sync(gcs_path, local_path):
-            restored.append(gcs_path)
-            # Simulate successful GCS restore by creating the token file
-            with open(local_path, 'w') as f:
-                f.write('{}')
-
-        from routes import api_internal
-        monkeypatch.setattr(api_internal, 'sync_file_from_gcs', fake_sync)
-
         from services import garmin_service
         monkeypatch.setattr(
             garmin_service,
@@ -114,7 +103,7 @@ class TestInternalGarminSync:
         )
         assert resp.status_code == 200
         assert resp.json['data']['synced'] is True
-        assert restored
+        assert resp.json['data']['results']['1']['added'] == 2
 
     def test_transient_error_returns_503_with_retry_after(self, client, internal_token, monkeypatch, tmp_path):
         monkeypatch.setenv('GARMIN_EMAIL', 'test@example.com')
@@ -157,4 +146,4 @@ class TestInternalGarminSync:
         )
         assert resp.status_code == 200
         assert resp.json['data']['synced'] is True
-        assert resp.json['data']['result']['added'] == 3
+        assert resp.json['data']['results']['1']['added'] == 3

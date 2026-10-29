@@ -729,6 +729,16 @@ def _init_db_postgres():
             )
         ''')
 
+        # Garmin 绑定表：每个用户一份 Garmin 账号绑定，token 按用户分目录存储
+        c.execute(f'''
+            CREATE TABLE IF NOT EXISTS garmin_bindings (
+                user_id INTEGER PRIMARY KEY REFERENCES app_users(id),
+                email TEXT NOT NULL,
+                is_cn {bool_type()} {bool_default(False)},
+                created_at {timestamp_type()} {current_timestamp_default()}
+            )
+        ''')
+
         c.execute(f'''
             CREATE TABLE IF NOT EXISTS user_profiles (
                 user_id INTEGER PRIMARY KEY REFERENCES app_users(id),
@@ -1013,6 +1023,13 @@ def _init_db_sqlite():
             display_name TEXT NOT NULL,
             avatar TEXT,
             is_active BOOLEAN DEFAULT 1,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP)''')
+
+        # Garmin 绑定表：每个用户一份 Garmin 账号绑定，token 按用户分目录存储
+        c.execute('''CREATE TABLE IF NOT EXISTS garmin_bindings (
+            user_id INTEGER PRIMARY KEY REFERENCES app_users(id),
+            email TEXT NOT NULL,
+            is_cn BOOLEAN DEFAULT 0,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP)''')
 
         # 用户档案表

@@ -537,15 +537,15 @@ class TestUserSyncGarmin:
     """sync_garmin 全覆盖 (L263-274)"""
 
     def test_sync_not_configured(self, client_authenticated):
-        """GARMIN_USER_ID=0 / GARMIN_EMAIL 未设置 -> 400"""
-        with patch('routes.api_user.os.environ.get') as mock_get:
-            mock_get.side_effect = lambda k, d=None: '' if k == 'GARMIN_EMAIL' else '0'
+        """当前用户未绑定 Garmin -> 403"""
+        with patch('services.garmin_service.has_garmin_binding', return_value=False):
             resp = client_authenticated.post('/sync_garmin')
-            assert resp.status_code == 400
+            assert resp.status_code == 403
 
     def test_sync_wrong_user(self, client_authenticated):
-        """当前用户不是 Garmin 绑定用户 -> 403"""
-        with patch('routes.api_user.os.environ.get') as mock_get:
+        """其他用户的老配置不会赋予当前用户同步权限 -> 403"""
+        with patch('routes.api_user.os.environ.get') as mock_get, \
+             patch('services.garmin_service.has_garmin_binding', return_value=False):
             mock_get.side_effect = lambda k, d=None: {
                 'GARMIN_USER_ID': '999',
                 'GARMIN_EMAIL': 'test@garmin.com'

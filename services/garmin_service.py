@@ -1,10 +1,11 @@
 """
-Garmin Connect 同步服务
+Garmin Connect 同步服务（多用户）
 
-- 使用 garminconnect 库拉取活动数据
-- 凭证从 .env 读取（GARMIN_EMAIL / GARMIN_PASSWORD）
-- Token 持久化到 GARMIN_TOKEN_DIR/garmin_tokens.json，避免每次重登
-- 按 external_id + source='garmin' 去重
+- 每个应用用户在设置页绑定自己的 Garmin 账号，绑定关系存 garmin_bindings 表
+- Token 按用户分目录持久化：.garmin_tokens/user_<id>/garmin_tokens.json，互不覆盖
+- 只存 token 不存密码；解绑只删本人的绑定与 token
+- 老配置（GARMIN_USER_ID + 全局 garmin_tokens.json）自动登记为绑定，平滑迁移
+- 同步按 external_id + source='garmin' + user_id 去重，数据只进本人账号
 """
 import contextlib
 import os
@@ -101,26 +102,197 @@ TYPE_MAP = {
 }
 
 
-def _get_client():
-    """用持久化 token 登录。没有 token 时先尝试从 GCS 恢复，再报错。
-    首次登录请跑 `uv run python3 garmin_login.py` 生成 token。"""
-    token_file = os.path.join(TOKEN_DIR, 'garmin_tokens.json')
-    if not os.path.isfile(token_file) and not _ensure_token_from_gcs():
-        raise RuntimeError(
-            f"未找到 Garmin token ({token_file})。请先执行：\n"
-            f"  uv run python3 garmin_login.py"
-        )
-    is_cn = os.environ.get('GARMIN_IS_CN', '').lower() in ('1', 'true', 'yes')
+def _legacy_user_id():
+    """老配置：环境变量指定的单账户用户。未配置返回 0。"""
+    return int(os.environ.get('GARMIN_USER_ID', 0) or 0)
+
+
+def _legacy_token_file():
+    return os.path.join(TOKEN_DIR, 'garmin_tokens.json')
+
+
+def _user_token_dir(user_id):
+    """每个用户独立的 token 目录，互不覆盖。"""
+    return os.path.join(TOKEN_DIR, f'user_{int(user_id)}')
+
+
+def _resolve_token_dir(user_id):
+    """优先用该用户自己的 token；老配置用户回落到全局 token 文件。"""
+    per_user = _user_token_dir(user_id)
+    if os.path.isfile(os.path.join(per_user, 'garmin_tokens.json')):
+        return per_user
+    if int(user_id) == _legacy_user_id():
+        return TOKEN_DIR
+    return per_user
+
+
+def get_binding(user_id):
+    """查用户的 Garmin 绑定关系，未绑定返回 None。"""
+    conn = get_raw_conn()
+    try:
+        c = conn.cursor()
+        c.execute('SELECT user_id, email, is_cn FROM garmin_bindings WHERE user_id = ?', (int(user_id),))
+        row = c.fetchone()
+        if not row:
+            return None
+        return {'user_id': row['user_id'], 'email': row['email'], 'is_cn': bool(row['is_cn'])}
+    finally:
+        put_raw_conn(conn)
+
+
+def list_bindings():
+    """全部 Garmin 绑定，供定时同步遍历。"""
+    conn = get_raw_conn()
+    try:
+        c = conn.cursor()
+        c.execute('SELECT user_id, email, is_cn FROM garmin_bindings ORDER BY user_id')
+        return [
+            {'user_id': r['user_id'], 'email': r['email'], 'is_cn': bool(r['is_cn'])}
+            for r in c.fetchall()
+        ]
+    finally:
+        put_raw_conn(conn)
+
+
+def has_garmin_binding(user_id):
+    """是否可同步：有绑定记录，或命中老配置（GARMIN_USER_ID + GARMIN_EMAIL）。"""
+    if get_binding(user_id):
+        return True
+    return int(user_id) == _legacy_user_id() and bool(os.environ.get('GARMIN_EMAIL'))
+
+
+def _account_for(user_id):
+    """取登录所需 email/is_cn：绑定记录优先，老配置回落环境变量。"""
+    binding = get_binding(user_id)
+    if binding:
+        return binding
+    if int(user_id) == _legacy_user_id() and os.environ.get('GARMIN_EMAIL'):
+        return {
+            'user_id': int(user_id),
+            'email': os.environ['GARMIN_EMAIL'],
+            'is_cn': os.environ.get('GARMIN_IS_CN', '').lower() in ('1', 'true', 'yes'),
+        }
+    return None
+
+
+def ensure_legacy_binding():
+    """老配置一次性登记进 garmin_bindings，token 仍用全局文件，无需重登。"""
+    uid = _legacy_user_id()
     email = os.environ.get('GARMIN_EMAIL')
+    if not uid or not email or get_binding(uid):
+        return
+    if not os.path.isfile(_legacy_token_file()):
+        return
+    _upsert_binding(uid, email, os.environ.get('GARMIN_IS_CN', '').lower() in ('1', 'true', 'yes'))
+
+
+def _upsert_binding(user_id, email, is_cn):
+    conn = get_raw_conn()
+    try:
+        c = conn.cursor()
+        # DELETE + INSERT 两步写，SQLite / PostgreSQL 行为一致，不依赖方言 UPSERT
+        c.execute('DELETE FROM garmin_bindings WHERE user_id = ?', (int(user_id),))
+        c.execute('INSERT INTO garmin_bindings (user_id, email, is_cn) VALUES (?, ?, ?)',
+                  (int(user_id), email, bool(is_cn)))
+        conn.commit()
+    finally:
+        put_raw_conn(conn)
+
+
+def bind_account(user_id, email, password, is_cn=False):
+    """用 Garmin 账号密码登录并把 token 存到该用户自己的目录，只存 token 不存密码。"""
+    token_dir = _user_token_dir(user_id)
+    os.makedirs(token_dir, exist_ok=True)
+    with _no_proxy():
+        client = Garmin(email=email, password=password, is_cn=bool(is_cn))
+        try:
+            client.login(token_dir)
+        except GarminConnectAuthenticationError as e:
+            raise RuntimeError(
+                f'Garmin 认证失败：请检查账号密码；若账号开了二次验证，'
+                f'请改用命令行 garmin_login.py --user-id {int(user_id)} 完成绑定（{e}）'
+            ) from e
+        except Exception as e:
+            raise RuntimeError(f'Garmin 登录失败：{e}') from e
+    _upsert_binding(user_id, email, is_cn)
+    return {'user_id': int(user_id), 'email': email, 'is_cn': bool(is_cn)}
+
+
+def unbind_account(user_id):
+    """解绑：删绑定记录和该用户的 token，不影响其他用户。
+
+    老环境变量是部署级配置，网页解绑无法停用它；明确拒绝以免下次自动绑回。
+    """
+    if int(user_id) == _legacy_user_id() and os.environ.get('GARMIN_EMAIL'):
+        raise RuntimeError('当前 Garmin 由服务器旧配置管理；请先在服务器移除旧配置，再解绑')
+    import shutil
+    conn = get_raw_conn()
+    try:
+        c = conn.cursor()
+        c.execute('DELETE FROM garmin_bindings WHERE user_id = ?', (int(user_id),))
+        conn.commit()
+    finally:
+        put_raw_conn(conn)
+    shutil.rmtree(_user_token_dir(user_id), ignore_errors=True)
+
+
+def sync_all_bindings(days=30):
+    """遍历所有绑定用户逐个同步，单个失败不影响其他人。返回 {user_id: 结果}。"""
+    results = {}
+    seen = set()
+    for binding in list_bindings():
+        uid = binding['user_id']
+        seen.add(uid)
+        try:
+            results[uid] = sync_activities(uid, days=days)
+        except Exception as e:
+            results[uid] = {'error': str(e)}
+    legacy_uid = _legacy_user_id()
+    if legacy_uid and legacy_uid not in seen and os.environ.get('GARMIN_EMAIL'):
+        try:
+            results[legacy_uid] = sync_activities(legacy_uid, days=days)
+        except Exception as e:
+            results[legacy_uid] = {'error': str(e)}
+    return results
+
+
+def _get_client(user_id=None):
+    """用持久化 token 登录。user_id 为空时走老配置（GARMIN_USER_ID 全局 token）。
+
+    没有 token 时老配置先尝试从 GCS 恢复，再报错。
+    首次登录请跑 `uv run python3 garmin_login.py` 或在设置页绑定。"""
+    uid = int(user_id) if user_id else _legacy_user_id()
+    account = _account_for(uid) if user_id else None
+    if user_id and not account:
+        raise RuntimeError('当前用户未绑定 Garmin 账号，请先在设置页绑定')
+    token_dir = _resolve_token_dir(uid) if user_id else TOKEN_DIR
+    token_file = os.path.join(token_dir, 'garmin_tokens.json')
+    if not os.path.isfile(token_file):
+        # 老配置（全局 token）保留 GCS 恢复路径，多用户 token 不依赖 GCS
+        legacy_token = (not user_id) or (uid == _legacy_user_id() and token_dir == TOKEN_DIR)
+        if legacy_token and _ensure_token_from_gcs():
+            pass
+        else:
+            raise RuntimeError(
+                f"未找到 Garmin token ({token_file})。请先执行：\n"
+                f"  uv run python3 garmin_login.py\n"
+                f"或在设置页绑定 Garmin 账号"
+            )
+    if user_id:
+        email, is_cn = account['email'], account['is_cn']
+    else:
+        email = os.environ.get('GARMIN_EMAIL')
+        is_cn = os.environ.get('GARMIN_IS_CN', '').lower() in ('1', 'true', 'yes')
     with _no_proxy():
         client = Garmin(email=email, is_cn=is_cn)
         try:
-            client.login(TOKEN_DIR)
+            client.login(token_dir)
             return client
         except (GarminConnectAuthenticationError, Exception) as e:
             raise RuntimeError(
                 f"Garmin token 失效或登录失败（{e}）。请重新跑：\n"
-                f"  uv run python3 garmin_login.py"
+                f"  uv run python3 garmin_login.py\n"
+                f"或在设置页重新绑定"
             ) from e
 
 
@@ -192,7 +364,7 @@ def sync_activities(user_id, days=30):
     返回 {'inserted': N, 'skipped': M, 'total': K}
     """
     with _no_proxy():
-        client = _get_client()
+        client = _get_client(user_id)
         end_date = app_today()
         end = end_date.isoformat()
         start = (end_date - timedelta(days=days)).isoformat()

@@ -4,12 +4,10 @@
 """
 from __future__ import annotations
 
-import os
-
 from flask import Blueprint, request
 
 from core.config import DB_TYPE, INTERNAL_API_TOKEN
-from services.gcs_sync import backup_db_to_gcs, sync_file_from_gcs
+from services.gcs_sync import backup_db_to_gcs
 from utils.responses import api_error, api_success
 
 bp_internal = Blueprint('internal', __name__)
@@ -56,30 +54,25 @@ def internal_garmin_sync():
     if not ok:
         return error_response
 
-    user_id = int(os.environ.get('GARMIN_USER_ID', 0) or 0)
-    if not user_id or not os.environ.get('GARMIN_EMAIL'):
-        return api_success({'synced': False}, message='未配置 Garmin，跳过同步')
-
-    token_dir = os.environ.get('GARMIN_TOKEN_DIR', os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.garmin_tokens'))
-    token_file = os.path.join(token_dir, 'garmin_tokens.json')
-    if not os.path.isfile(token_file):
-        # 本地没有 token 时先尝试从 GCS 恢复，避免 Cloud Run 实例重启后丢失
-        try:
-            sync_file_from_gcs('garmin_tokens/garmin_tokens.json', token_file)
-        except Exception as e:
-            print(f'[Garmin] 内部端点 GCS token 恢复失败: {e}')
-    if not os.path.isfile(token_file):
-        return api_error(
-            'Garmin token 不存在，请先手动登录',
-            status_code=503,
-            error_type='garmin_auth',
-            details={'retry_after': 300},
-        )
-
     try:
-        from services.garmin_service import sync_activities
-        result = sync_activities(user_id, days=30)
-        return api_success({'synced': True, 'result': result}, message='Garmin 同步完成')
+        from services import garmin_service
+        garmin_service.ensure_legacy_binding()
+        results = garmin_service.sync_all_bindings(days=30)
+        if not results:
+            return api_success({'synced': False}, message='没有已绑定的 Garmin 用户，跳过同步')
+        # 全部失败时保留旧的 503 + retry_after 语义，便于调度方重试；
+        # 部分成功则返回 200 和各用户明细，单用户失败不拖垮其他人
+        errors = [r['error'] for r in results.values() if isinstance(r, dict) and r.get('error')]
+        if errors and len(errors) == len(results):
+            err_str = errors[0]
+            if '未找到 Garmin token' in err_str or '未绑定' in err_str:
+                return api_error(err_str, status_code=503, error_type='garmin_auth', details={'retry_after': 300})
+            if '过于频繁' in err_str:
+                return api_error(err_str, status_code=503, error_type='garmin_rate_limit', details={'retry_after': 3600})
+            if '超时' in err_str or '连接' in err_str:
+                return api_error(err_str, status_code=503, error_type='garmin_transient', details={'retry_after': 120})
+            return api_error(err_str, status_code=503, error_type='garmin_sync', details={'retry_after': 300})
+        return api_success({'synced': True, 'results': results}, message='Garmin 同步完成')
     except RuntimeError as e:
         err_str = str(e)
         if '过于频繁' in err_str:
