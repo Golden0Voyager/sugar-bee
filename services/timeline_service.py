@@ -5,6 +5,12 @@ from utils.sql_dialect import interval_sql
 from utils.timezone import now as app_now
 
 
+def get_active_medication_plans(cursor, user_id):
+    """当前启用的用药方案，含日期范围。空日期也要能据此显示当日用药。"""
+    cursor.execute("SELECT * FROM medication_plans WHERE user_id = ? AND is_active = 1", (user_id,))
+    return [dict(row) for row in cursor.fetchall()]
+
+
 def build_timeline(cursor, user_id, days=90):
     """
     构建 timeline 数据，返回 (sorted_dates, records) 元组。
@@ -75,8 +81,7 @@ def build_timeline(cursor, user_id, days=90):
             day_group['stats']['glucose_count'] += 1
 
     # 4. Medication Plans
-    cursor.execute("SELECT * FROM medication_plans WHERE user_id = ? AND is_active = 1", (user_id,))
-    medication_plans = [dict(row) for row in cursor.fetchall()]
+    medication_plans = get_active_medication_plans(cursor, user_id)
 
     now = app_now()
     today_str = now.strftime('%Y-%m-%d')

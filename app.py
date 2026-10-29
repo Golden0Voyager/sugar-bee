@@ -16,6 +16,7 @@ import branding  # noqa: E402
 from core.config import AVATAR_FOLDER, get_db_name  # noqa: E402
 from services import (  # noqa: E402
     build_timeline,
+    get_active_medication_plans,
     get_dashboard_stats,
     predict_morning_fpg,
     predict_post_exercise_glucose,
@@ -186,6 +187,7 @@ def index():
         return render_template('index.html', records=records, stats=stats, timeline=sorted_dates,
                                enabled_modules=enabled_modules, is_garmin_user=is_garmin_user,
                                brand=brand, is_admin=is_current_user_admin(),
+                               medication_plans=get_active_medication_plans(c, current_user_id),
                                user_emoji_map=settings.USER_EMOJI_MAP)
     except Exception as e:
         traceback.print_exc()
