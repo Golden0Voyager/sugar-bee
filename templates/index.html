@@ -1865,34 +1865,11 @@
                     <!-- Tab 1: 个人资料 -->
                     <div class="tab-pane fade show active" id="tabProfile" role="tabpanel">
                         <form id="userSettingsForm">
-                            <div class="row g-3">
+                            <h6 class="fw-bold">基本信息</h6>
+                            <div class="row g-3 mb-3">
                                 <div class="col-md-6">
                                     <label class="form-label">姓名</label>
                                     <input type="text" id="set_name" class="form-control" value="{{ stats.user.name }}">
-                                </div>
-                                <div class="col-md-2">
-                                    <label class="form-label">出生年</label>
-                                    <input type="number" id="set_birth_year" class="form-control" value="{{ stats.user.birth_year }}">
-                                </div>
-                                <div class="col-md-2">
-                                    <label class="form-label">月</label>
-                                    <input type="number" id="set_birth_month" class="form-control" value="{{ stats.user.birth_month or 1 }}" min="1" max="12">
-                                </div>
-                                <div class="col-md-2">
-                                    <label class="form-label">日</label>
-                                    <input type="number" id="set_birth_day" class="form-control" value="{{ stats.user.birth_day or 1 }}" min="1" max="31">
-                                </div>
-                                <div class="col-md-6">
-                                    <label class="form-label">身高 (cm)</label>
-                                    <input type="number" id="set_height" class="form-control" value="{{ stats.user.height }}">
-                                </div>
-                                <div class="col-md-6">
-                                    <label class="form-label">体重 (kg)</label>
-                                    <input type="number" step="0.1" id="set_weight" class="form-control" value="{{ stats.user.weight }}">
-                                </div>
-                                <div class="col-md-6">
-                                    <label class="form-label">目标体重 (kg)</label>
-                                    <input type="number" step="0.1" id="set_target_weight" class="form-control" value="{{ stats.target_weight or '' }}" placeholder="选填">
                                 </div>
                                 <div class="col-md-6">
                                     <label class="form-label">性别</label>
@@ -1900,6 +1877,27 @@
                                         <option value="male" {% if stats.user.gender == 'male' %}selected{% endif %}>男</option>
                                         <option value="female" {% if stats.user.gender == 'female' %}selected{% endif %}>女</option>
                                     </select>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label">出生日期</label>
+                                    <input type="date" id="set_birth_date" class="form-control"
+                                           min="1900-01-01" max="2025-12-31"
+                                           value="{{ ('%04d-%02d-%02d' % (stats.user.birth_year, stats.user.birth_month or 1, stats.user.birth_day or 1)) if stats.user.birth_year else '' }}">
+                                </div>
+                            </div>
+                            <h6 class="fw-bold">身体数据</h6>
+                            <div class="row g-3">
+                                <div class="col-md-4">
+                                    <label class="form-label">身高 (cm)</label>
+                                    <input type="number" id="set_height" class="form-control" value="{{ stats.user.height }}">
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label">体重 (kg)</label>
+                                    <input type="number" step="0.1" id="set_weight" class="form-control" value="{{ stats.user.weight }}">
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label">目标体重 (kg)</label>
+                                    <input type="number" step="0.1" id="set_target_weight" class="form-control" value="{{ stats.target_weight or '' }}" placeholder="选填">
                                 </div>
                                 <div class="col-12 mt-2">
                                     <button type="button" class="btn btn-primary w-100" onclick="saveUserSettings()">
@@ -2015,16 +2013,6 @@
                             </div>
                             <div class="d-flex align-items-center justify-content-between p-3 bg-light rounded-3">
                                 <div class="d-flex align-items-center gap-3">
-                                    <i class="bi bi-upload text-secondary fs-4"></i>
-                                    <div>
-                                        <div class="fw-medium">恢复数据库</div>
-                                        <div class="text-muted small">从备份文件恢复数据</div>
-                                    </div>
-                                </div>
-                                <button class="btn btn-outline-secondary" onclick="restoreDatabase()">上传</button>
-                            </div>
-                            <div class="d-flex align-items-center justify-content-between p-3 bg-light rounded-3">
-                                <div class="d-flex align-items-center gap-3">
                                     <i class="bi bi-file-earmark-spreadsheet text-secondary fs-4"></i>
                                     <div>
                                         <div class="fw-medium">导出 CSV</div>
@@ -2119,15 +2107,31 @@
                                     </button>
                                 </div>
                             </div>
-                            <div class="d-flex align-items-center justify-content-between p-3 bg-light rounded-3">
-                                <div class="d-flex align-items-center gap-3">
-                                    <i class="bi bi-wrench text-secondary fs-4"></i>
-                                    <div>
-                                        <div class="fw-medium">清理重复记录</div>
-                                        <div class="text-muted small">扫描并删除短时间内重复的数据</div>
+                        </div>
+                        <div class="mt-3">
+                            <h6 class="fw-bold text-danger-emphasis"><i class="bi bi-exclamation-triangle me-1"></i>谨慎操作</h6>
+                            <p class="text-muted small mb-2">以下操作会直接改动或覆盖数据，执行前请确认已备份。</p>
+                            <div class="d-flex flex-column gap-2">
+                                <div class="d-flex align-items-center justify-content-between p-3 bg-light rounded-3">
+                                    <div class="d-flex align-items-center gap-3">
+                                        <i class="bi bi-arrow-counterclockwise text-secondary fs-4"></i>
+                                        <div>
+                                            <div class="fw-medium">恢复数据库</div>
+                                            <div class="text-muted small">从备份文件恢复数据，将覆盖当前全部记录</div>
+                                        </div>
                                     </div>
+                                    <button class="btn btn-outline-danger" onclick="restoreDatabase()">恢复</button>
                                 </div>
-                                <button class="btn btn-outline-secondary" onclick="findAndCleanDuplicates()">清理</button>
+                                <div class="d-flex align-items-center justify-content-between p-3 bg-light rounded-3">
+                                    <div class="d-flex align-items-center gap-3">
+                                        <i class="bi bi-wrench text-secondary fs-4"></i>
+                                        <div>
+                                            <div class="fw-medium">清理重复记录</div>
+                                            <div class="text-muted small">扫描并删除短时间内重复的数据</div>
+                                        </div>
+                                    </div>
+                                    <button class="btn btn-outline-danger" onclick="findAndCleanDuplicates()">清理</button>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -8250,11 +8254,14 @@
 
     async function saveUserSettings() {
         try {
+            const birthDate = document.getElementById('set_birth_date').value;
+            const birthParts = birthDate ? birthDate.split('-').map(Number) : [];
+
             const data = {
                 name: document.getElementById('set_name').value,
-                birth_year: parseInt(document.getElementById('set_birth_year').value),
-                birth_month: parseInt(document.getElementById('set_birth_month').value),
-                birth_day: parseInt(document.getElementById('set_birth_day').value),
+                birth_year: birthParts[0],
+                birth_month: birthParts[1],
+                birth_day: birthParts[2],
                 height: parseInt(document.getElementById('set_height').value),
                 weight: parseFloat(document.getElementById('set_weight').value),
                 gender: document.getElementById('set_gender').value,
@@ -8264,19 +8271,6 @@
             // 验证数据
             if (!data.name || !data.birth_year || !data.height || !data.weight) {
                 alert('请填写完整的个人信息');
-                return;
-            }
-
-            if (data.birth_year < 1900 || data.birth_year > 2025) {
-                alert('请输入有效的出生年份');
-                return;
-            }
-            if (data.birth_month < 1 || data.birth_month > 12) {
-                alert('请输入有效的出生月份 (1-12)');
-                return;
-            }
-            if (data.birth_day < 1 || data.birth_day > 31) {
-                alert('请输入有效的出生日期 (1-31)');
                 return;
             }
 
