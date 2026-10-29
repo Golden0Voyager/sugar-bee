@@ -20,9 +20,11 @@ _PROMPT = """你是医疗报告抄录助手。请从这张体检报告图片中�
 2. 每项包含：category（分类）、name（项目名）、value（结果值，原样抄）、unit（单位）、
    ref_range（参考范围，原样抄，没有就空字符串）、status（报告上的箭头含义：normal/high/low，
    没标就按参考范围判断，判断不了填 normal）；
-3. category 只能取以下之一：{categories}；
-4. checkup_date 取报告上的检查日期（YYYY-MM-DD），找不到填空字符串；
-5. institution 取医院/体检机构名称，找不到填空字符串。
+3. 影像检查等文字描述类项目，value 抄录完整描述，不要截断；
+4. 报告末尾的「异常项目汇总」页如与前面明细重复，无需重复抄录；
+5. category 只能取以下之一：{categories}；
+6. checkup_date 取报告上的检查日期（YYYY-MM-DD），找不到填空字符串；
+7. institution 取医院/体检机构名称，找不到填空字符串。
 
 只返回一个 JSON 对象，不要包含 markdown 代码块，格式：
 {{
@@ -104,6 +106,29 @@ def _clean_text(value, limit=50):
     return ' '.join(str(value or '').split())[:limit]
 
 
+# 结果值限长：化验数值很短，但影像检查等描述类项目可能长达数百字，截断会丢关键信息
+VALUE_LIMIT = 500
+
+
+def _is_numeric_value(value):
+    """结果值含数字视为数值型（化验结果、结节尺寸等），否则是文字结论（如「阴性」「重度增高」）。"""
+    return bool(re.search(r'\d', str(value or '')))
+
+
+def _dedupe_summary_rows(items):
+    """去掉报告末尾「异常项目汇总」页造成的重复行。
+
+    汇总页会把异常项目以「增高/重度增高」等结论词再抄一遍（无具体数值）。
+    若同名项目已有带数值的明细行，这种无数值的汇总行属于重复抄录，予以丢弃；
+    没有数值兄弟行的文字结论（如「阴性」）原样保留。
+    """
+    numeric_names = {item['name'] for item in items if _is_numeric_value(item['value'])}
+    return [
+        item for item in items
+        if _is_numeric_value(item['value']) or item['name'] not in numeric_names
+    ]
+
+
 def normalize_report(data):
     """把模型输出归一化成落库结构；无有效指标时 items 为空列表。"""
     data = data if isinstance(data, dict) else {}
@@ -114,7 +139,7 @@ def normalize_report(data):
             if not isinstance(raw, dict):
                 continue
             name = _clean_text(raw.get('name'), 40)
-            value = _clean_text(raw.get('value'), 30)
+            value = _clean_text(raw.get('value'), VALUE_LIMIT)
             if not name or not value:
                 continue
             category = _clean_text(raw.get('category'), 20) or '其他'
@@ -129,6 +154,7 @@ def normalize_report(data):
                 'ref_range': ref_range,
                 'status': _normalize_status(raw.get('status'), value, ref_range),
             })
+        items = _dedupe_summary_rows(items)
 
     date = _clean_text(data.get('checkup_date'), 10)
     if not re.match(r'^\d{4}-\d{2}-\d{2}$', date):
