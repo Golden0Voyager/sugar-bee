@@ -41,7 +41,7 @@ uv run python app.py
 | 文档 | 说明 |
 |------|------|
 | [`docs/260616-DEV_NOTES.md`](docs/260616-DEV_NOTES.md) | 开发笔记、架构说明、更新日志 |
-| [`docs/plans/260612-cloud-run-deployment-plan.md`](docs/plans/260612-cloud-run-deployment-plan.md) | Google Cloud Run 部署方案 |
+| [`docs/plans/260612-cloud-run-deployment-plan.md`](docs/plans/260612-cloud-run-deployment-plan.md) | Google Cloud Run 部署方案（已弃用，2026-10-28 起生产迁至腾讯云轻量应用服务器） |
 | [`docs/plans/260616-next-steps.md`](docs/plans/260616-next-steps.md) | 后续待办清单（P0/P1/P2） |
 | [`docs/plans/260616-report-mobile-security-plan.md`](docs/plans/260616-report-mobile-security-plan.md) | 综合报告 UX + 适老化 + 安全修复计划 |
 
