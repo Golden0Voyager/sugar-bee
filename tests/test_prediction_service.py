@@ -462,6 +462,18 @@ class TestSummarizeSlotHistory:
         assert out['晚餐后2小时']['max'] == 8.9
         conn.close()
 
+    def test_postmeal_1h_records_are_not_used_as_2h_history(self):
+        conn = self._conn([
+            ('早餐后1小时', 11.0, '2026-10-25 09:00:00', 0),
+            ('餐后1小时', 12.0, '2026-10-24 09:00:00', 0),
+            ('餐后2小时', 7.4, '2026-10-23 10:30:00', 0),
+        ])
+        out = summarize_slot_history(conn.cursor(), 1, '2026-10-26', ['早餐后2小时'])
+        assert out['早餐后2小时'] == {
+            'n': 1, 'avg': 7.4, 'min': 7.4, 'max': 7.4, 'last': 7.4,
+        }
+        conn.close()
+
     def test_generic_postmeal_outside_windows_ignored(self):
         conn = self._conn([('餐后2小时', 9.0, '2026-10-24 17:30:00', 0)])
         out = summarize_slot_history(conn.cursor(), 1, '2026-10-26', ['午餐后2小时'])
