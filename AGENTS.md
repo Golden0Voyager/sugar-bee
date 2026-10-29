@@ -203,6 +203,7 @@ ignore = ["E501", "E402", "E702"]  # E402/E702 for test files
 - **`avg_glucose` 的黑名单要跟着新维度补**：`services/timeline_service.py` 用「value>0 且没有 systolic_pressure 且 type 不在黑名单」判断一条记录是不是血糖，黑名单漏一个类型就会把别的维度当血糖算（`体重` 漏过一次，日历上出现「血糖68 (0%)」）。前端 `generateCalendarEvents` 里的 `NON_GLUCOSE_TYPES` / `isGlucoseEntry` 是同一份规则，改一边要改另一边
 - **能量统计只在真记了饮食或运动时显示**（历史 bug）：后端恒按 `净热量 = 摄入 - (基础代谢 + 运动消耗)` 算，什么都没记的一天 `净热量 = 0 - 基础代谢` 也恒为负，于是日历徽章和每日详情天天写着「👍 减糖减脂 1417」，等于说「你躺着就减了 1417 大卡」。三个渲染点（`generateCalendarEvents` 的能量徽章、`showDayStats` 的 chips 行、`renderDayDetails` 的统计行）统一用 `hasEnergyData(stats)` = `cal_in > 0 || cal_out_exercise > 0` 把关，`tests/test_home_energy_badge.py` 会卡住调用点数量
 - **CGM 槽位匹配口径：5 分钟窗口、窗口内 CGM 优先**（2026-10-29 定稿，勿改回 30 分钟）：三个入口必须同步——`routes/api_dashboard.py::api_day_overview`、`routes/api_prediction.py::prediction_status`、`services/dashboard_service.py::get_dashboard_stats`。规则：CGM 读数距槽位 ≤5 分钟才算数（6–30 分钟窗外回退手工记录）；`prediction_status` 里窗口内有 CGM 时**以 CGM 为准并重算预测误差**，不再只作「无手工记录时的兜底」。手工记录按 type 归槽（空腹→fasting），CGM 按时间贴近槽位，两套匹配逻辑不要混
+- **默认头像唯一清单是 `utils/avatars.py`**：人物/动物各 9 个，文件在 `static/avatars/defaults/`；空头像按用户 ID 固定回退，主动选择写 `app_users.avatar`，已有上传图不可被回退覆盖。新增默认头像必须同步 SVG、清单和测试；`.gitignore` 与 `.dockerignore` 只给 `defaults/` 开例外，用户上传文件仍忽略
 - Frontend badge logic (`getBadgeForRate()`) must stay in sync: Python in `settings.py`, JS in `index.html`
 - Glucose targets vary by type (fasting/post-1h/post-2h/pre-sleep/post-exercise) — see `settings.py` `GLUCOSE_TARGETS`
 - Adding new data dimensions to `records` requires a new `ALTER TABLE` migration in `init_db()`
