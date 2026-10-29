@@ -8,6 +8,7 @@ import branding
 import settings
 from user_manager import UserManager
 from utils.auth import admin_required, login_required
+from utils.avatars import is_default_avatar
 from utils.db import get_db
 from utils.responses import api_error, api_success
 from utils.timezone import now as app_now
@@ -174,6 +175,27 @@ def update_user_branding():
         return api_success(
             data={'branding': branding.resolve_branding(saved)},
             message='应用名称已更新',
+        )
+    except Exception as e:
+        traceback.print_exc()
+        return api_error(str(e), status_code=500)
+
+
+@bp_user.route('/select_avatar', methods=['POST'])
+@login_required
+def select_avatar():
+    try:
+        avatar = (request.json or {}).get('avatar')
+        if not is_default_avatar(avatar):
+            return api_error('请选择有效的默认头像', status_code=400, error_type='validation_error')
+
+        user_id = user_manager.get_current_user_id()
+        db = get_db()
+        db.execute('UPDATE app_users SET avatar = ? WHERE id = ?', (avatar, user_id))
+        db.commit()
+        return api_success(
+            data={'avatar': avatar, 'avatar_url': f'/static/avatars/{avatar}'},
+            message='头像已更新',
         )
     except Exception as e:
         traceback.print_exc()

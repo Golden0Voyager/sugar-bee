@@ -1,4 +1,8 @@
+import sqlite3
 from pathlib import Path
+from unittest.mock import patch
+
+import pytest
 
 import utils.avatars as avatars
 
@@ -74,3 +78,38 @@ def test_uploaded_avatar_is_not_replaced_by_default():
     with patch.object(um, 'get_user', return_value=_profile_with_avatar('avatar_custom.png')):
         config = um.get_user_config(1)
     assert config['avatar'] == 'avatar_custom.png'
+
+
+def test_select_avatar_persists_for_current_user(client_authenticated, db_info):
+    response = client_authenticated.post('/select_avatar', json={'avatar': 'defaults/animal_03.svg'})
+    assert response.status_code == 200
+    assert response.json['data'] == {
+        'avatar': 'defaults/animal_03.svg',
+        'avatar_url': '/static/avatars/defaults/animal_03.svg',
+    }
+    with client_authenticated.session_transaction() as session:
+        user_id = session['current_user_id']
+    conn = sqlite3.connect(db_info['path'])
+    try:
+        stored = conn.execute('SELECT avatar FROM app_users WHERE id = ?', (user_id,)).fetchone()[0]
+    finally:
+        conn.close()
+    assert stored == 'defaults/animal_03.svg'
+
+
+@pytest.mark.parametrize('value', [None, '', 123, '/etc/passwd', '../x.svg', 'defaults/unknown.svg'])
+def test_select_avatar_rejects_invalid_values(client_authenticated, value):
+    response = client_authenticated.post('/select_avatar', json={'avatar': value})
+    assert response.status_code == 400
+    assert response.json['error_type'] == 'validation_error'
+
+
+def test_select_avatar_requires_login(client):
+    response = client.post('/select_avatar', json={'avatar': 'defaults/person_01.svg'})
+    assert response.status_code == 401
+
+
+def test_select_avatar_database_error_returns_500(client_authenticated):
+    with patch('routes.api_user.get_db', side_effect=Exception('db down')):
+        response = client_authenticated.post('/select_avatar', json={'avatar': 'defaults/person_01.svg'})
+    assert response.status_code == 500
