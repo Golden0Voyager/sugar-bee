@@ -2520,33 +2520,17 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal" onclick="resetAvatarModal()" style="font-size: 1.25rem;"></button>
             </div>
             <div class="modal-body">
-                <div class="mb-3">
-                    <div class="small text-muted mb-2">默认头像 · 人物</div>
-                    <div class="avatar-choice-grid mb-3">
-                        {% for item in avatar_catalog if item.group == 'person' %}
-                        <button type="button" class="avatar-choice" data-avatar="{{ item.filename }}"
-                                aria-label="选择{{ item.label }}" onclick="selectDefaultAvatar('{{ item.filename }}', this)">
-                            <img src="/static/avatars/{{ item.filename }}" alt="{{ item.label }}">
-                        </button>
-                        {% endfor %}
-                    </div>
-                    <div class="small text-muted mb-2">默认头像 · 动物</div>
-                    <div class="avatar-choice-grid">
-                        {% for item in avatar_catalog if item.group == 'animal' %}
-                        <button type="button" class="avatar-choice" data-avatar="{{ item.filename }}"
-                                aria-label="选择{{ item.label }}" onclick="selectDefaultAvatar('{{ item.filename }}', this)">
-                            <img src="/static/avatars/{{ item.filename }}" alt="{{ item.label }}">
-                        </button>
-                        {% endfor %}
-                    </div>
-                    <div class="d-flex align-items-center gap-3 mt-3">
-                        <div id="defaultAvatarPreview" class="avatar-default-preview" aria-live="polite"></div>
-                        <button type="button" class="btn btn-primary flex-fill" id="saveDefaultAvatarBtn"
-                                onclick="saveDefaultAvatar()" disabled>保存所选头像</button>
-                    </div>
+                <h6 class="fw-bold">选一个现成头像</h6>
+                <div class="avatar-choice-grid mb-4">
+                    {% for item in avatar_catalog %}
+                    <button type="button" class="avatar-choice" data-avatar="{{ item.filename }}"
+                            aria-label="选择{{ item.label }}" title="{{ item.label }}" onclick="selectDefaultAvatar('{{ item.filename }}', this)">
+                        <img src="/static/avatars/{{ item.filename }}" alt="{{ item.label }}">
+                    </button>
+                    {% endfor %}
                 </div>
-                <hr>
-                <label for="avatarInput" class="form-label small text-muted">上传自己的图片</label>
+
+                <h6 class="fw-bold">或上传自己的照片</h6>
                 <div class="mb-3">
                     <input type="file" id="avatarInput" class="form-control" accept="image/png, image/jpeg" onchange="loadAvatarImage(this)">
                 </div>
@@ -2565,7 +2549,7 @@
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" onclick="resetAvatarModal()" style="font-size: 1.1rem; padding: 12px 24px;">取消</button>
-                <button type="button" class="btn btn-primary" id="saveAvatarBtn" onclick="cropAndUploadAvatar()" disabled style="font-size: 1.1rem; padding: 12px 24px;">保存头像</button>
+                <button type="button" class="btn btn-primary" id="saveAvatarBtn" onclick="saveAvatar()" disabled style="font-size: 1.1rem; padding: 12px 24px;">保存头像</button>
             </div>
         </div>
     </div>
@@ -8394,14 +8378,20 @@
             el.classList.toggle('is-selected', selected);
             el.setAttribute('aria-pressed', selected ? 'true' : 'false');
         });
-        document.getElementById('defaultAvatarPreview').innerHTML =
-            `<img src="/static/avatars/${filename}" alt="已选头像预览">`;
-        document.getElementById('saveDefaultAvatarBtn').disabled = false;
+        // 与上传照片互斥：选了现成头像就弃用已选照片
+        if (cropper) {
+            cropper.destroy();
+            cropper = null;
+        }
+        document.getElementById('avatarInput').value = '';
+        document.getElementById('cropImage').src = '';
+        document.getElementById('cropArea').classList.add('d-none');
+        document.getElementById('saveAvatarBtn').disabled = false;
     }
 
     async function saveDefaultAvatar() {
         if (!selectedDefaultAvatar) return;
-        const button = document.getElementById('saveDefaultAvatarBtn');
+        const button = document.getElementById('saveAvatarBtn');
         button.disabled = true;
         try {
             const res = await fetch('/select_avatar', {
@@ -8441,6 +8431,13 @@
             reader.onload = function(e) {
                 const image = document.getElementById('cropImage');
                 image.src = e.target.result;
+
+                // 与现成头像互斥：选了照片就取消已选头像
+                selectedDefaultAvatar = null;
+                document.querySelectorAll('.avatar-choice').forEach(el => {
+                    el.classList.remove('is-selected');
+                    el.setAttribute('aria-pressed', 'false');
+                });
 
                 // 显示裁剪区域
                 document.getElementById('cropArea').classList.remove('d-none');
@@ -8484,8 +8481,15 @@
             el.classList.remove('is-selected');
             el.setAttribute('aria-pressed', 'false');
         });
-        document.getElementById('defaultAvatarPreview').innerHTML = '';
-        document.getElementById('saveDefaultAvatarBtn').disabled = true;
+    }
+
+    // 统一保存入口：优先保存已上传照片的裁剪结果，否则保存选中的现成头像
+    function saveAvatar() {
+        if (cropper) {
+            cropAndUploadAvatar();
+        } else if (selectedDefaultAvatar) {
+            saveDefaultAvatar();
+        }
     }
 
     async function cropAndUploadAvatar() {

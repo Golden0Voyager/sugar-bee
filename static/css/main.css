@@ -2784,12 +2784,14 @@ body.elderly-mode .tutorial-example {
 
 .avatar-choice-grid {
     display: grid;
-    grid-template-columns: repeat(9, minmax(48px, 1fr));
-    gap: 10px;
+    /* 按容器宽度自动排列数，避免固定 9 列在窄弹窗里溢出 */
+    grid-template-columns: repeat(auto-fill, minmax(44px, 1fr));
+    gap: 8px;
 }
 .avatar-choice {
-    width: 52px;
-    height: 52px;
+    width: 100%;
+    aspect-ratio: 1;
+    height: auto;
     padding: 2px;
     border: 2px solid transparent;
     border-radius: 50%;
