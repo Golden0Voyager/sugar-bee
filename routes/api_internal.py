@@ -65,7 +65,8 @@ def internal_garmin_sync():
         errors = [r['error'] for r in results.values() if isinstance(r, dict) and r.get('error')]
         if errors and len(errors) == len(results):
             err_str = errors[0]
-            if '未找到 Garmin token' in err_str or '未绑定' in err_str:
+            auth_markers = ('未找到 Garmin token', '未绑定', 'token 失效', '登录失败')
+            if any(marker in err_str for marker in auth_markers):
                 return api_error(err_str, status_code=503, error_type='garmin_auth', details={'retry_after': 300})
             if '过于频繁' in err_str:
                 return api_error(err_str, status_code=503, error_type='garmin_rate_limit', details={'retry_after': 3600})

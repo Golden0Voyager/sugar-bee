@@ -79,6 +79,25 @@ class TestInternalGarminSync:
         monkeypatch.setenv('GARMIN_EMAIL', 'test@example.com')
         monkeypatch.setenv('GARMIN_USER_ID', '1')
         monkeypatch.setenv('GARMIN_TOKEN_DIR', str(tmp_path))
+        from services import garmin_service
+        # 模块在 import 时已读取 TOKEN_DIR，只改环境变量仍可能读到开发机上的真实 token；
+        # 这里同时固定模块常量，保证测试不受本机 Garmin 文件影响。
+        monkeypatch.setattr(garmin_service, 'TOKEN_DIR', str(tmp_path))
+        monkeypatch.setattr(garmin_service, '_ensure_token_from_gcs', lambda: False)
+        resp = client.post(
+            '/internal/garmin-sync',
+            headers={'Authorization': f'Bearer {internal_token}'},
+        )
+        assert resp.status_code == 503
+        assert resp.json['error_type'] == 'garmin_auth'
+
+    def test_invalid_token_is_auth_error(self, client, internal_token, monkeypatch):
+        from services import garmin_service
+        monkeypatch.setattr(
+            garmin_service,
+            'sync_all_bindings',
+            lambda days=30: {1: {'error': 'Garmin token 失效或登录失败（bad token）。请重新绑定'}},
+        )
         resp = client.post(
             '/internal/garmin-sync',
             headers={'Authorization': f'Bearer {internal_token}'},
