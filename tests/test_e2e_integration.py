@@ -502,7 +502,7 @@ class TestRealDBCSVFlow:
             assert '8.0' in csv_text
 
     def test_export_and_reimport_roundtrip(self, client_authenticated, app):
-        """导出 → 导入 → 验证一致性"""
+        """导出 → 重复导入 → 已有数据被跳过"""
         with app.app_context():
             client_authenticated.post('/add', json={
                 'value': 6.5, 'type': '空腹', 'timestamp': '2024-06-01 07:15:00',
@@ -520,12 +520,13 @@ class TestRealDBCSVFlow:
                 'file': (io.BytesIO(csv_content), 'roundtrip.csv'),
             })
             assert import_r.status_code == 200
+            assert import_r.json['data'] == {'imported': 0, 'skipped': 2}
 
             from utils.db import get_db
             db = get_db()
             c = db.cursor()
             c.execute("SELECT COUNT(*) FROM records WHERE user_id = 1")
-            assert c.fetchone()[0] == 4
+            assert c.fetchone()[0] == 2
 
     def test_preview_import_with_real_db_context(self, client_authenticated):
         """CSV 预览"""

@@ -697,6 +697,52 @@ def export():
         print(f"Export error: {e}")
         return "导出失败，请稍后再试", 500
 
+TIMESTAMP_COLUMNS = (
+    'timestamp', '时间', '血糖时间', '测量时间', 'datetime', '日期时间', 'Date Time', 'Time',
+)
+VALUE_COLUMNS = (
+    'value', '血糖值', '血糖值 mmol/L', '数值', '血糖', 'Glucose', 'CGM值', 'mg/dL', 'mmol/L',
+)
+TYPE_COLUMNS = ('type', '类型', '测量类型')
+NOTE_COLUMNS = ('notes', '备注', '说明')
+
+
+def _find_import_column(columns: list[str], aliases: tuple[str, ...]) -> str | None:
+    """按白名单找到第一个匹配的列名，支持列名首尾有多余空格。"""
+    normalized = {str(column).strip(): str(column).strip() for column in columns}
+    for alias in aliases:
+        if alias in normalized:
+            return alias
+    return None
+
+
+def _normalize_import_timestamp(value) -> str | None:
+    """把导入文件中的时间统一成 records.timestamp 使用的格式。"""
+    if pd.isna(value):
+        return None
+    parsed = pd.to_datetime(value, errors='coerce')
+    if pd.isna(parsed):
+        return None
+    return parsed.strftime('%Y-%m-%d %H:%M:%S')
+
+
+def _normalize_import_value(value) -> float | None:
+    """把设备导出的数字文本统一为 float；空值和无法解析的值都不是合法血糖。"""
+    if pd.isna(value):
+        return None
+    try:
+        return float(str(value).strip().replace(',', ''))
+    except (TypeError, ValueError):
+        return None
+
+
+def _normalize_import_text(value) -> str | None:
+    if pd.isna(value):
+        return None
+    text = str(value).strip()
+    return text or None
+
+
 @bp_records.route('/import', methods=['POST'])
 @login_required
 def import_csv():
@@ -704,26 +750,76 @@ def import_csv():
         file = request.files.get('file')
         if not file:
             return api_error("No file")
-        df = pd.read_csv(file, encoding='utf-8-sig') if file.filename.endswith('.csv') else pd.read_excel(file)
+        df = (
+            pd.read_csv(file, encoding='utf-8-sig')
+            if file.filename.lower().endswith('.csv')
+            else pd.read_excel(file)
+        )
+
+        timestamp_column = _find_import_column(list(df.columns), TIMESTAMP_COLUMNS)
+        value_column = _find_import_column(list(df.columns), VALUE_COLUMNS)
+        detected_columns = ', '.join(str(column) for column in df.columns)
+        if not timestamp_column or not value_column:
+            return api_error(
+                f"无法识别时间列或血糖值列（检测到：{detected_columns or '无列名'}），"
+                "请检查导出文件格式",
+                status_code=400,
+                error_type="invalid_columns",
+            )
+
+        is_cgm = request.form.get('mode', 'normal').strip().lower() == 'cgm'
+        source_unit = request.form.get('unit', 'mmol/L').strip().lower()
+        convert_to_mmol = source_unit == 'mg/dl'
+        type_column = None if is_cgm else _find_import_column(list(df.columns), TYPE_COLUMNS)
+        note_column = _find_import_column(list(df.columns), NOTE_COLUMNS)
+        if not is_cgm and not type_column:
+            return api_error(
+                f"普通模式需要测量类型列（检测到：{detected_columns}）",
+                status_code=400,
+                error_type="invalid_columns",
+            )
+
         db = get_db()
         c = db.cursor()
         current_user_id = user_manager.get_current_user_id()
-        # Simplified import logic for brevity, keeping core functionality
         imported = 0
         skipped = 0
         for _, row in df.iterrows():
-            row_dict = {k: v for k, v in row.items() if not pd.isna(v)}
-            warnings = _validate_record_data(row_dict)
-            if warnings:
+            timestamp = _normalize_import_timestamp(row[timestamp_column])
+            value = _normalize_import_value(row[value_column])
+            if not timestamp or value is None or value <= 0:
                 skipped += 1
                 continue
-            c.execute("INSERT INTO records (user_id, value, type, timestamp) VALUES (?, ?, ?, ?)",
-                     (current_user_id, row.get('value'), row.get('type'), row.get('timestamp')))
+            if convert_to_mmol:
+                value = round(value / 18.0, 2)
+
+            record_type = 'CGM' if is_cgm else _normalize_import_text(row[type_column])
+            if not record_type or _invalid_record_type(record_type):
+                skipped += 1
+                continue
+            if _validate_record_data({'value': value, 'type': record_type}):
+                skipped += 1
+                continue
+
+            c.execute(
+                "SELECT id FROM records WHERE user_id=? AND value=? AND type=? AND timestamp=?",
+                (current_user_id, value, record_type, timestamp),
+            )
+            if c.fetchone():
+                skipped += 1
+                continue
+
+            notes = (_normalize_import_text(row[note_column]) if note_column else None) or ''
+            c.execute(
+                "INSERT INTO records (user_id, value, unit, type, notes, timestamp) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (current_user_id, value, 'mmol/L', record_type, notes, timestamp),
+            )
             imported += 1
         db.commit()
         msg = f"导入 {imported} 条"
         if skipped:
-            msg += f"，跳过 {skipped} 条无效数据"
+            msg += f"，跳过 {skipped} 条无效或重复数据"
         return api_success(data={"imported": imported, "skipped": skipped}, message=msg)
     except Exception as e:
         return api_error(str(e), status_code=500)
