@@ -2667,6 +2667,33 @@
 
     // Injected from server (初始 90 天，按需加载更多)
     let timelineData = {{ timeline | tojson }};
+    // 当前启用的全部用药方案。无记录日期没有 timeline 节点，前端按日期范围补齐当日用药。
+    const ACTIVE_MEDICATION_PLANS = {{ medication_plans | tojson }};
+
+    function getMedicationPlansForDate(dateStr) {
+        return ACTIVE_MEDICATION_PLANS.filter(plan => {
+            const start = plan.start_date || dateStr;
+            const end = plan.end_date || '9999-12-31';
+            return start <= dateStr && dateStr <= end;
+        });
+    }
+
+    // 无记录日期合成一个仅含用药方案的日节点，让长期用药连续显示
+    function getDayDataForDate(dateStr) {
+        const dayData = timelineData.find(d => d.date === dateStr);
+        if (dayData) return dayData;
+        const medication_plans = getMedicationPlansForDate(dateStr);
+        if (medication_plans.length === 0) return null;
+        return {
+            date: dateStr,
+            isEmptyDay: true,
+            data: {
+                entries: [],
+                medication_plans,
+                stats: { cal_in: 0, cal_out_exercise: 0, cal_out_bmr: 0, avg_glucose: 0, glucose_count: 0 }
+            }
+        };
+    }
     let timelineLoaded = { minDate: null, maxDate: null };
     // 初始化已加载范围
     (function() {
@@ -6045,6 +6072,36 @@
         return (stats.cal_in || 0) > 0 || (stats.cal_out_exercise || 0) > 0;
     }
 
+    // 用药打卡徽标：有记录日期和无记录日期共用，保证长期用药按月连续可见
+    function pushMedicationBadge(events, dateStr, medPlans) {
+        if (!medPlans || medPlans.length === 0) return;
+        const medOnly = medPlans.filter(p => (p.category || 'long_term') !== 'supplement');
+        const suppOnly = medPlans.filter(p => (p.category || 'long_term') === 'supplement');
+        let medTitle = '';
+        if (medOnly.length > 0 && suppOnly.length > 0) {
+            medTitle = `💊${medOnly.length} 🧬${suppOnly.length}`;
+        } else if (medOnly.length > 0) {
+            medTitle = `💊${medOnly.length}`;
+        } else {
+            medTitle = `🧬${suppOnly.length}`;
+        }
+        const medNames = medPlans.map(p => p.medication_name).join('、');
+
+        events.push({
+            title: medTitle,
+            start: dateStr,
+            backgroundColor: '#e7e8f5',
+            textColor: '#4a5568',
+            borderColor: '#e7e8f5',
+            allDay: true,
+            display: 'auto',
+            classNames: ['summary-event'],
+            extendedProps: {
+                tooltip: medNames
+            }
+        });
+    }
+
     function generateCalendarEvents() {
         const events = [];
 
@@ -6144,34 +6201,7 @@
             }
 
             // 4. 用药打卡 Badge
-            const medPlans = day.data.medication_plans || [];
-            if (medPlans.length > 0) {
-                const medOnly = medPlans.filter(p => (p.category || 'long_term') !== 'supplement');
-                const suppOnly = medPlans.filter(p => (p.category || 'long_term') === 'supplement');
-                let medTitle = '';
-                if (medOnly.length > 0 && suppOnly.length > 0) {
-                    medTitle = `💊${medOnly.length} 🧬${suppOnly.length}`;
-                } else if (medOnly.length > 0) {
-                    medTitle = `💊${medOnly.length}`;
-                } else {
-                    medTitle = `🧬${suppOnly.length}`;
-                }
-                const medNames = medPlans.map(p => p.medication_name).join('、');
-
-                events.push({
-                    title: medTitle,
-                    start: day.date,
-                    backgroundColor: '#e7e8f5',
-                    textColor: '#4a5568',
-                    borderColor: '#e7e8f5',
-                    allDay: true,
-                    display: 'auto',
-                    classNames: ['summary-event'],
-                    extendedProps: {
-                        tooltip: medNames
-                    }
-                });
-            }
+            pushMedicationBadge(events, day.date, day.data.medication_plans || []);
 
             // === Detailed Events for Day View (timed) ===
 
@@ -6224,6 +6254,21 @@
                 }
             });
         });
+
+        // 无记录日期也补用药打卡徽标：长期用药不应因为当天没测血糖/没运动而断档
+        const loadedDates = new Set(timelineData.map(d => d.date));
+        if (timelineLoaded.minDate && ACTIVE_MEDICATION_PLANS.length > 0) {
+            const endStr = localDateString();
+            const cursor = new Date(timelineLoaded.minDate + 'T00:00:00');
+            const end = new Date(endStr + 'T00:00:00');
+            while (cursor <= end) {
+                const dateStr = localDateString(cursor);
+                if (!loadedDates.has(dateStr)) {
+                    pushMedicationBadge(events, dateStr, getMedicationPlansForDate(dateStr));
+                }
+                cursor.setDate(cursor.getDate() + 1);
+            }
+        }
         return events;
     }
 
@@ -6233,7 +6278,7 @@
         const month = String(date.getMonth() + 1).padStart(2, '0');
         const day = String(date.getDate()).padStart(2, '0');
         const dateStr = `${year}-${month}-${day}`;
-        const dayData = timelineData.find(d => d.date === dateStr);
+        const dayData = getDayDataForDate(dateStr);
 
         hideDayStats();
         const calendarCardBody = document.querySelector('#calendar').closest('.card-body');
@@ -6258,6 +6303,11 @@
         const timelineEntries = allEntries.filter(r => r.type !== 'CGM');
 
         let html = `<div id="dayStatsHeader">`;
+
+        // 空日期也保留用药方案；提示无健康记录，避免看起来像数据丢失
+        if (cgmEntries.length === 0 && timelineEntries.length === 0 && medPlans.length > 0) {
+            html += `<div class="text-center text-muted py-2">当天无健康记录</div>`;
+        }
 
         // ── 1. 概要统计 Chips ──
         // 没记饮食也没记运动时整行不显示：那三格全是 0 或基础代谢，
@@ -6355,7 +6405,7 @@
                 <div class="med-section dv-med-section">
                     <div class="med-section-header" style="cursor:default;margin-bottom:8px;">
                         <i class="bi bi-capsule text-success"></i>
-                        <span>今日用药（${regularMeds.length} 药 ${supplements.length} 补）</span>
+                        <span>当日用药（${regularMeds.length} 药 ${supplements.length} 补）</span>
                     </div>
                     <div class="med-tab-bar">
                         <button class="med-tab-pill active" style="font-size:0.78rem;padding:4px 12px;"
@@ -6526,13 +6576,17 @@
         }
         container.innerHTML = '';
 
-        // Find data for this date
-        const dayData = timelineData.find(d => d.date === dateStr);
+        // Find data for this date；无记录但存在当日用药方案时合成空日节点
+        const dayData = getDayDataForDate(dateStr);
 
         if (!dayData) {
             container.innerHTML = '<div class="text-center text-muted py-4">当天无记录</div>';
             if (!targetContainer) dayModal.show();
             return;
+        }
+
+        if (dayData.isEmptyDay) {
+            container.innerHTML = '<div class="text-center text-muted py-2">当天无健康记录</div>';
         }
 
         const stats = dayData.data.stats;
@@ -6700,7 +6754,7 @@
                 <div class="mt-4 pt-3 border-top">
                     <details class="day-med-details" ${window.innerWidth > 480 ? 'open' : ''}>
                         <summary class="day-med-summary">
-                            <span class="text-muted">💊 今日用药方案</span>
+                            <span class="text-muted">💊 当日用药方案</span>
                             <i class="bi bi-chevron-down collapse-toggle-icon ms-1"></i>
                         </summary>
                         <div class="day-med-content mt-3">

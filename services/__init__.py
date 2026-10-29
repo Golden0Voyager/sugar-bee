@@ -8,4 +8,4 @@ from .prediction_service import (  # noqa: F401
     predict_post_exercise_glucose,
     predict_remaining_glucose_slots,
 )
-from .timeline_service import build_timeline  # noqa: F401
+from .timeline_service import build_timeline, get_active_medication_plans  # noqa: F401

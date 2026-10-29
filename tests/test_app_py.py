@@ -25,6 +25,7 @@ class TestIndexRoute:
             'app',
             render_template=DEFAULT,
             build_timeline=DEFAULT,
+            get_active_medication_plans=DEFAULT,
             get_dashboard_stats=DEFAULT,
             user_manager=DEFAULT,
             settings=DEFAULT,
@@ -36,6 +37,7 @@ class TestIndexRoute:
         with patch.dict('os.environ', {'GARMIN_USER_ID': '1', 'GARMIN_EMAIL': 'test@test.com'}), \
              self._patch_index() as mocks:
             mocks['build_timeline'].return_value = ([], [])
+            mocks['get_active_medication_plans'].return_value = [{'medication_name': '二甲双胍'}]
             mocks['get_dashboard_stats'].return_value = {'user': {'avatar': ''}}
             mocks['user_manager'].get_user.return_value = {'enabled_modules': ['glucose']}
             mocks['settings'].USER_EMOJI_MAP = {}
@@ -45,6 +47,7 @@ class TestIndexRoute:
             assert result.status_code == 200
             args, kwargs = mocks['render_template'].call_args
             assert kwargs['is_garmin_user'] is True
+            assert kwargs['medication_plans'] == [{'medication_name': '二甲双胍'}]
 
     def test_index_prediction_already_running(self, client_authenticated):
         from app import _prediction_running
@@ -53,6 +56,7 @@ class TestIndexRoute:
             with patch.dict('os.environ', {'GARMIN_USER_ID': '0', 'GARMIN_EMAIL': ''}), \
                  self._patch_index() as mocks:
                 mocks['build_timeline'].return_value = ([], [])
+                mocks['get_active_medication_plans'].return_value = []
                 mocks['get_dashboard_stats'].return_value = {'user': {'avatar': ''}}
                 mocks['user_manager'].get_user.return_value = {'enabled_modules': ['glucose']}
                 mocks['settings'].USER_EMOJI_MAP = {}
@@ -74,6 +78,7 @@ class TestIndexRoute:
         with patch.dict('os.environ', {'GARMIN_USER_ID': '0', 'GARMIN_EMAIL': ''}), \
              self._patch_index() as mocks:
             mocks['build_timeline'].return_value = ([], [])
+            mocks['get_active_medication_plans'].return_value = []
             mocks['get_dashboard_stats'].return_value = {'user': {'avatar': ''}}
             mocks['user_manager'].get_user.return_value = {'enabled_modules': []}
             mocks['settings'].USER_EMOJI_MAP = {}
@@ -87,6 +92,7 @@ class TestIndexRoute:
     def test_index_no_enabled_modules(self, client_authenticated):
         with self._patch_index() as mocks:
             mocks['build_timeline'].return_value = ([], [])
+            mocks['get_active_medication_plans'].return_value = []
             mocks['get_dashboard_stats'].return_value = {'user': {'avatar': ''}}
             mocks['user_manager'].get_user.return_value = None
             mocks['settings'].USER_EMOJI_MAP = {}
