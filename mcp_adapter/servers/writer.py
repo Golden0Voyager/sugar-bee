@@ -46,6 +46,8 @@ from mcp_adapter.core.timefmt import normalize_input as _normalize_input
 from mcp_adapter.core.timefmt import parse as _parse_ts
 from mcp_adapter.core.timefmt import shift_minutes as _shift_minutes
 from mcp_adapter.core.timefmt import today_bounds as _today_bounds
+from mcp_adapter.core.tsguard import guard_timestamp as _guard_timestamp
+from mcp_adapter.core.tsguard import server_clock as _server_clock
 from utils.db import get_raw_conn
 from utils.sql_dialect import date_format_sql
 from utils.timezone import timestamp_str as app_timestamp_str
@@ -606,7 +608,7 @@ async def record_blood_pressure(
         hr_err = _validate_heart_rate(pulse_rate)
         if hr_err:
             return f"❌ 参数错误：{hr_err}"
-    ts = _normalize_timestamp(timestamp)
+    ts, _ts_notes = _guard_timestamp(_normalize_timestamp(timestamp))
     payload: dict = {
         "type": "血压测量",
         "value": 0,
@@ -631,6 +633,7 @@ async def record_blood_pressure(
     if pulse_rate is not None:
         parts.append(f"   脉搏 {pulse_rate} bpm")
     parts.append(f"   时间 {ts} (ID: {rid})")
+    parts.extend(_ts_notes)
     return "\n".join(parts)
 
 
@@ -645,7 +648,7 @@ async def record_weight(
     err = _validate_weight(weight)
     if err:
         return f"❌ 参数错误：{err}"
-    ts = _normalize_timestamp(timestamp)
+    ts, _ts_notes = _guard_timestamp(_normalize_timestamp(timestamp))
     payload: dict = {
         "type": "体重记录",
         "weight": weight,
@@ -665,6 +668,7 @@ async def record_weight(
     bmi_str = f"，BMI {bmi}" if bmi else ""
     parts.append(f"   {weight} kg{bmi_str}")
     parts.append(f"   时间 {ts} (ID: {rid})")
+    parts.extend(_ts_notes)
     return "\n".join(parts)
 
 
@@ -680,7 +684,7 @@ async def record_glucose(
     err = _validate_glucose(value)
     if err:
         return f"❌ 参数错误：{err}"
-    ts = _normalize_timestamp(timestamp)
+    ts, _ts_notes = _guard_timestamp(_normalize_timestamp(timestamp))
     payload: dict = {
         "type": record_type,
         "value": value,
@@ -702,6 +706,7 @@ async def record_glucose(
     parts = [f"✅ {label} 血糖记录成功"]
     parts.append(f"   {value} mmol/L ({record_type}) [{badge}]")
     parts.append(f"   时间 {ts} (ID: {rid})")
+    parts.extend(_ts_notes)
     return "\n".join(parts)
 
 
@@ -723,7 +728,7 @@ async def record_exercise(
         hr_err = _validate_heart_rate(heart_rate)
         if hr_err:
             return f"❌ 参数错误：{hr_err}"
-    ts = _normalize_timestamp(timestamp)
+    ts, _ts_notes = _guard_timestamp(_normalize_timestamp(timestamp))
     payload: dict = {
         "type": exercise_type,
         "value": 0,
@@ -763,6 +768,7 @@ async def record_exercise(
         detail += f"，{calories}kcal"
     parts.append(detail)
     parts.append(f"   时间 {ts} (ID: {rid})")
+    parts.extend(_ts_notes)
     return "\n".join(parts)
 
 
@@ -899,9 +905,14 @@ async def batch_record(user_id: int, records: list[dict]) -> str:
             return "❌ 参数错误：\n" + "\n".join(f"  - {e}" for e in param_errors)
 
         # 统一时间戳规范化
+        _ts_notes: list[str] = []
         for r in records:
             ts = r.get("datetime") or r.get("timestamp")
-            r["datetime"] = _normalize_timestamp(ts)
+            fixed_ts, notes = _guard_timestamp(_normalize_timestamp(ts))
+            r["datetime"] = fixed_ts
+            for line in notes:
+                if line not in _ts_notes:
+                    _ts_notes.append(line)
             if "timestamp" in r:
                 del r["timestamp"]
             # 确保 user_id 正确
@@ -956,6 +967,7 @@ async def batch_record(user_id: int, records: list[dict]) -> str:
                 detail = f"  {rtype}"
             lines.append(f"{idx}. {detail}  ⏰ {time_str} (ID: {rid})")
 
+        lines.extend(_ts_notes)
         lines.append("\n如数据有误，请使用 `undo_last_record` 撤销。")
         return "\n".join(lines)
     except Exception as e:
@@ -1007,11 +1019,16 @@ async def batch_parse_and_record(text: str) -> str:
 
     # Step 3: 内联 SQLite 批量写入（替代 /batch_add HTTP，无需 Flask）
     conn = _db()
+    _ts_notes: list[str] = []
     try:
-        # 统一时间戳规范化
+        # 统一时间戳规范化（含时间戳护栏）
         for r in records:
             ts = r.get("datetime") or r.get("timestamp")
-            r["datetime"] = _normalize_timestamp(ts)
+            fixed_ts, notes = _guard_timestamp(_normalize_timestamp(ts))
+            r["datetime"] = fixed_ts
+            for line in notes:
+                if line not in _ts_notes:
+                    _ts_notes.append(line)
             if "timestamp" in r:
                 del r["timestamp"]
 
@@ -1078,6 +1095,7 @@ async def batch_parse_and_record(text: str) -> str:
             lines.append(f"  ⏰ {time_str}  (ID: {r.get('id', '?')})")
         lines.append("")
 
+    lines.extend(_ts_notes)
     lines.append("如数据有误，请使用 `undo_last_record` 撤销。")
     return "\n".join(lines)
 
