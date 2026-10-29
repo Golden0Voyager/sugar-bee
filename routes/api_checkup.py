@@ -204,3 +204,77 @@ def delete_report(report_id):
     except Exception as e:
         traceback.print_exc()
         return api_error(str(e), status_code=500)
+
+
+@bp_checkup.route('/api/checkup/merge', methods=['POST'])
+@login_required
+def merge_reports():
+    """合并同一检查日期分批上传的多份报告为一条记录。
+
+    完全相同的指标行（项目+数值+单位都一样）只保留一条；
+    同名但数值不同的行全部保留，由用户在详情里自行取舍。
+    """
+    try:
+        data = request.json or {}
+        raw_ids = data.get('report_ids') or []
+        if not isinstance(raw_ids, list) or len(raw_ids) < 2:
+            return api_error('请勾选至少 2 份要合并的报告', status_code=400, error_type='validation_error')
+        try:
+            report_ids = sorted({int(r) for r in raw_ids})
+        except (TypeError, ValueError):
+            return api_error('报告 ID 无效', status_code=400, error_type='validation_error')
+        if len(report_ids) < 2:
+            return api_error('请勾选至少 2 份不同的报告', status_code=400, error_type='validation_error')
+
+        user_id = user_manager.get_current_user_id()
+        db = get_db()
+        c = db.cursor()
+        placeholders = ','.join('?' * len(report_ids))
+        c.execute(f"""
+            SELECT id, checkup_date, institution FROM checkup_reports
+            WHERE user_id = ? AND id IN ({placeholders})
+        """, (user_id, *report_ids))
+        rows = c.fetchall()
+        if len(rows) != len(report_ids):
+            return api_error('有报告不存在或不属于当前用户', status_code=404, error_type='not_found')
+
+        dates = {r['checkup_date'] for r in rows}
+        if len(dates) != 1:
+            return api_error('只能合并检查日期相同的报告（同一次体检）', status_code=400,
+                             error_type='validation_error')
+
+        institution = next((r['institution'] for r in rows if r['institution']), '')
+        c.execute("""
+            INSERT INTO checkup_reports (user_id, checkup_date, institution, summary)
+            VALUES (?, ?, ?, '')
+            RETURNING id
+        """, (user_id, rows[0]['checkup_date'], institution))
+        merged_id = c.lastrowid
+
+        c.execute(f"UPDATE checkup_items SET report_id = ? WHERE report_id IN ({placeholders})",
+                  (merged_id, *report_ids))
+
+        # 项目+数值+单位完全相同的行只保留一条
+        c.execute("""
+            DELETE FROM checkup_items
+            WHERE report_id = ? AND id NOT IN (
+                SELECT MIN(id) FROM checkup_items
+                WHERE report_id = ? GROUP BY category, name, value, unit
+            )
+        """, (merged_id, merged_id))
+
+        # 异常数用 COUNT 分开查：PostgreSQL 不允许对布尔表达式 SUM
+        c.execute("SELECT COUNT(*) FROM checkup_items WHERE report_id = ?", (merged_id,))
+        total = c.fetchone()[0]
+        c.execute("SELECT COUNT(*) FROM checkup_items WHERE report_id = ? AND status <> 'normal'",
+                  (merged_id,))
+        abnormal = c.fetchone()[0]
+        c.execute("UPDATE checkup_reports SET summary = ? WHERE id = ?",
+                  (f'共 {total} 项，异常 {abnormal} 项', merged_id))
+        c.execute(f"DELETE FROM checkup_reports WHERE id IN ({placeholders})", (*report_ids,))
+        db.commit()
+
+        return api_success(data=_report_detail(db, user_id, merged_id), message='已合并为一份报告')
+    except Exception as e:
+        traceback.print_exc()
+        return api_error(str(e), status_code=500)
