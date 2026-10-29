@@ -231,6 +231,144 @@ class TestCheckupApi:
         got = client_authenticated.get(f"/api/checkup/{reports[0]['id']}").get_json()['data']
         assert got['institution'] == '市第一医院'
 
+    def _save_report(self, client_authenticated, date, items, institution=''):
+        resp = client_authenticated.post('/api/checkup/save', json={
+            'checkup_date': date,
+            'institution': institution,
+            'items': items,
+        })
+        assert resp.status_code == 200
+        return resp.get_json()['data']['id']
+
+    def test_merge_combines_batches_and_dedupes(self, client_authenticated):
+        """同一次体检分批上传：合并为一条，完全相同的行只留一条。"""
+        items_a = [
+            {'category': '血常规', 'name': '白细胞', 'value': '5.2', 'unit': '10^9/L', 'status': 'normal'},
+            {'category': '影像检查', 'name': '肝', 'value': '形态正常', 'unit': '', 'status': 'normal'},
+        ]
+        items_b = [
+            {'category': '血常规', 'name': '白细胞', 'value': '5.2', 'unit': '10^9/L', 'status': 'normal'},
+            {'category': '肝功能', 'name': '丙氨酸氨基转移酶', 'value': '69', 'unit': 'U/L', 'status': 'high'},
+        ]
+        id_a = self._save_report(client_authenticated, '2026-07-01', items_a)
+        id_b = self._save_report(client_authenticated, '2026-07-01', items_b, institution='市一医院')
+
+        resp = client_authenticated.post('/api/checkup/merge', json={'report_ids': [id_a, id_b]})
+        assert resp.status_code == 200
+        merged = resp.get_json()['data']
+        assert merged['checkup_date'] == '2026-07-01'
+        assert merged['institution'] == '市一医院'
+        assert merged['summary'] == '共 3 项，异常 1 项'
+        assert len(merged['items']) == 3
+
+        reports = client_authenticated.get('/api/checkup/list').get_json()['data']['reports']
+        assert len(reports) == 1
+        assert reports[0]['id'] == merged['id']
+
+    def test_merge_keeps_conflicting_values(self, client_authenticated):
+        """同名但数值不同的行全部保留，不静默丢数据。"""
+        id_a = self._save_report(client_authenticated, '2026-07-01', [
+            {'category': '血脂', 'name': '总胆固醇', 'value': '5.0', 'unit': 'mmol/L', 'status': 'normal'},
+        ])
+        id_b = self._save_report(client_authenticated, '2026-07-01', [
+            {'category': '血脂', 'name': '总胆固醇', 'value': '5.6', 'unit': 'mmol/L', 'status': 'high'},
+        ])
+        resp = client_authenticated.post('/api/checkup/merge', json={'report_ids': [id_a, id_b]})
+        assert resp.status_code == 200
+        values = sorted(i['value'] for i in resp.get_json()['data']['items'])
+        assert values == ['5.0', '5.6']
+
+    def test_merge_requires_two_distinct_reports(self, client_authenticated):
+        assert client_authenticated.post('/api/checkup/merge', json={'report_ids': []}).status_code == 400
+        assert client_authenticated.post('/api/checkup/merge', json={'report_ids': [1]}).status_code == 400
+        resp = client_authenticated.post('/api/checkup/merge', json={'report_ids': [7, 7]})
+        assert resp.status_code == 400
+        assert client_authenticated.post('/api/checkup/merge', json={'report_ids': ['x', 'y']}).status_code == 400
+
+    def test_merge_rejects_missing_or_foreign_reports(self, client_authenticated):
+        id_a = self._save_report(client_authenticated, '2026-07-01', [
+            {'category': '血糖', 'name': '空腹血糖', 'value': '5.0', 'unit': 'mmol/L', 'status': 'normal'},
+        ])
+        assert client_authenticated.post('/api/checkup/merge', json={'report_ids': [id_a, 99999]}).status_code == 404
+
+    def test_merge_rejects_different_dates(self, client_authenticated):
+        id_a = self._save_report(client_authenticated, '2026-07-01', [
+            {'category': '血糖', 'name': '空腹血糖', 'value': '5.0', 'unit': 'mmol/L', 'status': 'normal'},
+        ])
+        id_b = self._save_report(client_authenticated, '2026-10-13', [
+            {'category': '血糖', 'name': '空腹血糖', 'value': '5.1', 'unit': 'mmol/L', 'status': 'normal'},
+        ])
+        resp = client_authenticated.post('/api/checkup/merge', json={'report_ids': [id_a, id_b]})
+        assert resp.status_code == 400
+        # 合并失败后原报告保持不变
+        reports = client_authenticated.get('/api/checkup/list').get_json()['data']['reports']
+        assert len(reports) == 2
+
+    def test_merge_uses_returning_id_for_postgres(self, client_authenticated, monkeypatch):
+        """合并 INSERT 必须显式 RETURNING id，否则 PG 下 merged_id 为 None 会挂错明细。"""
+        from routes import api_checkup
+
+        class PgLikeCursor:
+            def __init__(self):
+                self.lastrowid = None
+                self.calls = []
+
+            def execute(self, sql, params=()):
+                self.calls.append((sql, params))
+                if 'INSERT INTO checkup_reports' in sql:
+                    self.lastrowid = 88 if 'RETURNING id' in sql else None
+
+            def fetchall(self):
+                return [
+                    {'id': 1, 'checkup_date': '2026-07-01', 'institution': ''},
+                    {'id': 2, 'checkup_date': '2026-07-01', 'institution': '市一医院'},
+                ]
+
+            def fetchone(self):
+                return (3,)
+
+        class FakeDb:
+            def __init__(self):
+                self.c = PgLikeCursor()
+                self.committed = False
+
+            def cursor(self):
+                return self.c
+
+            def commit(self):
+                self.committed = True
+
+        db = FakeDb()
+        monkeypatch.setattr(api_checkup, 'get_db', lambda: db)
+        monkeypatch.setattr(
+            api_checkup, '_report_detail',
+            lambda _db, _user_id, report_id: {'id': report_id, 'items': []},
+        )
+
+        resp = client_authenticated.post('/api/checkup/merge', json={'report_ids': [1, 2]})
+
+        assert resp.status_code == 200
+        assert resp.get_json()['data']['id'] == 88
+        insert_sql = next(sql for sql, _ in db.c.calls if 'INSERT INTO checkup_reports' in sql)
+        assert 'RETURNING id' in insert_sql
+        # 明细必须挂到 RETURNING 得到的 merged_id 上
+        update_params = next(params for sql, params in db.c.calls if 'UPDATE checkup_items' in sql)
+        assert update_params[0] == 88
+        assert db.committed is True
+
+    def test_merge_internal_error_returns_500(self, client_authenticated, monkeypatch):
+        """合并过程抛异常时返回 500，不静默成功。"""
+        from routes import api_checkup
+        id_a = self._save_report(client_authenticated, '2026-07-01', [
+            {'category': '血糖', 'name': '空腹血糖', 'value': '5.0', 'unit': 'mmol/L', 'status': 'normal'},
+        ])
+        id_b = self._save_report(client_authenticated, '2026-07-01', [
+            {'category': '血糖', 'name': '餐后血糖', 'value': '6.5', 'unit': 'mmol/L', 'status': 'normal'},
+        ])
+        monkeypatch.setattr(api_checkup.user_manager, 'get_current_user_id', lambda: 1 / 0)
+        resp = client_authenticated.post('/api/checkup/merge', json={'report_ids': [id_a, id_b]})
+        assert resp.status_code == 500
+
     def test_save_uses_returning_id_for_postgres(self, client_authenticated, monkeypatch):
         """PostgreSQL 只有显式 RETURNING id 才能给明细提供 report_id。"""
         from routes import api_checkup
