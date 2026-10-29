@@ -1908,40 +1908,37 @@
                                 </div>
                             </div>
                         </form>
-                    </div>
 
-                    <!-- Tab 2: 用户管理 -->
-                    <div class="tab-pane fade" id="tabUsers" role="tabpanel">
-                        <div id="settingsUserList" class="mb-3"></div>
-
-                        <div class="bg-light rounded-3 p-3 mb-3">
-                            <div class="row g-2 align-items-end">
-                                <div class="col-md-5">
-                                    <label class="form-label small text-muted">新用户名</label>
-                                    <input type="text" id="newUsername" class="form-control" placeholder="英文">
+                        <div class="mt-4 pt-3 border-top">
+                            <h6 class="fw-bold mb-1"><i class="bi bi-shield-lock me-1"></i>账号与安全</h6>
+                            <p class="text-muted small mb-3">以下设置只作用于当前登录的这个账号</p>
+                            <div class="bg-light rounded-3 p-3 mb-3">
+                                <div class="row g-2 align-items-end">
+                                    <div class="col-md-5">
+                                        <label class="form-label small text-muted">登录名（英文）</label>
+                                        <input type="text" id="newUsername" class="form-control" placeholder="英文">
+                                    </div>
+                                    <div class="col-md-3">
+                                        <button class="btn btn-outline-secondary w-100" onclick="changeUsername()">修改登录名</button>
+                                    </div>
                                 </div>
-                                <div class="col-md-3">
-                                    <button class="btn btn-outline-secondary w-100" onclick="changeUsername()">修改</button>
+                                <hr class="my-3 opacity-25">
+                                <div class="row g-2 align-items-end">
+                                    <div class="col-md-4">
+                                        <label class="form-label small text-muted">当前密码</label>
+                                        <input type="password" id="oldPassword" class="form-control" placeholder="">
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label small text-muted">新密码</label>
+                                        <input type="password" id="newPassword" class="form-control" placeholder="至少4位">
+                                    </div>
+                                    <div class="col-md-4">
+                                        <button class="btn btn-outline-secondary w-100" onclick="changePassword()">修改密码</button>
+                                    </div>
                                 </div>
                             </div>
-                            <hr class="my-3 opacity-25">
-                            <div class="row g-2 align-items-end">
-                                <div class="col-md-4">
-                                    <label class="form-label small text-muted">当前密码</label>
-                                    <input type="password" id="oldPassword" class="form-control" placeholder="">
-                                </div>
-                                <div class="col-md-4">
-                                    <label class="form-label small text-muted">新密码</label>
-                                    <input type="password" id="newPassword" class="form-control" placeholder="至少4位">
-                                </div>
-                                <div class="col-md-4">
-                                    <button class="btn btn-outline-secondary w-100" onclick="changePassword()">修改密码</button>
-                                </div>
-                            </div>
-                        </div>
 
-                        <div class="bg-light rounded-3 p-3 mb-3">
-                            <div id="accountBindingSection">
+                            <div class="bg-light rounded-3 p-3">
                                 <div class="d-flex align-items-center justify-content-between py-2">
                                     <span class="text-muted">手机号</span>
                                     <div>
@@ -1970,17 +1967,29 @@
                                 </div>
                             </div>
                         </div>
+                    </div>
 
+                    <!-- Tab 2: 用户管理（家庭成员账号） -->
+                    <div class="tab-pane fade" id="tabUsers" role="tabpanel">
+                        <h6 class="fw-bold mb-1">家庭成员</h6>
+                        <p class="text-muted small">全家共 <span id="settingsUserCount">-</span> 个账号；管理员点「切换」可进入对方账号，帮忙记录数据。</p>
+                        <div id="settingsUserList" class="mb-4"></div>
+
+                        <h6 class="fw-bold mb-1">添加新成员</h6>
+                        <p class="text-muted small">为家人创建账号；创建后把登录名和密码告诉对方，首次登录会有初始化引导。</p>
                         <div class="bg-light rounded-3 p-3">
                             <div class="row g-2">
                                 <div class="col-md-4">
-                                    <input type="text" id="newUserUsername" class="form-control" placeholder="用户名（英文）">
+                                    <label class="form-label small text-muted">登录用户名（英文）</label>
+                                    <input type="text" id="newUserUsername" class="form-control" placeholder="如 laoyue">
                                 </div>
                                 <div class="col-md-4">
-                                    <input type="text" id="newUserDisplayName" class="form-control" placeholder="显示名称">
+                                    <label class="form-label small text-muted">显示名称</label>
+                                    <input type="text" id="newUserDisplayName" class="form-control" placeholder="家人怎么称呼他">
                                 </div>
                                 <div class="col-md-4">
-                                    <input type="password" id="newUserPassword" class="form-control" placeholder="密码（至少4位）">
+                                    <label class="form-label small text-muted">登录密码（至少4位）</label>
+                                    <input type="password" id="newUserPassword" class="form-control" placeholder="至少4位">
                                 </div>
                                 <div class="col-12 mt-2">
                                     <button class="btn btn-primary w-100" onclick="createNewUser()">
@@ -2337,6 +2346,11 @@
                 </div>
 
                 <div class="fw-semibold mb-2">历史记录</div>
+                <div id="checkupMergeBar" class="d-none mb-2">
+                    <button class="btn btn-sm btn-outline-primary w-100" id="checkupMergeBtn" disabled
+                        onclick="mergeCheckupReports()">合并选中的 0 份</button>
+                    <div class="text-muted small mt-1">勾选检查日期相同的多份报告，可把同一次体检分批上传的内容合并为一条</div>
+                </div>
                 <div id="checkupList"><div class="text-muted small">加载中...</div></div>
             </div>
         </div>
@@ -9855,6 +9869,8 @@
                 `;
             });
             container.innerHTML = html;
+            const countEl = document.getElementById('settingsUserCount');
+            if (countEl) countEl.textContent = users.length;
         } catch (e) {
             console.error('Load settings user list error:', e);
         }
@@ -10753,17 +10769,60 @@
         await loadCheckupList();
     }
 
+    // 体检报告合并：勾选状态（同一次体检分批上传时合并为一条）
+    const _checkupMergeSelected = new Set();
+
+    function toggleCheckupMerge(id, checked) {
+        if (checked) {
+            _checkupMergeSelected.add(id);
+        } else {
+            _checkupMergeSelected.delete(id);
+        }
+        const bar = document.getElementById('checkupMergeBar');
+        const btn = document.getElementById('checkupMergeBtn');
+        if (bar) bar.classList.toggle('d-none', _checkupMergeSelected.size === 0);
+        if (btn) {
+            btn.disabled = _checkupMergeSelected.size < 2;
+            btn.textContent = `合并选中的 ${_checkupMergeSelected.size} 份`;
+        }
+    }
+
+    async function mergeCheckupReports() {
+        if (_checkupMergeSelected.size < 2) return;
+        if (!confirm(`把选中的 ${_checkupMergeSelected.size} 份报告合并为一条记录？\n\n只支持检查日期相同的报告（同一次体检分批上传的情况）；完全重复的项目会自动去重。`)) return;
+        try {
+            const res = await apiCall('/api/checkup/merge', {
+                method: 'POST',
+                body: JSON.stringify({ report_ids: [..._checkupMergeSelected] })
+            }, { showLoading: false });
+            _checkupMergeSelected.clear();
+            await loadCheckupList();
+            if (res.data && res.data.id) viewCheckup(res.data.id);
+            showToast(res.message || '已合并', 'success');
+        } catch (e) {
+            showToast(e.message || '合并失败', 'danger');
+        }
+    }
+
     async function loadCheckupList() {
         const box = document.getElementById('checkupList');
         try {
             const res = await apiCall('/api/checkup/list', { method: 'GET' }, { showLoading: false });
             const reports = (res && res.data && res.data.reports) || [];
+            _checkupMergeSelected.clear();
+            const bar = document.getElementById('checkupMergeBar');
+            if (bar) bar.classList.add('d-none');
             if (box) {
                 box.innerHTML = reports.length ? reports.map(r => `
                     <div class="d-flex justify-content-between align-items-center border-bottom py-2">
-                        <div role="button" onclick="viewCheckup(${r.id})">
-                            <div class="fw-semibold">${escapeHtml(r.checkup_date)}${r.institution ? ' · ' + escapeHtml(r.institution) : ''}</div>
-                            <div class="small text-muted">${escapeHtml(r.item_count)} 项${r.abnormal_count > 0 ? ' · 异常 ' + escapeHtml(r.abnormal_count) + ' 项' : ' · 全部正常'}</div>
+                        <div class="d-flex align-items-center gap-2" role="button" onclick="viewCheckup(${r.id})">
+                            <input type="checkbox" class="form-check-input mt-0" title="勾选后可合并"
+                                onchange="toggleCheckupMerge(${r.id}, this.checked)"
+                                onclick="event.stopPropagation()">
+                            <div>
+                                <div class="fw-semibold">${escapeHtml(r.checkup_date)}${r.institution ? ' · ' + escapeHtml(r.institution) : ''}</div>
+                                <div class="small text-muted">${escapeHtml(r.item_count)} 项${r.abnormal_count > 0 ? ' · 异常 ' + escapeHtml(r.abnormal_count) + ' 项' : ' · 全部正常'}</div>
+                            </div>
                         </div>
                         <button class="btn btn-sm btn-outline-danger" onclick="deleteCheckup(${r.id})">删除</button>
                     </div>
@@ -11028,7 +11087,8 @@
             const user = await res.json();
 
             currentUserId = user.id;
-            const displayName = user.display_name || user.username || '用户';
+            // 右上角优先显示个人资料里的「姓名」，没填时才用账号显示名
+            const displayName = user.name || user.display_name || user.username || '用户';
             document.getElementById('currentUserName').textContent = displayName;
 
             console.log('Current user loaded:', user);
