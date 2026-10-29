@@ -27,7 +27,8 @@ CONTAINER_PREFIX="${SB_CONTAINER_PREFIX:-/app/}"
 HOST_PREFIX="${SB_HOST_PREFIX:-/opt/sugar_bee/app/}"
 
 LOCAL_DIR="${SB_LOCAL_DIR:-$HOME/Code/sugar_bee/backups/from_lighthouse}"
-KEEP_DAYS="${SB_KEEP_DAYS:-60}"
+KEEP_DAYS="${SB_KEEP_DAYS:-60}"      # 周日归档保留天数
+DAILY_KEEP="${SB_DAILY_KEEP:-7}"     # 无论星期，最近 N 份一律保留
 QUIET=0
 [ "${1:-}" = "--quiet" ] && QUIET=1
 
@@ -49,9 +50,16 @@ SSH_CMD=(ssh -i "$SSH_KEY" -o BatchMode=yes -o StrictHostKeyChecking=no -o Conne
 mkdir -p "$LOCAL_DIR"
 
 # ---- 1. 在服务器上生成一致性快照 ----
-line=$("${SSH_CMD[@]}" "docker exec -i sugar-bee python - < $REMOTE_PY" 2>&1)
+# 优先在宿主机直接用 python3 读库文件：容器停着也能备份，不再依赖 docker exec。
+# backup_db.py 支持 SB_DB / SB_BACKUP_DIR 覆盖默认的容器内路径。
+SRC_DB="${SB_SRC_DB:-/opt/sugar_bee/app/db_data/glucose.db}"
+line=$("${SSH_CMD[@]}" "SB_DB='$SRC_DB' SB_BACKUP_DIR='$REMOTE_DIR' python3 - < $REMOTE_PY" 2>&1)
 if [[ "$line" != SNAPSHOT=* ]]; then
-  log ERROR "服务器快照失败：$line"
+  log WARN "宿主机快照失败（$(printf '%s' "$line" | head -c 160)），回退到容器内执行"
+  line=$("${SSH_CMD[@]}" "docker exec -i sugar-bee python - < $REMOTE_PY" 2>&1)
+fi
+if [[ "$line" != SNAPSHOT=* ]]; then
+  log ERROR "服务器快照失败（宿主机与容器均不可用）：$(printf '%s' "$line" | head -c 200)"
   exit 1
 fi
 
@@ -122,31 +130,37 @@ mv "$tmp" "$target"
 ln -sfh "$(basename "$target")" "$LOCAL_DIR/glucose_latest.db" 2>/dev/null || ln -sf "$(basename "$target")" "$LOCAL_DIR/glucose_latest.db"
 log INFO "已保存到 $(basename "$target")（records=$n, $(du -h "$target" | cut -f1)）"
 
-# ---- 4. 清理：每日校验，仅周日归档 ----
-# 策略：每天照常拉取并做完整性校验（链路故障当天就能发现），
-# 但磁盘只保留周日的归档，非周日快照校验通过后即删除，不累积日备份。
-# 星期取自文件名里的日期，不用 mtime —— mtime 会被拷贝/恢复操作污染。
+# ---- 4. 清理：每日保留最近 N 份，周日额外长期保留 ----
+# 策略：每天照常拉取（链路故障当天就能发现），最近 DAILY_KEEP 份一律保留，
+# 更早的只留周日归档，且不超过 KEEP_DAYS 天。
+# 日期一律取自文件名，不用 mtime —— mtime 会被拷贝/恢复操作污染。
 weekday() { date -j -f "%Y%m%d" "$1" "+%u" 2>/dev/null || date -d "$1" "+%u" 2>/dev/null; }
+to_epoch() { date -j -f "%Y%m%d" "$1" "+%s" 2>/dev/null || date -d "$1" "+%s" 2>/dev/null; }
 
-if [ "$(weekday "$ts")" != "7" ]; then
-  rm -f "$target"
-  log INFO "非周日快照 $(basename "$target") 已校验并清理（仅周日归档）"
-fi
-
-# 清掉历史遗留的非周日备份
-for f in "$LOCAL_DIR"/glucose_2*.db; do
+now_epoch=$(date +%s)
+all_files=$(ls -1 "$LOCAL_DIR"/glucose_2*.db 2>/dev/null | sort)   # 文件名升序即日期升序
+total=$(printf '%s\n' "$all_files" | grep -c . )
+idx=0
+removed=0
+for f in $all_files; do
   [ -e "$f" ] || continue
-  _b=$(basename "$f"); _d=${_b#glucose_}; _d=${_d%.db}
-  [ "$(weekday "$_d")" = "7" ] || rm -f "$f"
+  idx=$((idx + 1))
+  # 最近 DAILY_KEEP 份保留
+  [ "$idx" -gt $((total - DAILY_KEEP)) ] && continue
+  base=$(basename "$f"); d=${base#glucose_}; d=${d%.db}
+  ep=$(to_epoch "$d")
+  age_days=$(( (now_epoch - ${ep:-0}) / 86400 ))
+  # 更早的：仅周日且未超期才留
+  if [ "$(weekday "$d")" = "7" ] && [ "$age_days" -le "$KEEP_DAYS" ]; then
+    continue
+  fi
+  rm -f "$f"; removed=$((removed + 1))
 done
-
-# 周日归档同样受 KEEP_DAYS 约束
-find "$LOCAL_DIR" -name 'glucose_2*.db' -mtime +"$KEEP_DAYS" -delete 2>/dev/null
+[ "$removed" -gt 0 ] && log INFO "清理了 $removed 份过期/非周日备份"
 
 # latest 始终指向现存最新的一份，避免指向已被清理的文件
-# 按文件名里的日期排序（YYYYMMDD 字典序即时间序），不依赖可能被污染的 mtime
 newest=$(ls -1 "$LOCAL_DIR"/glucose_2*.db 2>/dev/null | sort | tail -1)
 if [ -n "$newest" ]; then
   ln -sfh "$(basename "$newest")" "$LOCAL_DIR/glucose_latest.db" 2>/dev/null || ln -sf "$(basename "$newest")" "$LOCAL_DIR/glucose_latest.db"
 fi
-log INFO "完成，本地保留 $KEEP_DAYS 天内的周日归档（当前 $(ls -1 "$LOCAL_DIR" | grep -c '^glucose_2.*\.db$') 份）"
+log INFO "完成，本地保留：最近 $DAILY_KEEP 份 + ${KEEP_DAYS} 天内的周日归档（当前 $(ls -1 "$LOCAL_DIR" | grep -c '^glucose_2.*\.db$') 份）"
