@@ -2233,10 +2233,14 @@
                 </div>
 
                 <div class="alert alert-light border small mb-3" id="boneLatest">还没有记录</div>
+                <div class="d-flex justify-content-end align-items-center gap-2 mb-2">
+                    <label for="boneTrendSite" class="small text-muted">趋势部位</label>
+                    <select id="boneTrendSite" class="form-select form-select-sm w-auto" onchange="renderBoneChart((_boneData || {}).trend || [])"></select>
+                </div>
                 <div class="chart-box mb-3">
-                    <canvas id="boneTrendChart" role="img" aria-label="骨密度 T 值与 Z 值趋势折线图，实线为 T 值，虚线为 Z 值"></canvas>
+                    <canvas id="boneTrendChart" role="img" aria-label="所选部位的骨密度 T 值与 Z 值趋势折线图，实线为 T 值，虚线为 Z 值"></canvas>
                     <div class="chart-empty" id="boneTrendEmpty" role="status" hidden>
-                        <i class="bi bi-graph-up" aria-hidden="true"></i><span class="chart-empty-text">至少记录两次同部位检查后显示趋势</span>
+                        <i class="bi bi-graph-up" aria-hidden="true"></i><span class="chart-empty-text">同一部位至少有两个不同日期的记录后显示趋势</span>
                     </div>
                 </div>
                 <div class="d-flex justify-content-between align-items-center mb-2">
@@ -10519,7 +10523,17 @@
             }).join('') : '<div class="text-muted small">暂无记录</div>';
         }
 
-        renderBoneChart(d.trend || []);
+        const trend = d.trend || [];
+        const trendSite = document.getElementById('boneTrendSite');
+        if (trendSite) {
+            const previous = trendSite.value;
+            const sites = [...new Set(trend.map(t => t.site))];
+            const preferred = sites.includes(previous) ? previous
+                : (d.latest && sites.includes(d.latest.site) ? d.latest.site : sites[0] || '');
+            trendSite.innerHTML = sites.map(site => `<option value="${escapeHtml(site)}">${escapeHtml(site)}</option>`).join('');
+            trendSite.value = preferred;
+        }
+        renderBoneChart(trend);
         updateBoneEntry();
     }
 
@@ -10527,16 +10541,26 @@
         const canvas = document.getElementById('boneTrendChart');
         if (!canvas || typeof Chart === 'undefined') return;
         if (_boneChart) { _boneChart.destroy(); _boneChart = null; }
-        setChartEmptyState('boneTrendChart', 'boneTrendEmpty', trend.length < 2, '至少记录两次同部位检查后显示趋势');
-        if (trend.length < 2) return;
+        const site = document.getElementById('boneTrendSite')?.value;
+        const siteTrend = site ? trend.filter(t => t.site === site) : trend;
+        const distinctDates = new Set(siteTrend.map(t => t.date));
+        setChartEmptyState('boneTrendChart', 'boneTrendEmpty', distinctDates.size < 2, '同一部位至少有两个不同日期的记录后显示趋势');
+        if (distinctDates.size < 2) return;
+
+        const byDate = new Map();
+        siteTrend.forEach(t => {
+            const existing = byDate.get(t.date);
+            if (!existing || t.t_score < existing.t_score) byDate.set(t.date, t);
+        });
+        const points = [...byDate.values()];
         _boneChart = createHealthChart(canvas, {
             type: 'line',
             data: {
-                labels: trend.map(t => t.date),
+                labels: points.map(t => t.date),
                 datasets: [
                     {
                         label: 'T 值',
-                        data: trend.map(t => t.t_score),
+                        data: points.map(t => t.t_score),
                         borderColor: '#6366F1',
                         backgroundColor: 'rgba(99,102,241,0.12)',
                         tension: 0.3,
@@ -10544,7 +10568,7 @@
                     },
                     {
                         label: 'Z 值',
-                        data: trend.map(t => t.z_score),
+                        data: points.map(t => t.z_score),
                         borderColor: '#94A3B8',
                         borderDash: [4, 4],
                         tension: 0.3,
