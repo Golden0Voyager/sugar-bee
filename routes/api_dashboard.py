@@ -285,7 +285,7 @@ def api_day_overview():
                         predicted_match = r
             chosen = measured_match or predicted_match
 
-            # CGM 优先：查找该时间点30分钟内最近的CGM读数
+            # CGM 优先：查找该时间点 5 分钟内最近的 CGM 读数
             cgm_match = None
             cgm_min_diff = float('inf')
             slot_target_minutes = int(slot['time'].split(':')[0]) * 60 + int(slot['time'].split(':')[1])
@@ -301,7 +301,7 @@ def api_day_overview():
                 except (ValueError, IndexError):
                     continue
                 diff = abs(r_minutes - slot_target_minutes)
-                if diff < cgm_min_diff and diff <= 30:
+                if diff < cgm_min_diff and diff <= 5:
                     cgm_min_diff = diff
                     cgm_match = r
 

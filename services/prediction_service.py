@@ -471,7 +471,12 @@ def summarize_slot_history(cursor, user_id, target_date, slot_types, days=SLOT_H
 
     buckets = {slot_type: [] for slot_type in slot_types}
     for rtype, value, timestamp in cursor.fetchall() or []:
-        slot = rtype if rtype in buckets else _slot_for_hour(timestamp)
+        if rtype in buckets:
+            slot = rtype
+        elif rtype in ('餐后', '餐后2小时'):
+            slot = _slot_for_hour(timestamp)
+        else:
+            slot = None
         if slot in buckets:
             buckets[slot].append(value)
 

@@ -111,7 +111,8 @@ def save_report():
             if not isinstance(raw, dict):
                 continue
             name = ' '.join(str(raw.get('name') or '').split())[:40]
-            value = ' '.join(str(raw.get('value') or '').split())[:30]
+            # 与 checkup_parser.VALUE_LIMIT 保持一致：影像描述等长文本不能截断
+            value = ' '.join(str(raw.get('value') or '').split())[:checkup_parser.VALUE_LIMIT]
             if not name or not value:
                 continue
             category = str(raw.get('category') or '其他').strip()

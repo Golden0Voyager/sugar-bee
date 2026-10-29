@@ -914,7 +914,7 @@ async def batch_record(user_id: int, records: list[dict]) -> str:
         inserted = result["inserted_ids"]
         warnings = result["warnings"]
         skipped = result["duplicates_skipped"]
-        rejected = result["rejected"]
+        rejected = result.get("rejected", [])
 
         label = _user_label(user_id)
         lines = [f"✅ {label} 批量记录成功，共写入 {len(inserted)} 条"]
@@ -931,7 +931,7 @@ async def batch_record(user_id: int, records: list[dict]) -> str:
 
         # 记录详情（逐条取 r['id'],与 batch_parse_and_record 一致;被拒收的没有 id）
         lines.append("")
-        for r in records:
+        for idx, r in enumerate(records, 1):
             rid = r.get("id", "?")
             rtype = r.get("type", "")
             ts = r.get("datetime", "")
@@ -1021,7 +1021,7 @@ async def batch_parse_and_record(text: str) -> str:
         inserted = result["inserted_ids"]
         warnings = result["warnings"]
         skipped = result["duplicates_skipped"]
-        rejected = result["rejected"]
+        rejected = result.get("rejected", [])
     except Exception as e:
         conn.rollback()
         conn.close()

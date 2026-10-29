@@ -100,6 +100,38 @@ class TestNormalizeReport:
         result = checkup_parser.normalize_report(None)
         assert result == {'checkup_date': '', 'institution': '', 'items': []}
 
+    def test_dedupes_abnormal_summary_rows(self):
+        """报告末尾异常汇总页的「增高/重度增高」行与明细行重复时，只保留带数值的明细行。"""
+        result = checkup_parser.normalize_report({'items': [
+            {'category': '其他', 'name': '磷酸肌酸激酶', 'value': '重度增高',
+             'unit': '', 'ref_range': '', 'status': 'high'},
+            {'category': '其他', 'name': '磷酸肌酸激酶', 'value': '3605.00',
+             'unit': 'U/L', 'ref_range': '50-310', 'status': 'high'},
+            {'category': '肝功能', 'name': '丙氨酸氨基转移酶', 'value': '增高',
+             'unit': '', 'ref_range': '', 'status': 'high'},
+            {'category': '肝功能', 'name': '丙氨酸氨基转移酶', 'value': '69',
+             'unit': 'U/L', 'ref_range': '0—50', 'status': 'high'},
+        ]})
+        assert len(result['items']) == 2
+        assert all(item['unit'] for item in result['items'])
+
+    def test_keeps_text_results_without_numeric_sibling(self):
+        """「阴性」等文字结论没有同名数值行时不能误删。"""
+        result = checkup_parser.normalize_report({'items': [
+            {'category': '尿常规', 'name': '尿糖', 'value': '阴性',
+             'unit': 'mmol/L', 'ref_range': '阴性', 'status': 'normal'},
+        ]})
+        assert len(result['items']) == 1
+
+    def test_long_text_value_not_truncated(self):
+        """影像检查描述长达数百字时不能按旧的 30 字符截断。"""
+        description = '肝脏形态大小正常，表面光滑，包膜完整，肝内回声分布均匀，' + '血管走向清晰。' * 40
+        result = checkup_parser.normalize_report({'items': [
+            {'category': '影像检查', 'name': '肝', 'value': description,
+             'unit': '', 'ref_range': '', 'status': 'normal'},
+        ]})
+        assert result['items'][0]['value'] == ' '.join(description.split())
+
 
 class TestParseReport:
     def test_calls_vision_model(self, monkeypatch):

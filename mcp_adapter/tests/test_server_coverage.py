@@ -597,6 +597,16 @@ class TestBatchRecordWarningOutput:
 
 class TestBatchRecordDetailFormatting:
     @pytest.mark.asyncio
+    async def test_detail_numbers_start_at_one(self, patch_db):
+        from mcp_adapter.servers.writer import batch_record
+        result = await batch_record(1, records=[
+            {"type": "空腹", "value": 5.5, "datetime": "2026-05-02 07:00"},
+            {"type": "睡前", "value": 6.2, "datetime": "2026-05-02 22:00"},
+        ])
+        detail_lines = [line for line in result.splitlines() if "(ID:" in line]
+        assert [line.split('.', 1)[0] for line in detail_lines] == ["1", "2"]
+
+    @pytest.mark.asyncio
     async def test_bp_with_pulse_detail(self, patch_db):
         from mcp_adapter.servers.writer import batch_record
         result = await batch_record(1, records=[
