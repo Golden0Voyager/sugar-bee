@@ -10876,10 +10876,15 @@
         if (!body) return;
         body.innerHTML = _checkupPreviewItems.map((it, idx) => {
             const color = it.status === 'high' ? '#DC2626' : (it.status === 'low' ? '#2563EB' : '#475569');
+            // 文字多的栏位（如影像检查描述）用多行文本框完整展示，单行 input 放不下会被遮住
+            const valueEditor = String(it.value).length > 20
+                ? `<textarea class="form-control form-control-sm" rows="${Math.min(5, Math.max(2, Math.ceil(String(it.value).length / 45)))}"
+                        style="color:${color}" oninput="_checkupPreviewItems[${idx}].value=this.value">${escapeHtml(it.value)}</textarea>`
+                : `<input class="form-control form-control-sm" style="color:${color}" value="${escapeHtml(it.value)}"
+                        oninput="_checkupPreviewItems[${idx}].value=this.value">`;
             return `<tr>
                 <td><div class="small fw-semibold">${escapeHtml(it.name)}</div><div class="text-muted" style="font-size:.75rem">${escapeHtml(it.category)}</div></td>
-                <td><input class="form-control form-control-sm" style="color:${color}" value="${escapeHtml(it.value)}"
-                        oninput="_checkupPreviewItems[${idx}].value=this.value"></td>
+                <td>${valueEditor}</td>
                 <td class="small text-muted">${escapeHtml(it.ref_range || '-')} ${escapeHtml(it.unit || '')}</td>
                 <td><button class="btn btn-sm btn-link text-danger p-0" onclick="_checkupPreviewItems.splice(${idx},1);renderCheckupPreview()">×</button></td>
             </tr>`;
