@@ -1840,7 +1840,7 @@
                     </li>
                     <li class="nav-item" role="presentation">
                         <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabUsers" type="button" role="tab">
-                            <i class="bi bi-people me-1"></i>用户管理
+                            <i class="bi bi-people me-1"></i>家庭成员
                         </button>
                     </li>
                     <li class="nav-item" role="presentation">
@@ -1865,7 +1865,8 @@
                     <!-- Tab 1: 个人资料 -->
                     <div class="tab-pane fade show active" id="tabProfile" role="tabpanel">
                         <form id="userSettingsForm">
-                            <h6 class="fw-bold">基本信息</h6>
+                            <h6 class="fw-bold"><i class="bi bi-person-badge me-1"></i>基本信息</h6>
+                            <p class="text-muted small mb-2">姓名会显示在右上角和你的报告里。</p>
                             <div class="row g-3 mb-3">
                                 <div class="col-md-6">
                                     <label class="form-label">姓名</label>
@@ -1885,7 +1886,8 @@
                                            value="{{ ('%04d-%02d-%02d' % (stats.user.birth_year, stats.user.birth_month or 1, stats.user.birth_day or 1)) if stats.user.birth_year else '' }}">
                                 </div>
                             </div>
-                            <h6 class="fw-bold">身体数据</h6>
+                            <h6 class="fw-bold"><i class="bi bi-rulers me-1"></i>身体数据</h6>
+                            <p class="text-muted small mb-2">用于计算 BMI 等健康指标。</p>
                             <div class="row g-3">
                                 <div class="col-md-4">
                                     <label class="form-label">身高 (cm)</label>
@@ -1969,11 +1971,11 @@
 
                     <!-- Tab 2: 用户管理（家庭成员账号） -->
                     <div class="tab-pane fade" id="tabUsers" role="tabpanel">
-                        <h6 class="fw-bold mb-1">家庭成员</h6>
+                        <h6 class="fw-bold mb-1"><i class="bi bi-people-fill me-1"></i>家庭成员</h6>
                         <p class="text-muted small">全家共 <span id="settingsUserCount">-</span> 个账号；管理员点「切换」可进入对方账号，帮忙记录数据。</p>
                         <div id="settingsUserList" class="mb-4"></div>
 
-                        <h6 class="fw-bold mb-1">添加新成员</h6>
+                        <h6 class="fw-bold mb-1"><i class="bi bi-person-plus me-1"></i>添加新成员</h6>
                         <p class="text-muted small">为家人创建账号；创建后把登录名和密码告诉对方，首次登录会有初始化引导。</p>
                         <div class="bg-light rounded-3 p-3">
                             <div class="row g-2">
@@ -2000,6 +2002,8 @@
 
                     <!-- Tab 3: 数据管理 -->
                     <div class="tab-pane fade" id="tabData" role="tabpanel">
+                        <h6 class="fw-bold mb-1"><i class="bi bi-cloud-arrow-down me-1"></i>备份与导入导出</h6>
+                        <p class="text-muted small mb-2">把数据保存到本地，或从文件导入，换设备也不丢记录。</p>
                         <div class="d-flex flex-column gap-2">
                             <div class="d-flex align-items-center justify-content-between p-3 bg-light rounded-3">
                                 <div class="d-flex align-items-center gap-3">
@@ -2032,6 +2036,8 @@
                                 <button class="btn btn-outline-secondary" onclick="document.getElementById('importCsvInput').click()">导入</button>
                                 <input type="file" id="importCsvInput" accept=".csv,.xlsx,.xls" style="display:none" onchange="importCsvFile(this)">
                             </div>
+                            <h6 class="fw-bold mb-1 mt-3"><i class="bi bi-watch me-1"></i>设备同步</h6>
+                            <p class="text-muted small mb-2">绑定手表或 iPhone，自动同步运动和体征数据。</p>
                             <div class="p-3 bg-light rounded-3" id="garminBindingCard">
                                 <div class="d-flex align-items-center gap-3 mb-2">
                                     <i class="bi bi-watch text-secondary fs-4"></i>
@@ -2157,9 +2163,9 @@
                     <!-- Tab 4: 功能模块 -->
                     <div class="tab-pane fade" id="tabModules" role="tabpanel">
                         <!-- 应用身份（每人可自定义名称，只影响自己的界面） -->
+                        <h6 class="fw-bold mb-1"><i class="bi bi-stars me-1"></i>应用名称</h6>
+                        <p class="text-muted small mb-2">给自己这份记录起个名字，只影响你的界面，不会改动别人的。</p>
                         <div class="p-3 bg-light rounded-3 mb-3">
-                            <div class="fw-semibold mb-1"><i class="bi bi-stars me-1"></i>应用名称</div>
-                            <p class="text-muted small mb-2">给自己这份记录起个名字，只影响你的界面，不会改动别人的。</p>
                             <div class="row g-2">
                                 <div class="col-3 col-md-2">
                                     <input type="text" id="brandEmoji" class="form-control text-center" maxlength="4"
@@ -2187,9 +2193,8 @@
                             </div>
                         </div>
 
-                        <p class="text-muted small mb-3">
-                            <i class="bi bi-info-circle me-1"></i>关闭的模块仅隐藏显示，已录入数据不会删除。
-                        </p>
+                        <h6 class="fw-bold mb-1 mt-3"><i class="bi bi-grid-3x3-gap me-1"></i>功能模块</h6>
+                        <p class="text-muted small mb-2"><i class="bi bi-info-circle me-1"></i>关闭的模块仅隐藏显示，已录入数据不会删除。</p>
                         <div id="moduleCheckboxes" class="d-flex flex-column gap-2">
                             <div class="text-muted small">加载中...</div>
                         </div>
@@ -2200,6 +2205,8 @@
 
                     <!-- Tab 5: 显示 -->
                     <div class="tab-pane fade" id="tabDisplay" role="tabpanel">
+                        <h6 class="fw-bold mb-1"><i class="bi bi-universal-access me-1"></i>显示与无障碍</h6>
+                        <p class="text-muted small mb-2">调整界面文字大小和触控目标，方便长辈使用。</p>
                         <div class="d-flex align-items-center justify-content-between p-3 bg-light rounded-3">
                             <div>
                                 <div class="fw-medium">大字 / 高对比模式</div>
