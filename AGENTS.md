@@ -30,7 +30,9 @@ uv run python -m pytest tests/ --cov --cov-report=term-missing
 uv run python -m pytest tests/test_settings.py -v
 ```
 
-## Makefile（Cloud Run 部署）
+## Makefile（Cloud Run 部署，已弃用仅存档）
+
+> **2026-10-28 起生产环境迁移至腾讯云轻量应用服务器**（一年期，当日购入），不再使用 Google Cloud Run。以下 make 目标为历史 Cloud Run 流程，保留存档，新部署方式待补充。
 
 ```bash
 make help           # 显示所有命令
@@ -212,10 +214,12 @@ ignore = ["E501", "E402", "E702"]  # E402/E702 for test files
 
 ## 环境差异（⚠️ 重要）
 
+> **生产平台：腾讯云轻量应用服务器**（2026-10-28 购入，一年期）。原 Google Cloud Run + Cloud SQL 方案已弃用（`deploy/cloud-run.yaml`、Makefile 部署目标仅存档）。新服务器的部署流程与数据库配置待补充；下表的「生产」行描述的是原 Cloud Run 环境，新环境接入前以本地 SQLite 为准。
+
 | 场景 | 数据库 | 触发条件 |
 |------|--------|---------|
 | 本地开发 | SQLite (`glucose.db`) | 无 `SUGAR_BEE_DATABASE_URL` |
-| 生产 (Cloud Run) | PostgreSQL 17 | 有 `SUGAR_BEE_DATABASE_URL` |
+| 生产（原 Cloud Run，已弃用） | PostgreSQL 17 | 有 `SUGAR_BEE_DATABASE_URL` |
 
 **常见陷阱：**
 - `_inline_params()` 只会在 PostgreSQL 模式下被调用（`_CompatCursor.execute`），SQLite 不走此路径
