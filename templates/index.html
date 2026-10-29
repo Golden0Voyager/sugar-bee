@@ -7106,6 +7106,17 @@
     let parsedData = [];
     let selectedImagesBase64 = []; // 改为数组以支持多张图片
 
+    // 体成分确认与保存提示共用同一份字段清单，单位也必须保持一致。
+    const BODY_COMP_PREVIEW_ITEMS = [
+        ['body_fat_rate', '体脂率', '%'],
+        ['visceral_fat', '内脏脂肪', '级'],
+        ['muscle_mass', '肌肉量', 'kg'],
+        ['body_fat_mass', '体脂量', 'kg'],
+        ['skeletal_muscle_mass', '骨骼肌量', 'kg'],
+        ['protein_mass', '蛋白量', 'kg'],
+        ['basal_metabolism', '基础代谢', 'kcal'],
+    ];
+
     // 压缩图片：最长边不超过 maxPx，JPEG 质量 quality
     function compressImage(file, maxPx = 1024, quality = 0.80) {
         return new Promise((resolve) => {
@@ -7362,8 +7373,21 @@
 
         // 渲染体重记录
         if (weightRecords.length > 0) {
-            container.innerHTML += `<div class="fw-bold mb-2 mt-3" style="color: #00897B;"><i class="bi bi-speedometer"></i> 体重记录</div>`;
+            const hasBodyCompData = weightRecords.some(item => BODY_COMP_PREVIEW_ITEMS.some(([field]) => {
+                const raw = item[field];
+                return raw !== undefined && raw !== null && raw !== '' && Number.isFinite(Number(raw));
+            }));
+            const sectionTitle = hasBodyCompData ? '体重与体成分记录' : '体重记录';
+            container.innerHTML += `<div class="fw-bold mb-2 mt-3" style="color: #00897B;"><i class="bi bi-speedometer"></i> ${sectionTitle}</div>`;
             weightRecords.forEach(item => {
+                const bodyCompValues = BODY_COMP_PREVIEW_ITEMS.map(([field, label, unit]) => {
+                    const raw = item[field];
+                    if (raw === undefined || raw === null || raw === '') return '';
+                    const value = Number(raw);
+                    if (!Number.isFinite(value)) return '';
+                    return `<span class="badge rounded-pill small" style="background: #e0f2f1; color: #00695c; border: 1px solid #b2dfdb;">${escapeHtml(label)} <strong>${escapeHtml(value)}${escapeHtml(unit)}</strong></span>`;
+                }).filter(Boolean);
+                const bodyCompCount = bodyCompValues.length;
                 container.innerHTML += `
                     <div class="list-group-item mb-1" style="border-left: 3px solid #00897B;">
                         <div class="d-flex justify-content-between align-items-center">
@@ -7372,6 +7396,12 @@
                             </div>
                             <small class="text-muted">${item.datetime}</small>
                         </div>
+                        ${bodyCompCount > 0 ? `
+                            <div class="d-flex flex-wrap gap-1 mt-2">${bodyCompValues.join('')}</div>
+                            <div class="small text-muted mt-1">
+                                <i class="bi bi-check2-circle me-1"></i>已识别体成分 ${bodyCompCount} 项，将与本条体重记录一起保存
+                            </div>
+                        ` : ''}
                         ${item.notes ? `<p class="mb-0 small text-secondary mt-1">${item.notes}</p>` : ''}
                     </div>
                 `;
@@ -7566,6 +7596,17 @@
                     showToast(`已恢复药物方案: ${names}`, 'success');
                 }
 
+                // 体成分和体重在同一条记录里保存，成功提示必须明确说明二者都已保存。
+                const savedBodyCompCount = parsedData.reduce((total, record) => {
+                    return total + BODY_COMP_PREVIEW_ITEMS.filter(([field]) => {
+                        const raw = record[field];
+                        return raw !== undefined && raw !== null && raw !== '' && Number.isFinite(Number(raw));
+                    }).length;
+                }, 0);
+                if (savedBodyCompCount > 0) {
+                    showToast(`已保存体重与体成分数据（${savedBodyCompCount} 项）`, 'success');
+                }
+
                 // 检查是否有血糖数据录入（非餐食、非运动、非药物）
                 const hasGlucoseData = parsedData.some(r =>
                     r.value > 0 && !r.medication_name && !r.distance
@@ -7575,8 +7616,9 @@
                     showPredictionUpdateDialog();
                 } else {
                     // 延迟 reload 让 toast 显示
-                    const hasmedAction = result.data && (result.data.deactivated_plans?.length || result.data.reactivated_plans?.length);
-                    setTimeout(() => window.location.reload(), hasmedAction ? 1500 : 0);
+                    const hasMedAction = result.data && (result.data.deactivated_plans?.length || result.data.reactivated_plans?.length);
+                    const shouldDelayReload = Boolean(hasMedAction) || savedBodyCompCount > 0;
+                    setTimeout(() => window.location.reload(), shouldDelayReload ? 1500 : 0);
                 }
             }
         } finally {

@@ -41,6 +41,30 @@ def _optional_float(value):
         return None
 
 
+def _sync_profile_weight_from_latest(db, user_id):
+    """把个人设置体重同步为该用户时间最新的一条实际体重记录。
+
+    体重档案会影响 BMI/BMR 与基础代谢等计算，因此必须是「最新测量值」，
+    不能被补录的历史记录反向覆盖。没有任何体重记录时不改动用户手填档案。
+    """
+    if not user_id:
+        return
+    try:
+        c = db.cursor()
+        c.execute("""
+            SELECT weight FROM records
+            WHERE user_id = ? AND weight IS NOT NULL AND weight > 0
+            ORDER BY timestamp DESC
+            LIMIT 1
+        """, (user_id,))
+        row = c.fetchone()
+        if row and row[0] is not None:
+            user_manager.update_user_profile_partial(user_id, {'weight': float(row[0])})
+    except Exception:
+        # 档案同步失败不能回滚真实测量记录。
+        pass
+
+
 # 保留操作词黑名单:这些「动作词」绝不是合法记录类型。2026-10-28 事故——AI 助手
 # 没有删除工具,把「删除刚才那条」伪装成 type='delete' 的记录写入,数值校验只看范围,
 # 垃圾数据直接落库。类型必须在写入前做硬校验。
@@ -264,13 +288,6 @@ def add_record():
             with contextlib.suppress(ValueError, TypeError):
                 bmi = settings.calculate_bmi(float(weight), user_id=current_user_id)
 
-        # If weight record, update user profile weight (per-user, not global)
-        if weight:
-            with contextlib.suppress(ValueError, TypeError):
-                user_manager.update_user_profile_partial(
-                    current_user_id, {'weight': float(weight)}
-                )
-
         # Handle empty timestamp (default to now)
         if not timestamp:
             timestamp = app_timestamp_str()
@@ -398,6 +415,9 @@ def add_record():
         real_record_id = c.lastrowid
 
         db.commit()
+
+        if weight:
+            _sync_profile_weight_from_latest(db, current_user_id)
 
         # 在 commit 之后链接预测记录，避免 SQL 错误导致事务回滚
         try:
@@ -552,6 +572,7 @@ def batch_add():
         inserted_records = []
         all_warnings: list[str] = []
         rejected: list[dict] = []
+        weight_sync_user_ids: set[int] = set()
         for r in data:
             if 'value' not in r or 'type' not in r:
                 continue
@@ -610,8 +631,12 @@ def batch_add():
                         body_comp['skeletal_muscle_mass'], body_comp['protein_mass'],
                         body_comp['visceral_fat'], body_comp['basal_metabolism']))
             inserted_records.append({'id': c.lastrowid, 'is_pred': is_pred, 'value': r['value'], 'datetime': timestamp, 'type': r_type})
+            if weight and weight > 0:
+                weight_sync_user_ids.add(record_uid)
 
         db.commit()
+        for uid in weight_sync_user_ids:
+            _sync_profile_weight_from_latest(db, uid)
         response_data = {"inserted": len(inserted_records)}
         if all_warnings:
             response_data["warnings"] = all_warnings
@@ -631,6 +656,7 @@ def delete(id):
         current_user_id = user_manager.get_current_user_id()
         c.execute("DELETE FROM records WHERE id = ? AND user_id = ?", (id, current_user_id))
         db.commit()
+        _sync_profile_weight_from_latest(db, current_user_id)
         if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
             return api_success(message="Record deleted")
         return redirect(url_for('index'))
@@ -674,6 +700,7 @@ def update_record(id):
                    data.get('pace'), data.get('max_pace'), data.get('cadence'),
                    id, current_user_id))
         db.commit()
+        _sync_profile_weight_from_latest(db, current_user_id)
         return api_success(message="Updated")
     except Exception as e:
         return api_error(str(e), status_code=500)

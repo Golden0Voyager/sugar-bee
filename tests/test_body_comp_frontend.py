@@ -148,3 +148,34 @@ def test_weight_chart_card_does_not_clip_dropdowns():
     assert '#weightChartCard' in css
     rule = css.split('#weightChartCard')[1].split('}')[0]
     assert 'overflow: visible' in rule
+
+
+def test_ai_preview_lists_recognized_body_comp_values():
+    """保存确认卡必须逐项展示体成分,不能让用户误以为只保存了体重。"""
+    html = INDEX.read_text(encoding="utf-8")
+    fields = html.split('const BODY_COMP_PREVIEW_ITEMS')[1].split('// 压缩图片')[0]
+    preview = html.split('function renderPreview')[1].split('function createMedicationPlan')[0]
+    assert '体重与体成分记录' in preview
+    assert "hasBodyCompData ? '体重与体成分记录' : '体重记录'" in preview
+    assert '已识别体成分 ${bodyCompCount} 项' in preview
+    assert '将与本条体重记录一起保存' in preview
+    for field, label, unit in [
+        ('body_fat_rate', '体脂率', '%'),
+        ('visceral_fat', '内脏脂肪', '级'),
+        ('muscle_mass', '肌肉量', 'kg'),
+        ('body_fat_mass', '体脂量', 'kg'),
+        ('skeletal_muscle_mass', '骨骼肌量', 'kg'),
+        ('protein_mass', '蛋白量', 'kg'),
+        ('basal_metabolism', '基础代谢', 'kcal'),
+    ]:
+        assert f"['{field}', '{label}', '{unit}']" in fields
+
+
+def test_ai_save_success_confirms_body_comp_saved():
+    """页面刷新前的成功提示必须说明体成分已随体重一起保存。"""
+    html = INDEX.read_text(encoding="utf-8")
+    save = html.split('async function confirmBatchAdd')[1].split('// 显示冲突确认对话框')[0]
+    assert '已保存体重与体成分数据' in save
+    assert 'savedBodyCompCount' in save
+    assert 'showToast(`已保存体重与体成分数据（${savedBodyCompCount} 项）`, \'success\')' in save
+    assert 'shouldDelayReload ? 1500 : 0' in save

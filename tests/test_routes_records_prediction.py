@@ -242,13 +242,16 @@ class TestRecordsAddFormDataBmiTimestamp:
             assert result.status_code == 200
 
     def test_add_form_data_value_profile_update(self, client_authenticated):
-        """weight记录更新user profile (line 200-201)"""
+        """体重保存后按最新记录同步 user profile。"""
         with patch('routes.api_records.get_db') as mock_get_db, \
              patch('routes.api_records.link_prediction_to_real_record'), \
              patch('routes.api_records.user_manager.update_user_profile_partial') as mock_update:
+            with client_authenticated.session_transaction() as sess:
+                uid = sess['current_user_id']
             mock_c = MagicMock()
             mock_c.lastrowid = 503
-            mock_c.fetchone.return_value = None
+            # 第一次查询：重复检测无冲突；第二次查询：档案同步读取最新体重。
+            mock_c.fetchone.side_effect = [None, (70.0,)]
             mock_db = MagicMock()
             mock_db.cursor.return_value = mock_c
             mock_get_db.return_value = mock_db
@@ -258,7 +261,7 @@ class TestRecordsAddFormDataBmiTimestamp:
                 'timestamp': '2024-06-01 07:00:00', 'user_id': 1
             })
             assert result.status_code == 200
-            mock_update.assert_called()
+            mock_update.assert_called_once_with(uid, {'weight': 70.0})
 
 
 class TestAddReservedTypeRejected:
