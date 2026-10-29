@@ -416,7 +416,7 @@
                         <div id="overview-exercise-content">
                         {% if stats.today_exercise %}
                         {% set ex = stats.today_exercise %}
-                        {% set is_strength = ex.total_sets or ex.type == '健身' %}
+                        {% set is_strength = ex.total_sets %}
                         <div style="font-size: 0.85rem;" class="text-muted">
                             <div class="fw-semibold text-dark mb-1">{{ ex.type }}{% if ex.total_sets %} · {{ ex.total_sets }}组{% endif %}{% if ex.total_reps %} / {{ ex.total_reps }}次{% endif %}</div>
                             {% if ex.distance %}
@@ -3246,7 +3246,7 @@
         const idx = window._ovIdx.exercise;
         if (!items.length) { el.innerHTML = '<div class="text-muted small">暂无运动记录</div>'; return; }
         const e = items[idx];
-        const isStrength = !!e.total_sets || e.type === '健身';
+        const isStrength = !!e.total_sets;
         let h = `<div style="font-size:0.85rem;" class="text-muted">
             <div class="fw-semibold text-dark mb-1">${e.type}${e.total_sets ? ` · ${e.total_sets}组` : ''}${e.total_reps ? ` / ${e.total_reps}次` : ''}</div>`;
         if (e.distance) h += `<div>📏 ${e.distance}km · ${e.duration||'--'}</div>`;
