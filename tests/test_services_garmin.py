@@ -136,6 +136,36 @@ class TestGarminMapActivity:
         assert r['source'] == 'garmin'
         assert r['notes'] == '晨跑'
 
+    def test_strength_training_fields(self):
+        """力量训练应带上 组数/次数/训练负荷/强度分钟/有氧无氧效果"""
+        from services.garmin_service import _map_activity
+        act = self._make_act(
+            activityType={'typeKey': 'strength_training'},
+            distance=0.0, averageSpeed=0.0, maxSpeed=None,
+            totalSets=2, totalReps=110, activityTrainingLoad=1.364044189,
+            moderateIntensityMinutes=4, vigorousIntensityMinutes=0,
+            aerobicTrainingEffect=0.1, anaerobicTrainingEffect=0.0,
+        )
+        r = _map_activity(act, user_id=3)
+        assert r['type'] == '健身'
+        assert r['distance'] is None          # 力量训练没有距离，不该显示 0km
+        assert r['total_sets'] == 2
+        assert r['total_reps'] == 110
+        assert r['training_load'] == 1.36     # 保留两位小数
+        assert r['intensity_minutes'] == 4
+        assert r['te_aerobic'] == 0.1
+        assert r['te_anaerobic'] == 0.0
+
+    def test_running_has_no_strength_fields(self):
+        """跑步类不应写入力量训练字段"""
+        from services.garmin_service import _map_activity
+        r = _map_activity(self._make_act(), user_id=1)
+        assert r['total_sets'] is None
+        assert r['total_reps'] is None
+        assert r['training_load'] is None
+        assert r['intensity_minutes'] is None
+        assert r['te_aerobic'] is None
+
     def test_pace_calculation(self):
         from services.garmin_service import _map_activity
         # 1000/4 = 250 sec/km = 4:10 pace
@@ -265,7 +295,7 @@ class TestGarminSyncActivities:
         mock_get_client.return_value = mock_client
 
         result = sync_activities(user_id=1, days=30)
-        assert result == {'inserted': 0, 'skipped': 0, 'total': 0}
+        assert result == {'inserted': 0, 'skipped': 0, 'enriched': 0, 'total': 0}
 
     @patch('services.garmin_service._get_client')
     @patch('services.garmin_service.get_raw_conn')
@@ -401,7 +431,7 @@ class TestGarminSyncActivities:
         mock_get_client.return_value = mock_client
 
         result = sync_activities(user_id=1, days=30)
-        assert result == {'inserted': 0, 'skipped': 0, 'total': 0}
+        assert result == {'inserted': 0, 'skipped': 0, 'enriched': 0, 'total': 0}
         assert mock_client.get_activities_by_date.call_count == 3
         assert mock_sleep.call_count == 2
 

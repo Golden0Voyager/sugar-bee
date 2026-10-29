@@ -325,7 +325,8 @@ def api_day_overview():
 
         # 运动（全部记录）
         c.execute("""
-            SELECT type, distance, calories, duration, heart_rate, pace, max_pace, cadence, vo2max, max_heart_rate, steps, timestamp
+            SELECT type, distance, calories, duration, heart_rate, pace, max_pace, cadence, vo2max, max_heart_rate, steps, timestamp,
+                   total_sets, total_reps, training_load, intensity_minutes, te_aerobic, te_anaerobic
             FROM records WHERE user_id = ? AND timestamp BETWEEN ? AND ?
             AND (type IN ('运动','跑步','走路','骑行','游泳','健身') OR type LIKE '%跑%' OR type LIKE '%走%' OR type LIKE '%骑%')
             ORDER BY timestamp DESC, vo2max DESC
@@ -334,6 +335,12 @@ def api_day_overview():
         exercises = []
         for ex_row in ex_rows:
             ex = {k: ex_row[k] for k in ['type','distance','calories','duration','heart_rate','pace','max_pace','cadence','vo2max','max_heart_rate','steps']}
+            # 训练负荷字段：老库/测试假数据可能没有这些列，缺失按 None 处理
+            for k in ('total_sets','total_reps','training_load','intensity_minutes','te_aerobic','te_anaerobic'):
+                try:
+                    ex[k] = ex_row[k]
+                except (KeyError, IndexError):
+                    ex[k] = None
             ex['time'] = ex_row['timestamp'].split(' ')[1][:5] if ' ' in ex_row['timestamp'] else ''
             exercises.append(ex)
 

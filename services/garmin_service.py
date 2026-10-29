@@ -338,6 +338,13 @@ def _map_activity(act, user_id):
         mp_s = 1000 / max_speed
         max_pace_str = f"{int(mp_s // 60):02d}:{int(mp_s % 60):02d}"
 
+    # 力量/训练类专属指标：Garmin 提供但过去被丢弃
+    moderate_min = act.get('moderateIntensityMinutes') or 0
+    vigorous_min = act.get('vigorousIntensityMinutes') or 0
+    intensity_minutes = (moderate_min + vigorous_min) or None
+    total_sets = act.get('totalSets') or act.get('activeSets')
+    total_reps = act.get('totalReps')
+
     return {
         'user_id': user_id,
         'type': type_cn,
@@ -355,6 +362,12 @@ def _map_activity(act, user_id):
         'external_id': str(act.get('activityId')),
         'source': 'garmin',
         'notes': act.get('activityName', '') or '',
+        'total_sets': int(total_sets) if total_sets else None,
+        'total_reps': int(total_reps) if total_reps else None,
+        'training_load': round(float(act['activityTrainingLoad']), 2) if act.get('activityTrainingLoad') else None,
+        'intensity_minutes': int(intensity_minutes) if intensity_minutes else None,
+        'te_aerobic': round(float(act['aerobicTrainingEffect']), 2) if act.get('aerobicTrainingEffect') is not None else None,
+        'te_anaerobic': round(float(act['anaerobicTrainingEffect']), 2) if act.get('anaerobicTrainingEffect') is not None else None,
     }
 
 
@@ -378,7 +391,7 @@ def sync_activities(user_id, days=30):
 
         conn = get_raw_conn()
         c = conn.cursor()
-        inserted = skipped = 0
+        inserted = skipped = enriched = 0
         try:
             for act in activities:
                 ext_id = str(act.get('activityId') or '')
@@ -388,7 +401,28 @@ def sync_activities(user_id, days=30):
                     "SELECT id FROM records WHERE source='garmin' AND external_id=? AND user_id=?",
                     (ext_id, user_id)
                 )
-                if c.fetchone():
+                existing = c.fetchone()
+                if existing:
+                    # 老记录补齐新字段（只在空值时填，避免覆盖用户已编辑的内容）
+                    try:
+                        r = _map_activity(act, user_id)
+                        filled = c.execute(
+                            """UPDATE records SET
+                                 total_sets = COALESCE(total_sets, ?),
+                                 total_reps = COALESCE(total_reps, ?),
+                                 training_load = COALESCE(training_load, ?),
+                                 intensity_minutes = COALESCE(intensity_minutes, ?),
+                                 te_aerobic = COALESCE(te_aerobic, ?),
+                                 te_anaerobic = COALESCE(te_anaerobic, ?)
+                               WHERE id = ?""",
+                            (r['total_sets'], r['total_reps'], r['training_load'],
+                             r['intensity_minutes'], r['te_aerobic'], r['te_anaerobic'],
+                             existing[0] if not hasattr(existing, 'keys') else existing['id'])
+                        ).rowcount
+                        if filled:
+                            enriched += 1
+                    except Exception:
+                        traceback.print_exc()
                     skipped += 1
                     continue
 
@@ -402,16 +436,21 @@ def sync_activities(user_id, days=30):
                     """INSERT INTO records
                        (user_id, value, unit, type, notes, timestamp, distance, duration,
                         heart_rate, max_heart_rate, cadence, calories, vo2max, steps, pace,
-                        max_pace, external_id, source)
-                       VALUES (?, 0, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                        max_pace, external_id, source,
+                        total_sets, total_reps, training_load, intensity_minutes,
+                        te_aerobic, te_anaerobic)
+                       VALUES (?, 0, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     (r['user_id'], r['type'], r['notes'], r['timestamp'], r['distance'],
                      r['duration'], r['heart_rate'], r['max_heart_rate'], r['cadence'],
                      r['calories'], r['vo2max'], r['steps'], r['pace'],
-                     r['max_pace'], r['external_id'], r['source'])
+                     r['max_pace'], r['external_id'], r['source'],
+                     r['total_sets'], r['total_reps'], r['training_load'],
+                     r['intensity_minutes'], r['te_aerobic'], r['te_anaerobic'])
                 )
                 inserted += 1
             conn.commit()
         finally:
             put_raw_conn(conn)
 
-        return {'inserted': inserted, 'skipped': skipped, 'total': len(activities)}
+        return {'inserted': inserted, 'skipped': skipped, 'enriched': enriched,
+                'total': len(activities)}

@@ -646,7 +646,13 @@ def _init_db_postgres():
                 skeletal_muscle_mass {double_type()},
                 protein_mass {double_type()},
                 visceral_fat {double_type()},
-                basal_metabolism INTEGER
+                basal_metabolism INTEGER,
+                total_sets INTEGER,
+                total_reps INTEGER,
+                training_load {double_type()},
+                intensity_minutes INTEGER,
+                te_aerobic {double_type()},
+                te_anaerobic {double_type()}
             )
         ''')
 
@@ -776,6 +782,17 @@ def _init_db_postgres():
             ("protein_mass", "DOUBLE PRECISION"),
             ("visceral_fat", "DOUBLE PRECISION"),
             ("basal_metabolism", "INTEGER"),
+        ]:
+            c.execute(f"ALTER TABLE records ADD COLUMN IF NOT EXISTS {col_name} {col_type}")
+
+        # 训练负荷字段（力量训练：组数/次数/训练负荷/强度分钟/有氧无氧效果）
+        for col_name, col_type in [
+            ("total_sets", "INTEGER"),
+            ("total_reps", "INTEGER"),
+            ("training_load", "DOUBLE PRECISION"),
+            ("intensity_minutes", "INTEGER"),
+            ("te_aerobic", "DOUBLE PRECISION"),
+            ("te_anaerobic", "DOUBLE PRECISION"),
         ]:
             c.execute(f"ALTER TABLE records ADD COLUMN IF NOT EXISTS {col_name} {col_type}")
 
@@ -946,6 +963,12 @@ def _init_db_sqlite():
             ("protein_mass", "REAL"),
             ("visceral_fat", "REAL"),
             ("basal_metabolism", "INTEGER"),
+            ("total_sets", "INTEGER"),
+            ("total_reps", "INTEGER"),
+            ("training_load", "REAL"),
+            ("intensity_minutes", "INTEGER"),
+            ("te_aerobic", "REAL"),
+            ("te_anaerobic", "REAL"),
         ]
 
         for col_name, col_type in mig_cols:

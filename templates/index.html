@@ -415,32 +415,47 @@
                         </div>
                         <div id="overview-exercise-content">
                         {% if stats.today_exercise %}
+                        {% set ex = stats.today_exercise %}
+                        {% set is_strength = ex.total_sets or ex.type == '健身' %}
                         <div style="font-size: 0.85rem;" class="text-muted">
-                            <div class="fw-semibold text-dark mb-1">{{ stats.today_exercise.type }}</div>
-                            <div>📏 {{ stats.today_exercise.distance or 0 }}km · {{ stats.today_exercise.duration or '--' }}</div>
-                            {% if stats.today_exercise.pace %}
-                            <div>⏱️ 平均配速 {{ stats.today_exercise.pace }}{% if '/km' not in (stats.today_exercise.pace|string) %}/km{% endif %}</div>
+                            <div class="fw-semibold text-dark mb-1">{{ ex.type }}{% if ex.total_sets %} · {{ ex.total_sets }}组{% endif %}{% if ex.total_reps %} / {{ ex.total_reps }}次{% endif %}</div>
+                            {% if ex.distance %}
+                            <div>📏 {{ ex.distance }}km · {{ ex.duration or '--' }}</div>
+                            {% else %}
+                            <div>⏱️ {{ ex.duration or '--' }}</div>
                             {% endif %}
-                            {% if stats.today_exercise.max_pace %}
-                            <div>⏱️ 最大配速 {{ stats.today_exercise.max_pace }}{% if '/km' not in (stats.today_exercise.max_pace|string) %}/km{% endif %}</div>
+                            {% if ex.pace %}
+                            <div>⏱️ 平均配速 {{ ex.pace }}{% if '/km' not in (ex.pace|string) %}/km{% endif %}</div>
                             {% endif %}
-                            {% if stats.today_exercise.heart_rate %}
-                            <div>💓 平均心率 {{ stats.today_exercise.heart_rate }}bpm</div>
+                            {% if ex.max_pace %}
+                            <div>⏱️ 最大配速 {{ ex.max_pace }}{% if '/km' not in (ex.max_pace|string) %}/km{% endif %}</div>
                             {% endif %}
-                            {% if stats.today_exercise.max_heart_rate %}
-                            <div>💓 最大心率 {{ stats.today_exercise.max_heart_rate }}bpm</div>
+                            {% if ex.heart_rate %}
+                            <div>💓 平均心率 {{ ex.heart_rate }}bpm</div>
                             {% endif %}
-                            {% if stats.today_exercise.cadence %}
-                            <div>👟 步频 {{ stats.today_exercise.cadence }}spm</div>
+                            {% if ex.max_heart_rate %}
+                            <div>💓 最大心率 {{ ex.max_heart_rate }}bpm</div>
                             {% endif %}
-                            {% if stats.today_exercise.steps %}
-                            <div>👣 {{ stats.today_exercise.steps }}步</div>
+                            {% if ex.training_load %}
+                            <div>🏋️ 训练负荷 {{ ex.training_load }}</div>
                             {% endif %}
-                            {% if stats.today_exercise.calories %}
-                            <div>🔥 {{ stats.today_exercise.calories }}kcal</div>
+                            {% if ex.te_aerobic is not none %}
+                            <div>🫀 训练效果 有氧 {{ ex.te_aerobic }} / 无氧 {{ ex.te_anaerobic if ex.te_anaerobic is not none else 0 }}</div>
                             {% endif %}
-                            {% if stats.today_exercise.vo2max %}
-                            <div>🫁 VO₂max {{ stats.today_exercise.vo2max }}</div>
+                            {% if ex.intensity_minutes %}
+                            <div>⚡ 中高强度 {{ ex.intensity_minutes }}min</div>
+                            {% endif %}
+                            {% if ex.cadence %}
+                            <div>👟 步频 {{ ex.cadence }}spm</div>
+                            {% endif %}
+                            {% if ex.steps and not is_strength %}
+                            <div>👣 {{ ex.steps }}步</div>
+                            {% endif %}
+                            {% if ex.calories %}
+                            <div>🔥 {{ ex.calories }}kcal</div>
+                            {% endif %}
+                            {% if ex.vo2max %}
+                            <div>🫁 VO₂max {{ ex.vo2max }}</div>
                             {% endif %}
                         </div>
                         {% else %}
@@ -3231,15 +3246,20 @@
         const idx = window._ovIdx.exercise;
         if (!items.length) { el.innerHTML = '<div class="text-muted small">暂无运动记录</div>'; return; }
         const e = items[idx];
+        const isStrength = !!e.total_sets || e.type === '健身';
         let h = `<div style="font-size:0.85rem;" class="text-muted">
-            <div class="fw-semibold text-dark mb-1">${e.type}</div>
-            <div>📏 ${e.distance||0}km · ${e.duration||'--'}</div>`;
+            <div class="fw-semibold text-dark mb-1">${e.type}${e.total_sets ? ` · ${e.total_sets}组` : ''}${e.total_reps ? ` / ${e.total_reps}次` : ''}</div>`;
+        if (e.distance) h += `<div>📏 ${e.distance}km · ${e.duration||'--'}</div>`;
+        else h += `<div>⏱️ ${e.duration||'--'}</div>`;
         if (e.pace) h += `<div>⏱️ 平均配速 ${e.pace}${String(e.pace).includes('/km') ? '' : '/km'}</div>`;
         if (e.max_pace) h += `<div>⏱️ 最大配速 ${e.max_pace}${String(e.max_pace).includes('/km') ? '' : '/km'}</div>`;
         if (e.heart_rate) h += `<div>💓 平均心率 ${e.heart_rate}bpm</div>`;
         if (e.max_heart_rate) h += `<div>💓 最大心率 ${e.max_heart_rate}bpm</div>`;
+        if (e.training_load) h += `<div>🏋️ 训练负荷 ${e.training_load}</div>`;
+        if (e.te_aerobic !== null && e.te_aerobic !== undefined) h += `<div>🫀 训练效果 有氧 ${e.te_aerobic} / 无氧 ${e.te_anaerobic ?? 0}</div>`;
+        if (e.intensity_minutes) h += `<div>⚡ 中高强度 ${e.intensity_minutes}min</div>`;
         if (e.cadence) h += `<div>👟 步频 ${e.cadence}spm</div>`;
-        if (e.steps) h += `<div>👣 ${e.steps}步</div>`;
+        if (e.steps && !isStrength) h += `<div>👣 ${e.steps}步</div>`;
         if (e.calories) h += `<div>🔥 ${e.calories}kcal</div>`;
         if (e.vo2max) h += `<div>🫁 VO₂max ${e.vo2max}</div>`;
         h += '</div>';
