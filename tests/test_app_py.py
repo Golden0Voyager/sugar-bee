@@ -2,7 +2,7 @@
 
 测试策略:
   - index 路由: is_garmin_user, prediction_running, exception
-  - auto_backup: 正常备份, DB不存在, 旧备份清理, 异常
+  - 备份: 不在 app 里（已移交宿主机 cron），只断言定时器不得加回
   - auto_garmin_sync: 无用户, 无token, 同步成功, 锁冲突, token_dir
   - start_background_tasks: 启动/带GARMIN
 """
@@ -103,94 +103,6 @@ class TestIndexRoute:
             args, kwargs = mocks['render_template'].call_args
             assert kwargs['enabled_modules'] == ['glucose', 'blood_pressure', 'exercise', 'weight',
                                                  'medication', 'diet', 'bone_density', 'checkup']
-
-
-# ============================================================
-# auto_backup
-# ============================================================
-
-class TestAutoBackup:
-    """auto_backup 函数"""
-
-    def test_backup_creates_file(self, monkeypatch):
-        from app import auto_backup
-        with tempfile.TemporaryDirectory() as tmp:
-            db_path = os.path.join(tmp, 'test.db')
-            with open(db_path, 'w') as f:
-                f.write('test data')
-            monkeypatch.setenv('SUGAR_BEE_DB_PATH', db_path)
-            monkeypatch.setattr('app.AUTO_BACKUP_DIR', os.path.join(tmp, 'backups'))
-            # Prevent timer from starting
-            monkeypatch.setattr('app._auto_backup_timer', MagicMock())
-            backup_started = [False]
-
-            def fake_timer(*args, **kwargs):
-                backup_started[0] = True
-                return MagicMock()
-            monkeypatch.setattr(threading, 'Timer', fake_timer)
-
-            auto_backup()
-            backup_dir = os.path.join(tmp, 'backups')
-            files = os.listdir(backup_dir)
-            assert len(files) == 1
-            assert files[0].endswith('.db')
-
-    def test_backup_db_not_exists(self, monkeypatch):
-        from app import auto_backup
-        monkeypatch.setenv('SUGAR_BEE_DB_PATH', '/nonexistent/db.db')
-        monkeypatch.setattr('app._auto_backup_timer', MagicMock())
-        backup_called = [False]
-        def fake_timer(*args, **kwargs):
-            backup_called[0] = True
-            return MagicMock()
-        monkeypatch.setattr(threading, 'Timer', fake_timer)
-
-        auto_backup()
-        assert backup_called[0]
-
-    def test_backup_skip_if_exists(self, monkeypatch):
-        from app import auto_backup
-        with tempfile.TemporaryDirectory() as tmp:
-            db_path = os.path.join(tmp, 'test.db')
-            with open(db_path, 'w') as f:
-                f.write('test data')
-            backup_dir = os.path.join(tmp, 'backups')
-            os.makedirs(backup_dir)
-            today = datetime.date.today().strftime('%Y%m%d')
-            existing = os.path.join(backup_dir, f'glucose_auto_{today}.db')
-            with open(existing, 'w') as f:
-                f.write('old')
-            monkeypatch.setenv('SUGAR_BEE_DB_PATH', db_path)
-            monkeypatch.setattr('app.AUTO_BACKUP_DIR', backup_dir)
-            monkeypatch.setattr('app._auto_backup_timer', MagicMock())
-            monkeypatch.setattr(threading, 'Timer', lambda *a, **kw: MagicMock())
-
-            auto_backup()
-            # file should still contain 'old' (not overwritten)
-            with open(existing) as f:
-                assert f.read() == 'old'
-
-    def test_backup_cleans_old_files(self, monkeypatch):
-        from app import auto_backup
-        with tempfile.TemporaryDirectory() as tmp:
-            db_path = os.path.join(tmp, 'test.db')
-            with open(db_path, 'w') as f:
-                f.write('test data')
-            backup_dir = os.path.join(tmp, 'backups')
-            os.makedirs(backup_dir)
-            old_date = (datetime.date.today() - datetime.timedelta(days=31)).strftime('%Y%m%d')
-            old_file = os.path.join(backup_dir, f'glucose_auto_{old_date}.db')
-            with open(old_file, 'w') as f:
-                f.write('old data')
-
-            monkeypatch.setenv('SUGAR_BEE_DB_PATH', db_path)
-            monkeypatch.setattr('app.AUTO_BACKUP_DIR', backup_dir)
-            monkeypatch.setattr('app._auto_backup_timer', MagicMock())
-            monkeypatch.setattr(threading, 'Timer', lambda *a, **kw: MagicMock())
-
-            auto_backup()
-            remaining = [f for f in os.listdir(backup_dir) if f.endswith('.db')]
-            assert old_file.split('/')[-1] not in remaining
 
 
 # ============================================================
@@ -295,28 +207,30 @@ class TestAutoGarminSync:
 # ============================================================
 
 class TestStartBackgroundTasks:
-    """start_background_tasks"""
+    """start_background_tasks：现在只剩 Garmin 同步（备份已移交宿主机 cron）"""
 
     def test_starts_garmin_without_legacy_env(self, monkeypatch):
         """仅使用数据库绑定的新用户也必须启动定时同步。"""
         from app import start_background_tasks
         calls = []
-        monkeypatch.setattr('app.auto_backup', lambda: calls.append('backup'))
         monkeypatch.setattr('app.auto_garmin_sync', lambda: calls.append('garmin'))
         monkeypatch.setattr('os.environ', {})
         start_background_tasks()
-        assert 'backup' in calls
         assert 'garmin' in calls
 
     def test_starts_both_with_garmin(self, monkeypatch):
         from app import start_background_tasks
         calls = []
-        monkeypatch.setattr('app.auto_backup', lambda: calls.append('backup'))
         monkeypatch.setattr('app.auto_garmin_sync', lambda: calls.append('garmin'))
         monkeypatch.setattr('os.environ', {'GARMIN_EMAIL': 'test@test.com'})
         start_background_tasks()
-        assert 'backup' in calls
         assert 'garmin' in calls
+
+    def test_no_backup_timer_in_app(self):
+        """防回归：备份定时器不得加回 app（两个备份源 = 恢复时的判断题）"""
+        import app
+        for name in ('auto_backup', 'periodic_gcs_backup', '_auto_backup_timer'):
+            assert not hasattr(app, name), f'app 里不应再有 {name}'
 
 
 # ============================================================
@@ -504,49 +418,6 @@ class TestPredictionThreadException:
                  patch('app._prediction_lock'):
                 resp = client_authenticated.get('/')
                 assert resp.status_code == 200
-
-
-# ============================================================
-# L170-173: auto_backup 异常（内层 + 外层）
-# ============================================================
-
-class TestAutoBackupCleanup:
-    """自动备份文件清理异常处理 (L170-171)"""
-
-    def test_backup_cleanup_exception(self):
-        """L170-171: 备份文件名解析失败 -> except pass"""
-        import tempfile
-
-        import app
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            bad_file = os.path.join(tmpdir, 'glucose_auto_bad_date.db')
-            open(bad_file, 'w').close()
-
-            with patch('app.AUTO_BACKUP_DIR', tmpdir), \
-                 patch('app.os.path.exists', return_value=True), \
-                 patch('app.os.makedirs'), \
-                 patch('app.shutil.copy2'), \
-                 patch('app.glob_mod.glob', return_value=[bad_file]), \
-                 patch('app.threading.Timer') as mock_timer:
-
-                app.auto_backup()
-                mock_timer.assert_called_once_with(86400, app.auto_backup)
-
-
-class TestAutoBackupOuterExcept:
-    """auto_backup 外层异常 (L172-173)"""
-
-    def test_backup_outer_exception(self):
-        """L172-173: os.makedirs 异常 -> 外层 except 捕获"""
-        import app
-        with patch('app.os.path.exists', return_value=True), \
-             patch('app.os.makedirs', side_effect=Exception("disk full")), \
-             patch('app.threading.Timer') as mock_timer, \
-             patch('builtins.print') as mock_print:
-            app.auto_backup()
-            mock_timer.assert_called_once()
-            mock_print.assert_any_call('[AutoBackup] Error: disk full')
 
 
 # ============================================================
@@ -779,136 +650,6 @@ def test_api_success_empty_message(client):
     resp = api_success(message="")
     data = resp[0].get_json()
     assert 'message' not in data
-
-
-# ============================================================
-# auto_backup 带 GCS 路径（line 172）
-# ============================================================
-
-class TestAutoBackupGCS:
-    """auto_backup 函数 — GCS 分支"""
-
-    def test_backup_uploads_to_gcs(self, monkeypatch):
-        monkeypatch.setenv('GCS_BUCKET_NAME', 'test-bucket')
-        monkeypatch.setattr('app._auto_backup_timer', MagicMock())
-        monkeypatch.setattr('os.path.exists', lambda p: True)
-        monkeypatch.setattr('os.makedirs', lambda p, exist_ok: None)
-        monkeypatch.setattr('shutil.copy2', lambda *a: None)
-        import app as app_mod
-        mock_backup_to_gcs = MagicMock()
-        monkeypatch.setattr(app_mod, 'backup_db_to_gcs', mock_backup_to_gcs)
-        # 设置 DB_NAME 存在
-        monkeypatch.setattr('os.path.isfile', lambda p: True)
-        # 需要让 os.path.exists(当前数据库路径) 返回 True
-        from core.config import get_db_name
-        db_path = get_db_name()
-        monkeypatch.setattr('os.path.exists', lambda p: p == db_path)
-        app_mod.auto_backup()
-        mock_backup_to_gcs.assert_called_once()
-
-    def test_backup_no_gcs_skips_upload(self, monkeypatch):
-        monkeypatch.delenv('GCS_BUCKET_NAME', raising=False)
-        monkeypatch.setattr('app._auto_backup_timer', MagicMock())
-        monkeypatch.setattr('os.path.exists', lambda p: True)
-        monkeypatch.setattr('os.makedirs', lambda p, exist_ok: None)
-        monkeypatch.setattr('shutil.copy2', lambda *a: None)
-        from core.config import get_db_name
-        db_path = get_db_name()
-        monkeypatch.setattr('os.path.exists', lambda p: p == db_path)
-        import app as app_mod
-        mock_backup_to_gcs = MagicMock()
-        monkeypatch.setattr(app_mod, 'backup_db_to_gcs', mock_backup_to_gcs)
-        app_mod.auto_backup()
-        mock_backup_to_gcs.assert_not_called()
-
-
-# ============================================================
-# periodic_gcs_backup（lines 201-214）
-# ============================================================
-
-class TestPeriodicGCSBackup:
-    """periodic_gcs_backup 函数"""
-
-    def test_periodic_gcs_backup_called(self, monkeypatch):
-        monkeypatch.setenv('GCS_BUCKET_NAME', 'test-bucket')
-        import app as app_mod
-        mock_backup = MagicMock()
-        monkeypatch.setattr(app_mod, 'backup_db_to_gcs', mock_backup)
-        mock_timer = MagicMock()
-        monkeypatch.setattr(threading, 'Timer', lambda interval, func, **kw: mock_timer)
-
-        app_mod.periodic_gcs_backup()
-        mock_backup.assert_called_once()
-        mock_timer.start.assert_called_once()
-        assert mock_timer.daemon is True
-
-    def test_periodic_gcs_backup_no_bucket(self, monkeypatch):
-        monkeypatch.delenv('GCS_BUCKET_NAME', raising=False)
-        import app as app_mod
-        mock_backup = MagicMock()
-        monkeypatch.setattr(app_mod, 'backup_db_to_gcs', mock_backup)
-        mock_timer = MagicMock()
-        monkeypatch.setattr(threading, 'Timer', lambda interval, func, **kw: mock_timer)
-
-        app_mod.periodic_gcs_backup()
-        mock_backup.assert_not_called()
-        mock_timer.start.assert_called_once()
-
-    def test_periodic_gcs_backup_with_token_sync(self, monkeypatch):
-        monkeypatch.setenv('GCS_BUCKET_NAME', 'test-bucket')
-        monkeypatch.setenv('GARMIN_TOKEN_DIR', '/tmp/garmin_tokens')
-        import app as app_mod
-        mock_backup = MagicMock()
-        monkeypatch.setattr(app_mod, 'backup_db_to_gcs', mock_backup)
-        mock_sync = MagicMock()
-        monkeypatch.setattr(app_mod, 'sync_file_to_gcs', mock_sync)
-        mock_timer = MagicMock()
-        monkeypatch.setattr(threading, 'Timer', lambda interval, func, **kw: mock_timer)
-        # 模拟 token 文件存在
-        original_isfile = os.path.isfile
-        monkeypatch.setattr('os.path.isfile',
-                            lambda p: True if 'garmin_tokens.json' in str(p) else original_isfile(p))
-
-        app_mod.periodic_gcs_backup()
-        mock_backup.assert_called_once()
-        mock_sync.assert_called_once()
-
-
-# ============================================================
-# start_background_tasks 带 GCS（line 270）
-# ============================================================
-
-class TestStartBackgroundTasksGCS:
-    """start_background_tasks — GCS 路径"""
-
-    def test_starts_gcs_backup(self, monkeypatch):
-        monkeypatch.setenv('GCS_BUCKET_NAME', 'test-bucket')
-        monkeypatch.delenv('GARMIN_EMAIL', raising=False)
-        import app as app_mod
-        calls = []
-        monkeypatch.setattr(app_mod, 'auto_backup', lambda: calls.append('backup'))
-        mock_periodic = MagicMock()
-        monkeypatch.setattr(app_mod, 'periodic_gcs_backup', mock_periodic)
-
-        app_mod.start_background_tasks()
-        assert 'backup' in calls
-        mock_periodic.assert_called_once()
-
-
-class TestPeriodicGCSBackupError:
-    """periodic_gcs_backup 异常处理（line 209-210）"""
-
-    def test_periodic_gcs_backup_exception(self, monkeypatch):
-        """备份抛异常时被 except 捕获"""
-        monkeypatch.setenv('GCS_BUCKET_NAME', 'test-bucket')
-        import app as app_mod
-        mock_backup = MagicMock(side_effect=Exception("GCS error"))
-        monkeypatch.setattr(app_mod, 'backup_db_to_gcs', mock_backup)
-        mock_timer = MagicMock()
-        monkeypatch.setattr(threading, 'Timer', lambda interval, func, **kw: mock_timer)
-        with patch('builtins.print'):
-            app_mod.periodic_gcs_backup()
-            mock_timer.start.assert_called_once()
 
 
 # ============================================================

@@ -40,7 +40,7 @@ import sqlite3
 import httpx
 from mcp.server.fastmcp import FastMCP
 
-from mcp_adapter.core import domain
+from mcp_adapter.core import domain, sqlite_conn
 from mcp_adapter.core.timefmt import day_bounds as _day_bounds
 from mcp_adapter.core.timefmt import normalize_input as _normalize_input
 from mcp_adapter.core.timefmt import parse as _parse_ts
@@ -106,11 +106,15 @@ def _api_headers(user_id: int) -> dict:
 
 
 def _db() -> sqlite3.Connection:
-    """获取数据库连接。SQLite 模式下使用本地文件（兼容现有测试/本地运行），PostgreSQL 模式下使用连接池。"""
+    """获取数据库连接。SQLite 模式下使用本地文件（兼容现有测试/本地运行），PostgreSQL 模式下使用连接池。
+
+    连接参数（WAL + busy_timeout）走 core.sqlite_conn，与 web 侧、只读 server 同一口径：
+    批量写撞锁时排队等而不是立刻抛 OperationalError（那等于整批记录静默丢失）。
+    """
     from core import config
     if config.DB_TYPE == 'postgres':
         return get_raw_conn()
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite_conn.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
 

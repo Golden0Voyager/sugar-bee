@@ -1,11 +1,9 @@
 import atexit
 import datetime
-import glob as glob_mod
 import hashlib
 import ipaddress
 import os
 import re
-import shutil
 import threading
 import traceback
 
@@ -25,15 +23,10 @@ from services import (  # noqa: E402
     predict_morning_fpg,
     predict_post_exercise_glucose,
 )
-from services.gcs_sync import (  # noqa: E402
-    backup_db_to_gcs,
-    sync_file_to_gcs,
-)
 from user_manager import UserManager  # noqa: E402
 from utils.auth import is_current_user_admin, login_required  # noqa: E402
 from utils.avatars import DEFAULT_AVATARS  # noqa: E402
 from utils.db import close_db, get_db, get_raw_conn, init_db, put_raw_conn  # noqa: E402
-from utils.timezone import today as app_today  # noqa: E402
 
 # ========== 配置 ==========
 app = Flask(__name__)
@@ -70,9 +63,15 @@ _sc_secure_env = os.environ.get('SESSION_COOKIE_SECURE')
 app.config['SESSION_COOKIE_SECURE'] = (
     _sc_secure_env.strip().lower() == 'true' if _sc_secure_env else _is_prod
 )
-app.config['SESSION_COOKIE_HTTPONLY'] = True          # 禁止 JS 访问 cookie
+app.config['SESSION_COOKIE_HTTPONLY'] = True          # 禁止 JS 访问 cookie（XSS 偷不走会话）
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'         # CSRF 基础防护
-app.config['PERMANENT_SESSION_LIFETIME'] = datetime.timedelta(days=7)
+# 会话有效期（小时）：闲置超过这个时间就要重新登录。
+# 默认 720 小时 = 30 天 —— 家人嫌重登烦，一个月不碰才需要重登；
+# 不是「永久登录」，cookie 仍有明确过期时间，设备丢了也能靠它兜底。
+# 想更严就调小（例如 168 = 7 天），想更松就调大。
+# 注意：只有登录时标记了 session.permanent 才生效（见 utils.auth.start_session）。
+SESSION_LIFETIME_HOURS = float(os.environ.get('SESSION_LIFETIME_HOURS', '720'))
+app.config['PERMANENT_SESSION_LIFETIME'] = datetime.timedelta(hours=SESSION_LIFETIME_HOURS)
 
 os.makedirs(AVATAR_FOLDER, exist_ok=True)
 
@@ -328,74 +327,15 @@ def index():
         traceback.print_exc()
         return f"Error loading index: {e}", 500
 
-# ========== 自动备份 ==========
-AUTO_BACKUP_DIR = os.path.join(BASE_DIR, 'backups')
-AUTO_BACKUP_KEEP_DAYS = 30
-_auto_backup_timer = None
-
-def auto_backup():
-    global _auto_backup_timer
-    try:
-        db_path = get_db_name()
-        if not os.path.exists(db_path):
-            return
-        os.makedirs(AUTO_BACKUP_DIR, exist_ok=True)
-        today = app_today().strftime('%Y%m%d')
-        backup_path = os.path.join(AUTO_BACKUP_DIR, f'glucose_auto_{today}.db')
-        if not os.path.exists(backup_path):
-            shutil.copy2(db_path, backup_path)
-
-        # Cloud Run / 生产环境：同时上传当前数据库到 GCS
-        if os.environ.get('GCS_BUCKET_NAME'):
-            backup_db_to_gcs()
-
-        cutoff = app_today() - datetime.timedelta(days=AUTO_BACKUP_KEEP_DAYS)
-        for f in glob_mod.glob(os.path.join(AUTO_BACKUP_DIR, 'glucose_auto_*.db')):
-            try:
-                date_str = os.path.basename(f).replace('glucose_auto_', '').replace('.db', '')
-                if datetime.datetime.strptime(date_str, '%Y%m%d').date() < cutoff:
-                    os.remove(f)
-            except Exception:
-                pass
-    except Exception as e:
-        print(f'[AutoBackup] Error: {e}')
-    finally:
-        _auto_backup_timer = threading.Timer(86400, auto_backup)
-        _auto_backup_timer.daemon = True
-        _auto_backup_timer.start()
-
-
-atexit.register(lambda: _auto_backup_timer.cancel() if _auto_backup_timer else None)
-
-
-# ========== GCS 周期性备份（Cloud Run 无状态环境）==========
-GCS_BACKUP_INTERVAL = int(os.environ.get('GCS_BACKUP_INTERVAL', 300))
-_periodic_gcs_timer = None
-
-
-def periodic_gcs_backup():
-    """每 5 分钟将当前数据库备份到 GCS，并同步 Garmin token。"""
-    global _periodic_gcs_timer
-    try:
-        if os.environ.get('GCS_BUCKET_NAME'):
-            backup_db_to_gcs()
-            # Garmin token 持久化
-            token_dir = os.environ.get('GARMIN_TOKEN_DIR', os.path.join(BASE_DIR, '.garmin_tokens'))
-            token_file = os.path.join(token_dir, 'garmin_tokens.json')
-            if os.path.isfile(token_file):
-                sync_file_to_gcs(token_file, 'garmin_tokens/garmin_tokens.json')
-    except Exception as e:
-        print(f'[GCS Periodic] Error: {e}')
-    finally:
-        _periodic_gcs_timer = threading.Timer(GCS_BACKUP_INTERVAL, periodic_gcs_backup)
-        _periodic_gcs_timer.daemon = True
-        _periodic_gcs_timer.start()
-
-
-atexit.register(lambda: _periodic_gcs_timer.cancel() if _periodic_gcs_timer else None)
-
-# 停机/退出时尽量把当前数据库备份到 GCS
-atexit.register(lambda: backup_db_to_gcs() if os.environ.get('GCS_BUCKET_NAME') else None)
+# ========== 备份 ==========
+# 备份只有一份实现：scripts/ops/backup_db.py 的 make_backup()（SQLite Online Backup API）。
+# 这里曾经有两个 threading.Timer 定时备份，都已摘除：
+#   1) auto_backup：用 shutil.copy2 直拷活库，产出"外观合法但可能撕裂"的副本，
+#      混在可信备份目录里 —— 恢复时选中即拿到坏库；
+#   2) periodic_gcs_backup：Cloud Run 时代遗产，Lighthouse 上未配 GCS 即静默跳过。
+# 现在定时备份由宿主机 cron 跑 backup_host.sh（容器停着也照跑），
+# web 侧只在用户点"下载备份"时用同一个 make_backup() 现拍一份。
+# 不要在这里加回任何自动备份定时器 —— 两个备份源 = 恢复时的判断题。
 
 # ========== Garmin 自动同步 ==========
 GARMIN_SYNC_INTERVAL = int(os.environ.get('GARMIN_SYNC_INTERVAL', 7200))
@@ -429,17 +369,16 @@ atexit.register(lambda: _garmin_sync_timer.cancel() if _garmin_sync_timer else N
 
 
 def start_background_tasks():
-    """启动所有后台定时任务（自动备份、Garmin 同步、GCS 周期性备份）。
+    """启动后台定时任务（目前只剩 Garmin 同步）。
 
     由 Gunicorn master 进程通过 when_ready 钩子调用，
     或在开发模式（python app.py）下直接调用。
+
+    备份**不在这里**：定时备份由宿主机 cron 跑 backup_host.sh，
+    不依赖容器/worker 生命周期（见本文件"备份"段注释）。
     """
-    auto_backup()
     # 绑定关系存数据库，不能再用 GARMIN_EMAIL 判断是否启动；无绑定时本轮为空
     auto_garmin_sync()
-    # Cloud Run / 生产环境启用更频繁的 GCS 备份
-    if os.environ.get('GCS_BUCKET_NAME'):
-        periodic_gcs_backup()
 
 
 # ========== 蓝图注册 ==========

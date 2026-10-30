@@ -8,6 +8,7 @@ from __future__ import annotations
 import contextlib
 import datetime
 import json
+import os
 import sqlite3
 from typing import Any
 
@@ -411,6 +412,44 @@ class _PgConnectionWrapper:
         return False
 
 
+# ========== SQLite 并发参数（WAL + 等锁）==========
+# 同一时刻有三个写入口在写同一个库文件：web 请求、gunicorn master 的后台线程、
+# 外部 MCP 进程。默认的 rollback journal 下读会挡住写，撞锁直接抛
+# "database is locked"（sqlite3 默认只等 5 秒）——MCP 批量写撞上就整批失败，
+# 调用方不重试 = 记录静默丢失。
+#
+#   journal_mode=WAL  读写互不阻塞（写还是串行，但读不再挡写），是多方并发的前提
+#   busy_timeout      撞锁时排队等，而不是立刻报错（默认 15 秒，可环境变量调）
+#   synchronous=NORMAL WAL 下的推荐值：掉电最多丢最近几个事务，不会损库
+#
+# 注意：journal_mode 是**写进库文件头**的持久设置，设一次就生效；
+# 但每次连接都设一遍才安全（历史库第一次连接时才会被切过去）。
+SQLITE_BUSY_TIMEOUT_MS = int(os.environ.get('SUGAR_BEE_BUSY_TIMEOUT_MS', '15000'))
+
+
+def apply_sqlite_pragmas(conn, read_only=False):
+    """给连接套上 WAL + 等锁参数。只读连接不能改 journal_mode，跳过。"""
+    conn.execute(f'PRAGMA busy_timeout={SQLITE_BUSY_TIMEOUT_MS}')
+    if not read_only:
+        conn.execute('PRAGMA journal_mode=WAL')
+        conn.execute('PRAGMA synchronous=NORMAL')
+    return conn
+
+
+def sqlite_connect(db_path=None, timeout=30, read_only=False):
+    """SQLite 统一连接入口（全仓唯一）：自动带 WAL + busy_timeout。
+
+    db_path 为 None 时用当前配置的库路径。read_only=True 时用 mode=ro 打开，
+    供只读分析 / 备份使用。
+    """
+    path = db_path or config.get_db_name()
+    if read_only:
+        conn = sqlite3.connect(f'file:{path}?mode=ro', uri=True, timeout=timeout)
+    else:
+        conn = sqlite3.connect(path, timeout=timeout)
+    return apply_sqlite_pragmas(conn, read_only=read_only)
+
+
 def get_db():
     """
     获取数据库连接。
@@ -425,7 +464,7 @@ def get_db():
             conn = pool_obj.getconn()
             db = g._database = _PgConnectionWrapper(conn, pool_obj)
         else:
-            raw_conn = sqlite3.connect(config.get_db_name(), timeout=30)
+            raw_conn = sqlite_connect()
             raw_conn.row_factory = sqlite3.Row
             db = g._database = ConnectionWrapper(raw_conn)
     return db
@@ -437,8 +476,7 @@ def get_raw_conn():
         pool_obj = _get_pool()
         conn = pool_obj.getconn()
         return _PgConnectionWrapper(conn, pool_obj)
-    import sqlite3
-    conn = sqlite3.connect(config.get_db_name(), timeout=30)
+    conn = sqlite_connect()
     conn.row_factory = sqlite3.Row
     return ConnectionWrapper(conn)
 
@@ -924,7 +962,7 @@ def _init_db_sqlite():
     """SQLite schema 初始化（保留现有迁移逻辑）。"""
     conn = None
     try:
-        conn = sqlite3.connect(config.get_db_name(), timeout=30)
+        conn = sqlite_connect()
         c = conn.cursor()
         c.execute('''CREATE TABLE IF NOT EXISTS records
                      (id INTEGER PRIMARY KEY AUTOINCREMENT,

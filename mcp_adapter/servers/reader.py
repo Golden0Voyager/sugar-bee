@@ -34,7 +34,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from mcp_adapter.core import analytics, domain, timefmt  # noqa: E402
+from mcp_adapter.core import analytics, domain, sqlite_conn, timefmt  # noqa: E402
 
 DB_PATH = os.environ.get("SB_MCP_DB", "/opt/sugar_bee/app/db_data/glucose.db")
 DEFAULT_USER_ID = int(os.environ.get("SB_MCP_USER_ID", "1"))
@@ -50,7 +50,8 @@ mcp = FastMCP(
 
 
 def _connect() -> sqlite3.Connection:
-    conn = sqlite3.connect(f"file:{DB_PATH}?mode=ro", uri=True)
+    """只读连接（WAL 库也能读，撞锁排队等，与 web/MCP writer 同一口径）。"""
+    conn = sqlite_conn.connect(DB_PATH, read_only=True)
     conn.row_factory = sqlite3.Row
     return conn
 

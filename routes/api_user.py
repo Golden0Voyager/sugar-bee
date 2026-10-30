@@ -2,12 +2,12 @@ import os
 import re
 import traceback
 
-from flask import Blueprint, current_app, jsonify, request, session
+from flask import Blueprint, current_app, jsonify, request
 
 import branding
 import settings
 from user_manager import UserManager
-from utils.auth import admin_required, login_required
+from utils.auth import admin_required, login_required, start_session
 from utils.avatars import is_default_avatar
 from utils.db import get_db
 from utils.responses import api_error, api_success
@@ -41,7 +41,7 @@ def switch_user(user_id):
             if not row or not user_manager.authenticate(row['username'], password):
                 return api_error("密码错误", status_code=401)
 
-        session['current_user_id'] = user_id
+        start_session(user_id)
         return api_success(data={"user": user}, message="User switched successfully")
     except Exception as e:
         traceback.print_exc()

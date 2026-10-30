@@ -4,7 +4,7 @@ from flask import Blueprint, redirect, render_template, request, session, url_fo
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from user_manager import UserManager
-from utils.auth import login_required
+from utils.auth import login_required, start_session
 from utils.db import get_db
 from utils.responses import api_error, api_success
 
@@ -46,8 +46,7 @@ def login():
         return render_template('login.html', set_password_mode=True, username=username)
 
     if check_password_hash(user_info['password_hash'], password):
-        session['current_user_id'] = user_info['id']
-        session['username'] = user_info['username']
+        start_session(user_info['id'], user_info['username'])
         return redirect(url_for('index'))
     else:
         return render_template('login.html', error='密码错误', set_password_mode=False)

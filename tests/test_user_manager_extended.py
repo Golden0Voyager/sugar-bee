@@ -91,7 +91,7 @@ class TestUpdateUserProfilePartial:
     def test_update_scalar_fields(self):
         from user_manager import UserManager
         um = UserManager(':memory:')
-        with patch('user_manager.sqlite3.connect') as mock_connect:
+        with patch('user_manager.sqlite_connect') as mock_connect:
             mock_conn = MagicMock()
             mock_connect.return_value = mock_conn
 
@@ -106,7 +106,7 @@ class TestUpdateUserProfilePartial:
     def test_update_json_fields(self):
         from user_manager import UserManager
         um = UserManager(':memory:')
-        with patch('user_manager.sqlite3.connect') as mock_connect:
+        with patch('user_manager.sqlite_connect') as mock_connect:
             mock_conn = MagicMock()
             mock_connect.return_value = mock_conn
 
@@ -120,7 +120,7 @@ class TestUpdateUserProfilePartial:
     def test_update_with_alias(self):
         from user_manager import UserManager
         um = UserManager(':memory:')
-        with patch('user_manager.sqlite3.connect') as mock_connect:
+        with patch('user_manager.sqlite_connect') as mock_connect:
             mock_conn = MagicMock()
             mock_connect.return_value = mock_conn
 
@@ -131,21 +131,21 @@ class TestUpdateUserProfilePartial:
     def test_update_empty_data_noop(self):
         from user_manager import UserManager
         um = UserManager(':memory:')
-        with patch('user_manager.sqlite3.connect') as mock_connect:
+        with patch('user_manager.sqlite_connect') as mock_connect:
             um.update_user_profile_partial(1, {})
             mock_connect.assert_not_called()
 
     def test_update_partial_none_data_noop(self):
         from user_manager import UserManager
         um = UserManager(':memory:')
-        with patch('user_manager.sqlite3.connect') as mock_connect:
+        with patch('user_manager.sqlite_connect') as mock_connect:
             um.update_user_profile_partial(1, None)
             mock_connect.assert_not_called()
 
     def test_update_target_weight(self):
         from user_manager import UserManager
         um = UserManager(':memory:')
-        with patch('user_manager.sqlite3.connect') as mock_connect:
+        with patch('user_manager.sqlite_connect') as mock_connect:
             mock_conn = MagicMock()
             mock_connect.return_value = mock_conn
 
@@ -160,7 +160,7 @@ class TestProviderBinding:
     def test_bind_provider_new(self):
         from user_manager import UserManager
         um = UserManager(':memory:')
-        with patch('user_manager.sqlite3.connect') as mock_connect:
+        with patch('user_manager.sqlite_connect') as mock_connect:
             mock_conn = MagicMock()
             mock_c = MagicMock()
             mock_c.fetchone.return_value = None  # not already bound
@@ -174,7 +174,7 @@ class TestProviderBinding:
     def test_bind_provider_already_bound_to_same_user(self):
         from user_manager import UserManager
         um = UserManager(':memory:')
-        with patch('user_manager.sqlite3.connect') as mock_connect:
+        with patch('user_manager.sqlite_connect') as mock_connect:
             mock_conn = MagicMock()
             mock_c = MagicMock()
             mock_c.fetchone.return_value = (1,)  # already bound to user 1
@@ -188,7 +188,7 @@ class TestProviderBinding:
     def test_bind_provider_conflict(self):
         from user_manager import UserManager
         um = UserManager(':memory:')
-        with patch('user_manager.sqlite3.connect') as mock_connect:
+        with patch('user_manager.sqlite_connect') as mock_connect:
             mock_conn = MagicMock()
             mock_c = MagicMock()
             mock_c.fetchone.return_value = (2,)  # bound to user 2
@@ -202,7 +202,7 @@ class TestProviderBinding:
     def test_unbind_provider(self):
         from user_manager import UserManager
         um = UserManager(':memory:')
-        with patch('user_manager.sqlite3.connect') as mock_connect:
+        with patch('user_manager.sqlite_connect') as mock_connect:
             mock_conn = MagicMock()
             mock_connect.return_value = mock_conn
 
@@ -212,7 +212,7 @@ class TestProviderBinding:
     def test_find_user_by_provider_found(self):
         from user_manager import UserManager
         um = UserManager(':memory:')
-        with patch('user_manager.sqlite3.connect') as mock_connect:
+        with patch('user_manager.sqlite_connect') as mock_connect:
             mock_conn = MagicMock()
             mock_c = MagicMock()
             mock_c.fetchone.return_value = (5,)
@@ -225,7 +225,7 @@ class TestProviderBinding:
     def test_find_user_by_provider_not_found(self):
         from user_manager import UserManager
         um = UserManager(':memory:')
-        with patch('user_manager.sqlite3.connect') as mock_connect:
+        with patch('user_manager.sqlite_connect') as mock_connect:
             mock_conn = MagicMock()
             mock_c = MagicMock()
             mock_c.fetchone.return_value = None
@@ -238,7 +238,7 @@ class TestProviderBinding:
     def test_get_user_providers(self):
         from user_manager import UserManager
         um = UserManager(':memory:')
-        with patch('user_manager.sqlite3.connect') as mock_connect:
+        with patch('user_manager.sqlite_connect') as mock_connect:
             mock_conn = MagicMock()
             mock_c = MagicMock()
             mock_c.fetchall.return_value = [
@@ -258,7 +258,7 @@ class TestPasswordManagement:
     def test_set_password(self):
         from user_manager import UserManager
         um = UserManager(':memory:')
-        with patch('user_manager.sqlite3.connect') as mock_connect:
+        with patch('user_manager.sqlite_connect') as mock_connect:
             mock_conn = MagicMock()
             mock_connect.return_value = mock_conn
 
@@ -268,7 +268,7 @@ class TestPasswordManagement:
     def test_has_password_true(self):
         from user_manager import UserManager
         um = UserManager(':memory:')
-        with patch('user_manager.sqlite3.connect') as mock_connect:
+        with patch('user_manager.sqlite_connect') as mock_connect:
             mock_conn = MagicMock()
             mock_c = MagicMock()
             mock_c.fetchone.return_value = {'password_hash': 'hashed_value'}
@@ -280,7 +280,7 @@ class TestPasswordManagement:
     def test_has_password_false(self):
         from user_manager import UserManager
         um = UserManager(':memory:')
-        with patch('user_manager.sqlite3.connect') as mock_connect:
+        with patch('user_manager.sqlite_connect') as mock_connect:
             mock_conn = MagicMock()
             mock_c = MagicMock()
             mock_c.fetchone.return_value = None
@@ -292,7 +292,7 @@ class TestPasswordManagement:
     def test_has_password_empty_hash(self):
         from user_manager import UserManager
         um = UserManager(':memory:')
-        with patch('user_manager.sqlite3.connect') as mock_connect:
+        with patch('user_manager.sqlite_connect') as mock_connect:
             mock_conn = MagicMock()
             mock_c = MagicMock()
             mock_c.fetchone.return_value = {'password_hash': None}
@@ -308,7 +308,7 @@ class TestPasswordManagement:
         um = UserManager(':memory:')
         pw_hash = generate_password_hash('correct')
 
-        with patch('user_manager.sqlite3.connect') as mock_connect:
+        with patch('user_manager.sqlite_connect') as mock_connect:
             mock_conn = MagicMock()
             mock_c = MagicMock()
             mock_c.fetchone.return_value = {'id': 1, 'password_hash': pw_hash}
@@ -325,7 +325,7 @@ class TestPasswordManagement:
         um = UserManager(':memory:')
         pw_hash = generate_password_hash('correct')
 
-        with patch('user_manager.sqlite3.connect') as mock_connect:
+        with patch('user_manager.sqlite_connect') as mock_connect:
             mock_conn = MagicMock()
             mock_c = MagicMock()
             mock_c.fetchone.return_value = {'id': 1, 'password_hash': pw_hash}
@@ -338,7 +338,7 @@ class TestPasswordManagement:
     def test_authenticate_user_not_found(self):
         from user_manager import UserManager
         um = UserManager(':memory:')
-        with patch('user_manager.sqlite3.connect') as mock_connect:
+        with patch('user_manager.sqlite_connect') as mock_connect:
             mock_conn = MagicMock()
             mock_c = MagicMock()
             mock_c.fetchone.return_value = None
@@ -351,7 +351,7 @@ class TestPasswordManagement:
     def test_authenticate_no_password_set(self):
         from user_manager import UserManager
         um = UserManager(':memory:')
-        with patch('user_manager.sqlite3.connect') as mock_connect:
+        with patch('user_manager.sqlite_connect') as mock_connect:
             mock_conn = MagicMock()
             mock_c = MagicMock()
             mock_c.fetchone.return_value = {'id': 1, 'password_hash': None}
@@ -369,7 +369,7 @@ class TestOtherMethods:
     def test_change_username(self):
         from user_manager import UserManager
         um = UserManager(':memory:')
-        with patch('user_manager.sqlite3.connect') as mock_connect:
+        with patch('user_manager.sqlite_connect') as mock_connect:
             mock_conn = MagicMock()
             mock_connect.return_value = mock_conn
 
@@ -379,7 +379,7 @@ class TestOtherMethods:
     def test_set_enabled_modules(self):
         from user_manager import UserManager
         um = UserManager(':memory:')
-        with patch('user_manager.sqlite3.connect') as mock_connect:
+        with patch('user_manager.sqlite_connect') as mock_connect:
             mock_conn = MagicMock()
             mock_connect.return_value = mock_conn
 
@@ -389,7 +389,7 @@ class TestOtherMethods:
     def test_get_user_by_username_found(self):
         from user_manager import UserManager
         um = UserManager(':memory:')
-        with patch('user_manager.sqlite3.connect') as mock_connect:
+        with patch('user_manager.sqlite_connect') as mock_connect:
             mock_conn = MagicMock()
             mock_c = MagicMock()
             mock_c.fetchone.return_value = {'id': 1, 'username': 'test', 'display_name': 'Test'}
@@ -402,7 +402,7 @@ class TestOtherMethods:
     def test_get_user_by_username_not_found(self):
         from user_manager import UserManager
         um = UserManager(':memory:')
-        with patch('user_manager.sqlite3.connect') as mock_connect:
+        with patch('user_manager.sqlite_connect') as mock_connect:
             mock_conn = MagicMock()
             mock_c = MagicMock()
             mock_c.fetchone.return_value = None
@@ -415,7 +415,7 @@ class TestOtherMethods:
     def test_get_user_by_username_or_id(self):
         from user_manager import UserManager
         um = UserManager(':memory:')
-        with patch('user_manager.sqlite3.connect') as mock_connect:
+        with patch('user_manager.sqlite_connect') as mock_connect:
             mock_conn = MagicMock()
             mock_c = MagicMock()
             mock_c.fetchone.return_value = {'id': 1, 'username': 'test', 'display_name': 'Test'}
