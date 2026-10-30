@@ -22,8 +22,25 @@ KEEP_MANUAL=2
 
 ts() { date '+%F %T %Z'; }
 
+# Bark 推送（key 在 /opt/sugar_bee/.bark_key，不进 git）。
+# 备份 cron 每天只跑一次，不需要限流。
+BARK_KEY=$(cat /opt/sugar_bee/.bark_key 2>/dev/null || true)
+notify() {
+  local title="$1" body="$2" level="${3:-critical}"
+  [ -n "$BARK_KEY" ] || return 0
+  python3 - "$BARK_KEY" "$title" "$body" "$level" <<'PYBARK' 2>/dev/null || true
+import json, sys, urllib.request
+key, title, body, level = sys.argv[1:5]
+payload = json.dumps({"title": title, "body": body[:400], "level": level, "group": "sugar-bee"}).encode()
+req = urllib.request.Request("https://api.day.app/" + key, data=payload,
+                             headers={"Content-Type": "application/json"})
+urllib.request.urlopen(req, timeout=10)
+PYBARK
+}
+
 if [ ! -f "$DB" ]; then
   echo "[$(ts)] ERROR 数据库不存在: $DB"
+  notify "Sugar Bee 备份失败" "数据库文件不存在: $DB —— 今天的快照没有生成"
   exit 1
 fi
 
@@ -52,6 +69,7 @@ if [ "$rc" -eq 0 ]; then
   echo "[$(ts)] OK 快照完成 pruned_manual=$pruned"
 else
   echo "[$(ts)] ERROR 快照失败 rc=$rc"
+  notify "Sugar Bee 备份失败" "每日快照未生成 rc=$rc，检查 /var/log/sugar_bee_backup.log"
 fi
 
 exit "$rc"

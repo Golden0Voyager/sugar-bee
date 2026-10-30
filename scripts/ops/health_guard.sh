@@ -93,6 +93,32 @@ wait_healthy() {
   return 1
 }
 
+# ---- Bark 推送 ----
+# key 只存在服务器 /opt/sugar_bee/.bark_key（600），绝不进 git。
+# 限流：同标题 30 分钟内只推一次——故障持续时 cron 每 10 分钟一轮，
+# 不限流会把手机刷屏，那跟没有告警一样。
+BARK_KEY=$(cat /opt/sugar_bee/.bark_key 2>/dev/null || true)
+
+notify() {
+  local title="$1" body="$2" level="${3:-active}"
+  [ -n "$BARK_KEY" ] || return 0
+  local key_id stamp last=0
+  key_id=$(printf '%s' "$title" | md5sum | cut -c1-8)
+  stamp="/var/run/sugar_bee_notify_$key_id"
+  [ -f "$stamp" ] && last=$(cat "$stamp" 2>/dev/null || echo 0)
+  case "$last" in ''|*[!0-9]*) last=0 ;; esac
+  [ $(( $(date +%s) - last )) -lt 1800 ] && return 0
+  date +%s >"$stamp" 2>/dev/null || true
+  python3 - "$BARK_KEY" "$title" "$body" "$level" <<'PYBARK' 2>/dev/null || true
+import json, sys, urllib.request
+key, title, body, level = sys.argv[1:5]
+payload = json.dumps({"title": title, "body": body[:400], "level": level, "group": "sugar-bee"}).encode()
+req = urllib.request.Request("https://api.day.app/" + key, data=payload,
+                             headers={"Content-Type": "application/json"})
+urllib.request.urlopen(req, timeout=10)
+PYBARK
+}
+
 state_of() { docker inspect -f '{{.State.Status}}' "$NAME" 2>/dev/null; }
 
 can_restart() {
@@ -113,6 +139,7 @@ rotate_log
 st=$(state_of)
 if [ -z "$st" ]; then
   log "CRIT 容器 $NAME 不存在，跳过自动处理（需 bash /opt/sugar_bee/run_container.sh）"
+  notify "Sugar Bee 容器不存在" "容器被误删，需 bash /opt/sugar_bee/run_container.sh 重建" critical
   exit 2
 fi
 
@@ -150,6 +177,7 @@ log "DETAIL 最近一次响应: ${DETAIL:0:400}"
 # 3) DB 故障：重启无用，只告警
 if db_broken_only "$DETAIL"; then
   log "WARN 判定为数据库故障（模板正常），重启容器解决不了，本次只告警不重启"
+  notify "Sugar Bee 数据库故障" "重启解决不了，需人工介入。响应: ${DETAIL:0:200}" timeSensitive
   dump_logs
   exit 5
 fi
@@ -165,6 +193,7 @@ if can_restart; then
     exit 0
   fi
   log "CRIT 重启后 90s 仍不健康，需人工介入"
+  notify "Sugar Bee 重启后仍不健康" "自动恢复失败，需人工登录服务器排查（日志: /var/log/sugar_bee_health.log）" critical
   dump_logs
   exit 3
 fi
