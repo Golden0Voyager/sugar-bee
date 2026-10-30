@@ -19,6 +19,7 @@
 
 import base64
 import os
+import time
 
 import httpx
 from dotenv import load_dotenv
@@ -60,6 +61,25 @@ if _ready_providers:
     print(f"[AI] 降级链: {' → '.join(_ready_providers)}")
 else:  # pragma: no cover
     print("[AI] 未配置 AI 提供商,AI 功能将不可用")
+
+
+# 限流 / 超时 / 连接失败重试一次再换下一家。只对这类瞬时错误退避,
+# 模型返回空内容这种「确定性失败」立即换家,不浪费等待。
+_MAX_ATTEMPTS = 2
+_RETRY_BASE_DELAY = 3
+_RETRYABLE_NAMES = ('ratelimit', 'timeout', 'apiconnection', 'internalserver', 'serviceunavailable')
+
+
+def _is_retryable(exc):
+    if any(hint in type(exc).__name__.lower() for hint in _RETRYABLE_NAMES):
+        return True
+    text = str(exc).lower()
+    return any(hint in text for hint in ('429', 'rate limit', 'timed out', 'timeout'))
+
+
+def _provider_order(task_type):
+    """按任务取供应商顺序;没有单独配置的任务沿用默认顺序。"""
+    return settings.AI_TASK_PROVIDER_ORDER.get(task_type, settings.AI_PROVIDER_ORDER)
 
 
 def _call_openai_compatible(api_key, base_url, model, prompt, images_data=None, mime_type=None,
@@ -113,20 +133,26 @@ def _try_provider(api_key, base_url, models_config, has_images, prompt, images_d
     last_error = None
 
     for model in model_list:
-        try:
-            result = _call_openai_compatible(
-                api_key, base_url, model,
-                prompt, images_data, mime_type, provider=provider,
-                extra_body=extra_body, timeout=timeout)
-            if not result or not str(result).strip():
-                # 思考型模型会把内容全写进 reasoning_content,这里拿到空串。
-                # 必须当失败处理并继续降级,否则会静默返回空结果。
-                raise ValueError(f"{provider} {model} 返回空内容(reasoning_content?)")
-            return result, None
-        except Exception as e:
-            last_error = e
-            print(f"⚠ {provider} {model} 调用失败: {str(e)[:100]}")
-            continue
+        for attempt in range(_MAX_ATTEMPTS):
+            try:
+                result = _call_openai_compatible(
+                    api_key, base_url, model,
+                    prompt, images_data, mime_type, provider=provider,
+                    extra_body=extra_body, timeout=timeout)
+                if not result or not str(result).strip():
+                    # 思考型模型会把内容全写进 reasoning_content,这里拿到空串。
+                    # 必须当失败处理并继续降级,否则会静默返回空结果。
+                    raise ValueError(f"{provider} {model} 返回空内容(reasoning_content?)")
+                return result, None
+            except Exception as e:
+                last_error = e
+                if attempt + 1 < _MAX_ATTEMPTS and _is_retryable(e):
+                    delay = _RETRY_BASE_DELAY * (attempt + 1)
+                    print(f"⚠ {provider} {model} 限流/超时,{delay}s 后重试: {str(e)[:80]}")
+                    time.sleep(delay)
+                    continue
+                print(f"⚠ {provider} {model} 调用失败: {str(e)[:100]}")
+                break
 
     return None, last_error
 
@@ -150,7 +176,7 @@ def call_ai(prompt, images_data=None, mime_type=None, task_type=None):
         task_type = 'vision' if has_images else 'text'
     last_error = None
 
-    for provider_id in settings.AI_PROVIDER_ORDER:
+    for provider_id in _provider_order(task_type):
         config = settings.AI_PROVIDERS[provider_id]
         api_key = _provider_key(provider_id)
         if not api_key:
@@ -214,18 +240,24 @@ def call_chat_stream(messages):
 
         for model in config['models'].get('chat') or []:
             yielded = False
-            try:
-                client = _client_for(config['base_url'], api_key, config.get('timeout'))
-                for chunk in _stream_chat(client, model, messages, config.get('extra_body')):
-                    yielded = True
-                    yield chunk
-            except Exception as e:
-                print(f"⚠ {config['name']} {model} 健康助手调用失败: {str(e)[:100]}")
-                last_error = e
-                if yielded:
-                    # 已经吐字了,换一家重头来会让用户看到重复内容,只能就地报错
-                    raise
-                continue
+            for attempt in range(_MAX_ATTEMPTS):
+                try:
+                    client = _client_for(config['base_url'], api_key, config.get('timeout'))
+                    for chunk in _stream_chat(client, model, messages, config.get('extra_body')):
+                        yielded = True
+                        yield chunk
+                except Exception as e:
+                    print(f"⚠ {config['name']} {model} 健康助手调用失败: {str(e)[:100]}")
+                    last_error = e
+                    if yielded:
+                        # 已经吐字了,换一家重头来会让用户看到重复内容,只能就地报错
+                        raise
+                    if attempt + 1 < _MAX_ATTEMPTS and _is_retryable(e):
+                        delay = _RETRY_BASE_DELAY * (attempt + 1)
+                        print(f"⚠ {config['name']} {model} 限流/超时,{delay}s 后重试")
+                        time.sleep(delay)
+                        continue
+                break
 
             if yielded:
                 return

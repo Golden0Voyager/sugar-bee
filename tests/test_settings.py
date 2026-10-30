@@ -290,6 +290,7 @@ class TestConfigConstants:
             for retired in ('Qwen/Qwen3-VL-235B-A22B-Instruct', 'Qwen/Qwen3-VL-8B-Thinking',
                             'kimi-k3', 'deepseek-v4.1-flash', 'sensenova-u1.5-lite'):
                 assert retired not in flat, f'{provider_id} 仍在用不可用的模型 {retired}'
+        assert settings.AI_TASK_PROVIDER_ORDER['vision'][0] == 'modelscope'
 
 
 class TestGetAISystemPrompt:

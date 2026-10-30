@@ -208,6 +208,71 @@ class TestTryProvider:
         )
         assert mock_call.call_args[1].get('timeout') == 42
 
+    @patch('ai_client.time.sleep')
+    @patch('ai_client._call_openai_compatible')
+    def test_retries_once_after_rate_limit(self, mock_call, mock_sleep):
+        """429/超时是瞬时错误,先退避重试一次再考虑换家。"""
+        from ai_client import _try_provider
+        mock_call.side_effect = [Exception("Error code: 429 - rate limit"), "ok"]
+
+        result, err = _try_provider(
+            'fake-key', 'https://api.test.com', {'text': ['m1'], 'vision': []},
+            has_images=False, prompt='hello', images_data=None,
+            mime_type=None, provider='Test'
+        )
+        assert result == "ok"
+        assert err is None
+        assert mock_call.call_count == 2
+        mock_sleep.assert_called_once()
+
+    @patch('ai_client.time.sleep')
+    @patch('ai_client._call_openai_compatible')
+    def test_does_not_retry_deterministic_failure(self, mock_call, mock_sleep):
+        """普通错误不重试,直接换下一个模型。"""
+        from ai_client import _try_provider
+        mock_call.side_effect = [Exception("boom"), "ok"]
+
+        result, _ = _try_provider(
+            'fake-key', 'https://api.test.com', {'text': ['m1', 'm2'], 'vision': []},
+            has_images=False, prompt='hello', images_data=None,
+            mime_type=None, provider='Test'
+        )
+        assert result == "ok"
+        assert mock_call.call_count == 2
+        mock_sleep.assert_not_called()
+
+    @patch('ai_client.time.sleep')
+    @patch('ai_client._call_openai_compatible')
+    def test_empty_content_is_not_retried(self, mock_call, mock_sleep):
+        """空内容是确定性失败,重试也没用,直接换家。"""
+        from ai_client import _try_provider
+        mock_call.side_effect = ["", "ok"]
+
+        result, _ = _try_provider(
+            'fake-key', 'https://api.test.com', {'text': ['m1', 'm2'], 'vision': []},
+            has_images=False, prompt='hello', images_data=None,
+            mime_type=None, provider='Test'
+        )
+        assert result == "ok"
+        assert mock_call.call_count == 2
+        mock_sleep.assert_not_called()
+
+    def test_is_retryable(self):
+        from ai_client import _is_retryable
+
+        class APITimeoutError(Exception):
+            pass
+
+        class RateLimitError(Exception):
+            pass
+
+        assert _is_retryable(APITimeoutError("")) is True
+        assert _is_retryable(RateLimitError("")) is True
+        assert _is_retryable(Exception("Error code: 429")) is True
+        assert _is_retryable(Exception("Request timed out.")) is True
+        assert _is_retryable(Exception("model not found")) is False
+        assert _is_retryable(ValueError("返回空内容")) is False
+
 
 class TestCallAi:
     """call_ai() 统一降级链测试"""
@@ -283,6 +348,22 @@ class TestCallAi:
         with ai_keys(intern='k1'):
             call_ai('test')
         assert mock_try.call_args[1]['task_type'] == 'text'
+
+    @patch('ai_client.AI_AVAILABLE', True)
+    @patch('ai_client._try_provider')
+    def test_vision_uses_its_own_provider_order(self, mock_try):
+        """vision 单独配成 ModelScope 优先,text 仍走默认顺序。"""
+        from ai_client import call_ai
+        mock_try.return_value = ("ok", None)
+
+        with ai_keys(intern='k1', modelscope='k4'):
+            call_ai('看图', images_data=[b'fake'])
+        assert mock_try.call_args[1]['provider'] == 'ModelScope'
+
+        mock_try.reset_mock()
+        with ai_keys(intern='k1', modelscope='k4'):
+            call_ai('纯文本')
+        assert mock_try.call_args[1]['provider'] == '端砚'
 
     @patch('ai_client.AI_AVAILABLE', True)
     @patch('ai_client._try_provider')

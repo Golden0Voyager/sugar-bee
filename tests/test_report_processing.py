@@ -226,7 +226,14 @@ class TestBatchProcessing:
             f'Checkup Report Page {index}' for index in range(1, 9)
         ]
 
-    def test_worker_count_never_exceeds_two(self):
+    def test_concurrency_matches_configured_workers(self):
+        """实际并发不超过 MAX_PARSE_WORKERS。
+
+        现在配成 1:ModelScope 在 2 并发下会 429,一份 27 页报告丢过 9/27 页,
+        串行后零 429。断言引用常量,别再写死数字。
+        """
+        from utils.report_processing import MAX_PARSE_WORKERS
+
         lock = threading.Lock()
         active = 0
         maximum = 0
@@ -248,7 +255,7 @@ class TestBatchProcessing:
             item_key='items',
             date_key='checkup_date',
         )
-        assert maximum == 2
+        assert maximum == MAX_PARSE_WORKERS
         assert result['parsed_pages'] == 7
 
     def test_partial_failure_has_page_metadata_and_warning(self):
