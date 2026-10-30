@@ -1368,7 +1368,7 @@ class TestAdminBackupDeep:
     def test_backup_cleanup_remove_fails(self, client_authenticated):
         """L38-39: backup cleanup 中 os.remove 失败 -> except pass"""
         with patch('routes.api_admin.os.path.exists', return_value=True), \
-             patch('routes.api_admin.shutil.copy2'), \
+             patch('routes.api_admin.make_safe_backup'), \
              patch('routes.api_admin.os.remove', side_effect=OSError("permission denied")), \
              patch('routes.api_admin.send_file', return_value=('ok', 200)):
             resp = client_authenticated.get('/backup_database')
@@ -1379,7 +1379,7 @@ class TestAdminBackupDeep:
     def test_backup_database_exception(self, client_authenticated):
         """L48-50: backup_database 内部异常 -> 500"""
         with patch('routes.api_admin.os.path.exists', return_value=True), \
-             patch('routes.api_admin.shutil.copy2', side_effect=PermissionError("no write access")):
+             patch('routes.api_admin.make_safe_backup', side_effect=PermissionError("no write access")):
             resp = client_authenticated.get('/backup_database')
             assert resp.status_code == 500
 
@@ -1410,6 +1410,7 @@ class TestAdminRestoreDeep:
             mock_conn = MagicMock()
             mock_cursor = MagicMock()
             mock_cursor.fetchone.return_value = (1,)
+            mock_cursor.execute.return_value.fetchall.return_value = [('ok',)]
             mock_conn.cursor.return_value = mock_cursor
             mock_connect.return_value = mock_conn
 
