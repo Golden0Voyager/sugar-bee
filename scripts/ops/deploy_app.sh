@@ -41,7 +41,7 @@ for arg in "$@"; do
     --dry-run)    DRY=1 ;;
     --no-restart) RESTART=0 ;;
     -h|--help)    sed -n '2,30p' "$0"; exit 0 ;;
-    *) echo "未知参数: $arg（--help 看用法）" >&2; exit 2 ;;
+    *) echo "未知参数: ${arg}（--help 看用法）" >&2; exit 2 ;;
   esac
 done
 
@@ -154,18 +154,34 @@ if [ "${SB_ALLOW_DB_CHANGE:-0}" != "1" ]; then
   推送后: $AFTER
 立即检查 rsync 的 --exclude 列表，并从备份恢复（见 docs/RUNBOOK.md）"
   fi
-  say "指纹一致（$AFTER）—— 数据没被动过"
+  say "指纹一致（${AFTER}）—— 数据没被动过"
 else
   say "SB_ALLOW_DB_CHANGE=1，跳过指纹比对（你确定？）"
 fi
 
 # ---------- 5. 重建容器 + 探活 ----------
 if [ "$RESTART" = 1 ]; then
+  # 必须先 docker build：run_container.sh 只重建容器、不重建镜像。
+  # 少了这一步，代码推上去了但容器还在跑旧镜像 —— 探活照样绿（旧代码也健康），
+  # 就是典型的"部署假成功"。（2026-10-30 真实踩过：WAL 代码同步到磁盘后
+  # 容器里 journal_mode 仍是 delete，直到手动 build 才生效。）
+  say "重建镜像（docker build）…"
+  remote "cd ${SB_APP_DIR} && TS=\$(date +%Y%m%d-%H%M) && docker build -q -t sugar-bee:\$TS -t sugar-bee:latest . >/dev/null && echo \"  镜像 sugar-bee:\$TS\"" \
+    || die "镜像构建失败（容器未动，线上还是旧版本）"
+
   say "重建容器（run_container.sh 自带探活 + 15 秒自动回滚）…"
   remote "$SB_OPS_DIR/run_container.sh" || die "容器重建失败（已由 run_container.sh 回滚，去看 /var/log 与 docker logs sugar-bee）"
+  # 防"部署假成功"：容器内 app.py 必须与宿主机 rsync 上去的那份一致。
+  # 不一致说明镜像没重建（或 build 缓存吃掉了新代码），此时探活仍会绿。
+  say "校验容器内代码与宿主机一致…"
+  HOST_MD5=$(remote "md5sum ${SB_APP_DIR}/app.py | cut -d' ' -f1")
+  CONT_MD5=$(remote "docker exec sugar-bee md5sum /app/app.py | cut -d' ' -f1")
+  [ -n "$HOST_MD5" ] && [ "$HOST_MD5" = "$CONT_MD5" ] \
+    || die "容器内 app.py(${CONT_MD5}) 与宿主机(${HOST_MD5}) 不一致——镜像没吃进新代码，本次部署无效"
+
   say "容器已起，最后确认一次线上指纹没变…"
   FINAL="$(db_fingerprint)"
-  [ "$FINAL" = "$BEFORE" ] || say "注意：容器启动后指纹为 $FINAL（与推送前不同，通常是后台任务写入，非覆盖）"
+  [ "$FINAL" = "$BEFORE" ] || say "注意：容器启动后指纹为 ${FINAL}（与推送前不同，通常是后台任务写入，非覆盖）"
 else
   say "按 --no-restart 跳过容器重建（代码已就位，下次重启生效）"
 fi
