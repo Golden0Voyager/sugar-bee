@@ -7,7 +7,12 @@ from decimal import Decimal, InvalidOperation
 
 from utils.report_files import MAX_IMAGES, has_reliable_native_text
 
-MAX_PARSE_WORKERS = 2
+# 报告页面分批解析的并发度。实测:ModelScope 在 2 并发下会触发
+# "Request rate increased too quickly" 的 429 —— 一份 27 页报告丢过 9/27 页;
+# 改成串行后,六款模型共 54 批,零 429、零丢页。
+# 并发只影响「多页 PDF」这类任务(单张照片本来就只有一批,并发度为 1),
+# 而体检报告一年才传一次,多等 1-2 分钟换「不丢页」是划算的。
+MAX_PARSE_WORKERS = 1
 _NUMBER = re.compile(r'[-+]?\d+(?:\.\d+)?')
 
 

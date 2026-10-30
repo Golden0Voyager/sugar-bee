@@ -17,6 +17,14 @@ CONFIG_FILE = "user_config.json"
 
 AI_PROVIDER_ORDER = ['intern', 'sensenova', 'agnes', 'modelscope']
 
+# 按任务覆盖顺序(没列出的任务沿用 AI_PROVIDER_ORDER)
+# vision = 体检报告抄录 / 骨密度读图 / 血糖仪与体脂秤截图
+# 实测同一份 27 页报告:ModelScope Qwen3.5-122B 191s、133 项、仅 2 项与他人不一致;
+# 端砚 458s、14 项不一致;SenseNova deepseek-flash 669s、14 项不一致。故 vision 由 ModelScope 打头。
+AI_TASK_PROVIDER_ORDER = {
+    'vision': ['modelscope', 'intern', 'sensenova', 'agnes'],
+}
+
 AI_PROVIDERS = {
     # 书生·端砚(上海 AI 实验室,测试期免费额度按月发放)
     # 全系模型默认思考型,必须靠 extra_body 关掉;实测关掉后中位时延 0.59s
@@ -46,7 +54,9 @@ AI_PROVIDERS = {
         'extra_body': None,
         'models': {
             'text': ['deepseek-flash', 'sensenova-6.8-flash-lite'],
-            'vision': ['deepseek-flash', 'sensenova-6.8-flash-lite'],
+            # 6.8-flash-lite 不进 vision:实测 27 页要 1292s、丢 9 页、只抽 50 项,
+            # 当兜底反而挡住后面能用的服务。文本任务保留它没问题
+            'vision': ['deepseek-flash'],
             'report': ['deepseek-flash', 'sensenova-6.8-flash-lite'],
             'chat': ['deepseek-flash'],
         },

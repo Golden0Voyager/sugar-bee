@@ -105,7 +105,7 @@ Core `records` table stores all health data types (glucose/bp/exercise/diet/weig
 
 ### AI Provider Chain
 
-One ordered list (`settings.AI_PROVIDER_ORDER`) serves all four task types:
+One ordered list (`settings.AI_PROVIDER_ORDER`) serves all four task types; `settings.AI_TASK_PROVIDER_ORDER` can override it per task.
 
 端砚 Sage-A1.5 → SenseNova deepseek-flash → Agnes → ModelScope
 
@@ -113,6 +113,11 @@ One ordered list (`settings.AI_PROVIDER_ORDER`) serves all four task types:
 - `extra_body` differs per provider: ModelScope needs the flat `{'enable_thinking': False}`; 端砚/Agnes need the nested `chat_template_kwargs` form — the flat form silently does nothing on 端砚
 - Thinking models put their output in `reasoning_content` and return an empty `content`; `_try_provider` treats empty content as a failure and keeps descending, otherwise it would silently return nothing
 - `call_chat_stream` shares the same order but stays a separate function (messages array + generator vs single prompt + string)
+- `vision` runs ModelScope-first (`Qwen3.5-122B` → `Qwen3.5-397B`). Same 27-page report: 122B 191s/133 items/4 divergent, 端砚 Sage-A1.5 458s/137/14, SenseNova deepseek-flash 669s/135/14, Agnes 3.0-flash 977s/140/23, Agnes 2.5-flash 177s/104/13. `Qwen3.8-*` were tested and rejected — no gain, and `Flash-Next` splits historical trend rows into duplicate items
+- SenseNova `vision` is `['deepseek-flash']` only: `sensenova-6.8-flash-lite` took 1292s, dropped 9/27 pages and returned 50 items on that report
+- 端砚 `deepseek-v4.1-flash-1017` needs ~93s to read an image, beyond its 60s timeout, so it is deliberately kept out of `vision` (it backs up text/report/chat)
+- `utils/report_processing.MAX_PARSE_WORKERS = 1`: at 2 concurrent batches ModelScope answers 429 "Request rate increased too quickly" and a 27-page report lost 9/27 pages; serial runs produced zero 429 across 54 batches
+- `_try_provider` retries once after a 3s backoff on 429 / timeout / connection errors; empty content and other deterministic failures skip the retry and move straight to the next model
 
 ## Linting
 
