@@ -580,18 +580,47 @@ def get_muscle_mass_ratio_min(gender: str) -> float:
     return MUSCLE_MASS_RATIO_MIN.get(gender, MUSCLE_MASS_RATIO_MIN['male'])
 
 
+def is_glucose_module_enabled(user_id: int | None) -> bool:
+    """判断用户是否启用了血糖模块（供 AI 提示词等按模块切换行为）。
+
+    user_id 为 None、查询出错、用户不存在、或 enabled_modules 为空
+    （历史兼容语义「全部启用」）时一律返回 True，保持旧行为；
+    只有在能确认配置里明确不含 glucose 时才返回 False。
+    """
+    if user_id is None:
+        return True
+    try:
+        # 延迟 import 避免循环依赖（load_config 同款做法）
+        from user_manager import UserManager
+        return bool(UserManager().is_module_enabled(user_id, 'glucose'))
+    except Exception:
+        return True
+
+
 def get_ai_system_prompt(user_id: int | None = None) -> str:
-    """生成 AI 系统提示词。user_id 缺失时使用 DEFAULT_PROFILE 兜底(避免崩溃)。"""
+    """生成 AI 系统提示词。user_id 缺失时使用 DEFAULT_PROFILE 兜底(避免崩溃)。
+
+    血糖模块关闭的用户拿到通用健康档案，不再被写成「二型糖尿病患者」；
+    血糖模块开启的用户保持原糖尿病档案不变。
+    """
     config = load_config(user_id) if user_id is not None else {
         **DEFAULT_PROFILE,
         "glucose_pattern": dict(DEFAULT_GLUCOSE_PATTERN),
     }
-    glucose_pattern = config.get('glucose_pattern') or dict(DEFAULT_GLUCOSE_PATTERN)
     gender = config.get('gender') or DEFAULT_PROFILE['gender']
     birth_year = config.get('birth_year') or DEFAULT_PROFILE['birth_year']
+    age = app_now().year - birth_year
+    gender_label = '男' if gender == 'male' else '女'
+    if not is_glucose_module_enabled(user_id):
+        return f"""
+    【用户健康档案】
+    - 身份：健康记录用户（{gender_label}, {age}岁）
+    - 管理方向：日常健康记录与慢病管理（用户未启用血糖管理模块，不要假设其患有糖尿病，也不要主动提及血糖数据）
+    """
+    glucose_pattern = config.get('glucose_pattern') or dict(DEFAULT_GLUCOSE_PATTERN)
     return f"""
     【用户健康档案】
-    - 身份：二型糖尿病患者（{gender}, {app_now().year - birth_year}岁）
+    - 身份：二型糖尿病患者（{gender_label}, {age}岁）
     - 控糖状态：血糖控制良好
     - 血糖特点：
       - 空腹通常在 {glucose_pattern['fasting_range']}，餐后通常在 {glucose_pattern['postmeal_range']}

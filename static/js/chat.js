@@ -57,6 +57,33 @@
     };
 
     // -- 加载历史 --
+    // 欢迎页快捷提问按启用模块渲染（与 index.html 初始模板保持一致；
+    // activeModules 由后端解析：空列表已按「全部启用」展开为全模块）
+    function chatWelcomeHtml() {
+        const mods = (window.__BOOT__ && window.__BOOT__.activeModules) || [];
+        const chips = [];
+        if (mods.includes('glucose')) {
+            chips.push(`<button class="chat-chip" onclick="chatSendQuick('我的血糖控制得怎么样？')">我的血糖控制得怎么样？</button>`);
+        }
+        if (mods.includes('blood_pressure')) {
+            chips.push(`<button class="chat-chip" onclick="chatSendQuick('我的血压控制得怎么样？')">我的血压控制得怎么样？</button>`);
+        }
+        if (mods.includes('weight')) {
+            chips.push(`<button class="chat-chip" onclick="chatSendQuick('最近体重趋势如何？')">最近体重趋势如何？</button>`);
+        }
+        chips.push(
+            `<button class="chat-chip" onclick="chatSendQuick('推荐今天的运动方案')">推荐今天的运动方案</button>`,
+            `<button class="chat-chip" onclick="chatSendQuick('晚餐吃什么好？')">晚餐吃什么好？</button>`,
+            `<button class="chat-chip" onclick="chatSendQuick('帮我总结一下这周的健康状况')">总结这周健康状况</button>`
+        );
+        return `
+            <div id="chatWelcome" class="chat-welcome">
+                <div class="chat-welcome-title">你好，有什么可以帮你的？</div>
+                <div class="chat-welcome-subtitle">基于你的健康数据，为你提供个性化建议</div>
+                <div class="chat-quick-chips">${chips.join('')}</div>
+            </div>`;
+    }
+
     async function chatLoadHistory(sid) {
         try {
             const url = sid ? `/api/chat/history?session_id=${encodeURIComponent(sid)}` : '/api/chat/history';
@@ -75,17 +102,7 @@
                 d.messages.forEach(m => appendChatMsg(m.role, m.content, false));
                 chatScrollBottom();
             } else {
-                container.innerHTML = `
-                    <div id="chatWelcome" class="chat-welcome">
-                        <div class="chat-welcome-title">你好，有什么可以帮你的？</div>
-                        <div class="chat-welcome-subtitle">基于你的健康数据，为你提供个性化建议</div>
-                        <div class="chat-quick-chips">
-                            <button class="chat-chip" onclick="chatSendQuick('我的血糖控制得怎么样？')">我的血糖控制得怎么样？</button>
-                            <button class="chat-chip" onclick="chatSendQuick('推荐今天的运动方案')">推荐今天的运动方案</button>
-                            <button class="chat-chip" onclick="chatSendQuick('晚餐吃什么好？')">晚餐吃什么好？</button>
-                            <button class="chat-chip" onclick="chatSendQuick('帮我总结一下这周的健康状况')">总结这周健康状况</button>
-                        </div>
-                    </div>`;
+                container.innerHTML = chatWelcomeHtml();
             }
 
             // 渲染会话列表

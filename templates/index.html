@@ -176,7 +176,7 @@
                     <!-- Text Input -->
                     <div class="flex-grow-1 position-relative">
                         <textarea class="form-control" id="aiInput" rows="1"
-                                  placeholder="如：空腹6.5、跑步5公里"
+                                  placeholder="{% if 'glucose' in active_modules %}如：空腹6.5、跑步5公里{% elif 'blood_pressure' in active_modules %}如：血压120/80、跑步5公里{% elif 'weight' in active_modules %}如：体重70.1、跑步3公里{% else %}如：跑步5公里、晚餐500大卡{% endif %}"
                                   style="resize: none; border-radius: 24px; padding: 12px 20px; font-size: 1rem; min-height: 48px; max-height: 150px; overflow-y: auto;"
                                   oninput="autoResizeTextarea(this)"></textarea>
                     </div>
@@ -2051,22 +2051,24 @@
                                     <i class="bi bi-file-earmark-spreadsheet text-secondary fs-4"></i>
                                     <div>
                                         <div class="fw-medium">导出 CSV</div>
-                                        <div class="text-muted small">导出当前用户的血糖记录</div>
+                                        <div class="text-muted small">导出当前用户的全部健康记录（血糖、血压、体重、运动等）</div>
                                     </div>
                                 </div>
                                 <a class="btn btn-outline-secondary" href="/export">导出</a>
                             </div>
+                            {% if 'glucose' in active_modules %}
                             <div class="d-flex align-items-center justify-content-between p-3 bg-light rounded-3">
                                 <div class="d-flex align-items-center gap-3">
                                     <i class="bi bi-file-earmark-arrow-up text-secondary fs-4"></i>
                                     <div>
-                                        <div class="fw-medium">导入数据</div>
-                                        <div class="text-muted small">导入 CSV/Excel 格式的数据</div>
+                                        <div class="fw-medium">导入血糖数据</div>
+                                        <div class="text-muted small">导入 CSV/Excel 格式的血糖或 CGM 数据</div>
                                     </div>
                                 </div>
                                 <button class="btn btn-outline-secondary" onclick="document.getElementById('importCsvInput').click()">导入</button>
                                 <input type="file" id="importCsvInput" accept=".csv,.xlsx,.xls" style="display:none" onchange="importCsvFile(this)">
                             </div>
+                            {% endif %}
                             <h6 class="fw-bold mb-1 mt-3"><i class="bi bi-watch me-1"></i>设备同步</h6>
                             <p class="text-muted small mb-2">绑定手表或 iPhone，自动同步运动和体征数据。</p>
                             <div class="p-3 bg-light rounded-3" id="garminBindingCard">
@@ -2785,7 +2787,15 @@ window.__BOOT__ = {
             <div class="chat-welcome-title">你好，有什么可以帮你的？</div>
             <div class="chat-welcome-subtitle">基于你的健康数据，为你提供个性化建议</div>
             <div class="chat-quick-chips">
+                {% if 'glucose' in active_modules %}
                 <button class="chat-chip" onclick="chatSendQuick('我的血糖控制得怎么样？')">我的血糖控制得怎么样？</button>
+                {% endif %}
+                {% if 'blood_pressure' in active_modules %}
+                <button class="chat-chip" onclick="chatSendQuick('我的血压控制得怎么样？')">我的血压控制得怎么样？</button>
+                {% endif %}
+                {% if 'weight' in active_modules %}
+                <button class="chat-chip" onclick="chatSendQuick('最近体重趋势如何？')">最近体重趋势如何？</button>
+                {% endif %}
                 <button class="chat-chip" onclick="chatSendQuick('推荐今天的运动方案')">推荐今天的运动方案</button>
                 <button class="chat-chip" onclick="chatSendQuick('晚餐吃什么好？')">晚餐吃什么好？</button>
                 <button class="chat-chip" onclick="chatSendQuick('帮我总结一下这周的健康状况')">总结这周健康状况</button>
