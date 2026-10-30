@@ -18,43 +18,48 @@ def get_dashboard_stats(db, user_id):
     weekday_name = today.strftime('%A')
     day_of_month = today.day
 
+    # 血糖模块未启用的用户跳过血糖专项统计（前端也不渲染这些卡片，避免白查）
+    glucose_on = UserManager().is_module_enabled(user_id, 'glucose')
+
     # === 1. 基础统计 ===
     c.execute("SELECT COUNT(*) FROM records WHERE user_id = ?", (user_id,))
     total_records = c.fetchone()[0]
 
     # === 2. 血糖统计（7天） ===
-    c.execute("""
-        SELECT
-            AVG(CASE WHEN (type LIKE '%空腹%' AND type NOT LIKE '%血压%') THEN value END) as avg_fasting,
-            AVG(CASE WHEN type LIKE '%餐后2小时%' THEN value END) as avg_post2h,
-            MAX(value) as max_glucose,
-            MIN(value) as min_glucose
-        FROM records
-        WHERE user_id = ? AND value > 0 AND is_predicted = 0
-        AND systolic_pressure IS NULL AND timestamp > ?
-    """, (user_id, seven_days_ago))
-    glucose_stats = c.fetchone()
-
+    glucose_stats = (None, None, None, None)
     max_glucose_detail = {'timestamp': '', 'type': ''}
     min_glucose_detail = {'timestamp': '', 'type': ''}
-    if glucose_stats[2]:
-        c.execute("""SELECT timestamp, type FROM records
-            WHERE user_id = ? AND value = ? AND value > 0 AND is_predicted = 0
+    if glucose_on:
+        c.execute("""
+            SELECT
+                AVG(CASE WHEN (type LIKE '%空腹%' AND type NOT LIKE '%血压%') THEN value END) as avg_fasting,
+                AVG(CASE WHEN type LIKE '%餐后2小时%' THEN value END) as avg_post2h,
+                MAX(value) as max_glucose,
+                MIN(value) as min_glucose
+            FROM records
+            WHERE user_id = ? AND value > 0 AND is_predicted = 0
             AND systolic_pressure IS NULL AND timestamp > ?
-            ORDER BY timestamp DESC LIMIT 1""",
-            (user_id, glucose_stats[2], seven_days_ago))
-        row = c.fetchone()
-        if row:
-            max_glucose_detail = {'timestamp': row[0], 'type': row[1]}
-    if glucose_stats[3]:
-        c.execute("""SELECT timestamp, type FROM records
-            WHERE user_id = ? AND value = ? AND value > 0 AND is_predicted = 0
-            AND systolic_pressure IS NULL AND timestamp > ?
-            ORDER BY timestamp ASC LIMIT 1""",
-            (user_id, glucose_stats[3], seven_days_ago))
-        row = c.fetchone()
-        if row:
-            min_glucose_detail = {'timestamp': row[0], 'type': row[1]}
+        """, (user_id, seven_days_ago))
+        glucose_stats = c.fetchone()
+
+        if glucose_stats[2]:
+            c.execute("""SELECT timestamp, type FROM records
+                WHERE user_id = ? AND value = ? AND value > 0 AND is_predicted = 0
+                AND systolic_pressure IS NULL AND timestamp > ?
+                ORDER BY timestamp DESC LIMIT 1""",
+                (user_id, glucose_stats[2], seven_days_ago))
+            row = c.fetchone()
+            if row:
+                max_glucose_detail = {'timestamp': row[0], 'type': row[1]}
+        if glucose_stats[3]:
+            c.execute("""SELECT timestamp, type FROM records
+                WHERE user_id = ? AND value = ? AND value > 0 AND is_predicted = 0
+                AND systolic_pressure IS NULL AND timestamp > ?
+                ORDER BY timestamp ASC LIMIT 1""",
+                (user_id, glucose_stats[3], seven_days_ago))
+            row = c.fetchone()
+            if row:
+                min_glucose_detail = {'timestamp': row[0], 'type': row[1]}
 
     # === 3. 运动统计（7天） ===
     c.execute("""
@@ -209,12 +214,14 @@ def get_dashboard_stats(db, user_id):
         })
     today_weight = today_weights[0] if today_weights else None
 
-    # === 6. 达标率 ===
-    c.execute("""
-        SELECT value, type FROM records
-        WHERE user_id = ? AND timestamp > ? AND value > 0 AND is_predicted = 0 AND systolic_pressure IS NULL
-    """, (user_id, seven_days_ago))
-    recent_glucose = c.fetchall()
+    # === 6. 达标率（血糖模块未启用则跳过查询） ===
+    recent_glucose = []
+    if glucose_on:
+        c.execute("""
+            SELECT value, type FROM records
+            WHERE user_id = ? AND timestamp > ? AND value > 0 AND is_predicted = 0 AND systolic_pressure IS NULL
+        """, (user_id, seven_days_ago))
+        recent_glucose = c.fetchall()
     total_glucose = len(recent_glucose)
     ok_count = sum(1 for row in recent_glucose if settings.check_glucose_compliance(row[0], row[1] or '')['is_compliant'])
     compliance = int(ok_count / total_glucose * 100) if total_glucose > 0 else 0

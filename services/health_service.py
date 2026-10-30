@@ -1,6 +1,7 @@
 import re
 import traceback
 
+import settings
 from ai_client import AI_AVAILABLE, call_ai
 from utils.sql_dialect import interval_sql
 from utils.timezone import now as app_now
@@ -214,10 +215,10 @@ def generate_health_analysis(db, user_id=1, is_auto=False, days=7):
 
         # AI 提示词构建 (这里使用简化的汇总以防 Token 过长，但保留结构)
         # TODO: 睡眠数据目前未在数据库中存储，未来可新增 sleep_records 表或 records 睡眠列后接入
-        prompt = f"""
-你是一位资深的糖尿病管理专家和全科医生。请根据以下用户近 {days} 天的健康数据摘要，提供一份综合健康分析报告。
-
-## 1. 血糖数据
+        glucose_on = settings.is_glucose_module_enabled(user_id)
+        if glucose_on:
+            role = "你是一位资深的糖尿病管理专家和全科医生。"
+            data_sections = f"""## 1. 血糖数据
 {glucose_summary}
 ## 2. 血压
 {bp_summary}
@@ -229,7 +230,30 @@ def generate_health_analysis(db, user_id=1, is_auto=False, days=7):
 {weight_summary}
 ## 6. 用药
 {med_summary}
-{adherence_summary}
+{adherence_summary}"""
+        else:
+            # 非血糖用户：通用全科医生角色，章节按有数据的模块动态生成
+            role = "你是一位资深的全科医生和健康管理专家。"
+            available_sections = []
+            if bp_records:
+                available_sections.append(("血压", bp_summary))
+            if exercise_records:
+                available_sections.append(("运动", exercise_summary))
+            if diet_records:
+                available_sections.append(("饮食", diet_summary))
+            if weight_records:
+                available_sections.append(("体重", weight_summary))
+            if medications:
+                available_sections.append(("用药", med_summary))
+            data_sections = "\n".join(
+                f"## {i}. {name}\n{summary}"
+                for i, (name, summary) in enumerate(available_sections, start=1)
+            ) or "（近几天暂无已启用模块的健康记录）"
+
+        prompt = f"""
+{role}请根据以下用户近 {days} 天的健康数据摘要，提供一份综合健康分析报告。
+
+{data_sections}
 
 任务：
 1. **健康评估**：评价控制现状。

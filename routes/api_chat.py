@@ -82,20 +82,21 @@ def build_chat_context(db, user_id):
         if today_details:
             sections.append(f"今日（{today_date}）最新详细记录：\n" + "\n".join(today_details))
 
-    # 血糖数据
-    c.execute(f"""
-        SELECT value, type, timestamp FROM records
-        WHERE user_id = ? AND value > 0 AND is_predicted = 0
-        AND timestamp > {interval_sql(days)}
-        AND type NOT IN ('跑步', '运动')
-        AND type NOT LIKE '%血压%'
-        AND systolic_pressure IS NULL
-        ORDER BY timestamp DESC
-    """, (user_id,))
-    glucose = c.fetchall()
-    if glucose:
-        vals = [r[0] for r in glucose]
-        sections.append(f"近{days}天血糖均值 {sum(vals)/len(vals):.1f}")
+    # 血糖数据（仅对启用血糖模块的用户追加——非血糖用户不该被塞血糖均值）
+    if settings.is_glucose_module_enabled(user_id):
+        c.execute(f"""
+            SELECT value, type, timestamp FROM records
+            WHERE user_id = ? AND value > 0 AND is_predicted = 0
+            AND timestamp > {interval_sql(days)}
+            AND type NOT IN ('跑步', '运动')
+            AND type NOT LIKE '%血压%'
+            AND systolic_pressure IS NULL
+            ORDER BY timestamp DESC
+        """, (user_id,))
+        glucose = c.fetchall()
+        if glucose:
+            vals = [r[0] for r in glucose]
+            sections.append(f"近{days}天血糖均值 {sum(vals)/len(vals):.1f}")
 
     # 省略部分 context 构建以保持代码精简，实际中可以补全
     return "\n".join(sections)

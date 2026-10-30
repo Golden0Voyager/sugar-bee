@@ -719,7 +719,7 @@ def export():
         buffer = io.BytesIO()
         df.to_csv(buffer, index=False, encoding='utf-8-sig')
         buffer.seek(0)
-        return send_file(buffer, as_attachment=True, download_name=f"glucose_records_{app_today().strftime('%Y%m%d')}.csv", mimetype='text/csv')
+        return send_file(buffer, as_attachment=True, download_name=f"health_records_{app_today().strftime('%Y%m%d')}.csv", mimetype='text/csv')
     except Exception as e:
         print(f"Export error: {e}")
         return "导出失败，请稍后再试", 500
