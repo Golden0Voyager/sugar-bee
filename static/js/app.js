@@ -3514,15 +3514,17 @@
     }
 
     /**
-     * 当天有没有「能量」相关的记录：记了吃的，或者记了运动。
+     * 当天能不能谈「能量缺口/盈余」：前提是记了饮食（有摄入数据）。
      *
-     * 两个都没有时不能算净热量——后端恒按 `净热量 = 0 - 基础代谢` 计算，
-     * 结果永远是负的，于是什么也没记的一天也会显示「减糖减脂 1417」，
-     * 像是在说「你今天躺着就减了 1417 大卡」。宁可不显示。
+     * 净热量 = 摄入 - (基础代谢 + 运动消耗)，摄入是必需输入。
+     * 只记了运动、没记饮食的那天，摄入是「未知」而不是 0——
+     * 按 0 算出来的「能量缺口 1700」是假的（用户反馈：只要有运动记录
+     * 就出现能量缺口提示）。所以口径收紧为「有摄入才显示」，
+     * 运动消耗本身在别处（趋势卡/时间线）照常展示。
      */
     function hasEnergyData(stats) {
         if (!stats) return false;
-        return (stats.cal_in || 0) > 0 || (stats.cal_out_exercise || 0) > 0;
+        return (stats.cal_in || 0) > 0;
     }
 
     // 用药打卡徽标：有记录日期和无记录日期共用，保证长期用药按月连续可见
@@ -3601,8 +3603,8 @@
                 });
             }
 
-            // 2. 能量状态 Badge（减糖减脂 vs 脂糖累积）
-            // 只有真记了饮食或运动才显示，否则「0 摄入 - 基础代谢」会天天报减脂
+            // 2. 能量状态 Badge（能量缺口 vs 能量盈余，同日视图 chips 的口径）
+            // 只有真记了饮食才显示：只记运动时摄入未知，报「缺口」是假的
             if (hasEnergyData(stats)) {
                 let energyIcon, energyBg, energyText, displayText;
                 if (stats.is_deficit) {
@@ -3610,13 +3612,13 @@
                     energyIcon = '👍';
                     energyBg = '#d4edda';
                     energyText = '#155724';
-                    displayText = `${energyIcon} 减糖减脂 ${Math.abs(stats.net_calories)}`;
+                    displayText = `${energyIcon} 能量缺口 ${Math.abs(stats.net_calories)}`;
                 } else {
                     // 摄入 > 消耗（需注意）
-                    energyIcon = '👎';
+                    energyIcon = '⚠️';
                     energyBg = '#f8d7da';
                     energyText = '#721c24';
-                    displayText = `${energyIcon} 脂糖累积 ${Math.abs(stats.net_calories)}`;
+                    displayText = `${energyIcon} 能量盈余 ${Math.abs(stats.net_calories)}`;
                 }
 
                 events.push({
@@ -3763,8 +3765,8 @@
         }
 
         // ── 1. 概要统计 Chips ──
-        // 没记饮食也没记运动时整行不显示：那三格全是 0 或基础代谢，
-        // 只有「能量缺口」那一格有数，反而是假的（0 摄入 - 基础代谢）
+        // 没记饮食时整行不显示：净能量的摄入那一头是 0 也是编的，
+        // 只有「能量缺口」那一格有数，反而是假的（0 摄入 - 基础代谢 - 运动）
         if (hasEnergyData(stats)) {
             const energyClass = stats.is_deficit ? 'chip-deficit' : 'chip-surplus';
             const energyLabel = stats.is_deficit ? '⚖️ 能量缺口' : '⚖️ 能量盈余';
@@ -4046,7 +4048,7 @@
         const entries = dayData.data.entries;
 
         // 1. Render Stats Header
-        // 没记饮食也没记运动时整行不显示，理由同 renderDayDetails 的 chips
+        // 没记饮食时整行不显示，理由同日视图 chips：没有摄入数据，缺口/盈余算不出来
         if (hasEnergyData(stats)) {
             container.innerHTML += `
             <div class="d-flex gap-2 mb-3 small text-muted justify-content-center bg-light p-2 rounded">
