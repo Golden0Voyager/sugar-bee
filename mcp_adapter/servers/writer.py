@@ -55,7 +55,34 @@ from utils.timezone import timestamp_str as app_timestamp_str
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 DB_PATH = os.environ.get("DB_PATH", os.path.join(PROJECT_ROOT, "glucose.db"))
 API_BASE = os.environ.get("API_BASE", "http://127.0.0.1:5001")
-AGENT_API_TOKEN = os.environ.get("AGENT_API_TOKEN", "")
+
+
+def _token_from_dotenv() -> str:
+    """从项目根的 .env 取回 AGENT_API_TOKEN，取不到就返回空串。
+
+    只取单个键，不用 ``load_dotenv()``：后者会把 .env 里所有变量灌进进程，
+    连 ``SUGAR_BEE_DATABASE_URL`` 一起带进来就会把 DB_TYPE 翻成 postgres。
+
+    服务器上 /root/health_tools 没有 .env（真实的在 /opt/sugar_bee/app/，
+    不在 PROJECT_ROOT 下），所以此函数在线上返回空串，行为与改动前一致。
+    """
+    env_file = os.path.join(PROJECT_ROOT, ".env")
+    if not os.path.exists(env_file):
+        return ""
+    try:
+        from dotenv import dotenv_values
+
+        return dotenv_values(env_file).get("AGENT_API_TOKEN") or ""
+    except Exception:  # 没装 python-dotenv 或文件不可读，一律降级为空，不让写服务起不来
+        return ""
+
+
+def _resolve_token() -> str:
+    """环境变量优先；环境变量没给才回退到 .env。"""
+    return os.environ.get("AGENT_API_TOKEN", "") or _token_from_dotenv()
+
+
+AGENT_API_TOKEN = _resolve_token()
 API_TIMEOUT = float(os.environ.get("API_TIMEOUT", "60.0"))
 DEFAULT_USER_ID = int(os.environ.get("DEFAULT_USER_ID", "1"))
 
