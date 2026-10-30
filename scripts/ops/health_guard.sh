@@ -34,7 +34,20 @@ rotate_log() {
   fi
 }
 
-healthy() { curl -fsS --max-time 8 -o /dev/null "$HEALTH_URL" 2>/dev/null; }
+healthy() { curl -fsS --max-time 4 -o /dev/null "$HEALTH_URL" 2>/dev/null; }
+
+# 按截止时间等，不按"次数×sleep"。
+# 教训（假死演练实测）：容器 paused/卡死时每次 curl 都要耗满超时，
+# 迭代式循环会变成 20×(3+8)=220 秒，恢复总耗时从 1 分钟拖到 4 分半。
+wait_healthy() {
+  local budget="$1" deadline
+  deadline=$(( $(date +%s) + budget ))
+  while [ "$(date +%s)" -lt "$deadline" ]; do
+    healthy && return 0
+    sleep 2
+  done
+  return 1
+}
 
 state_of() { docker inspect -f '{{.State.Status}}' "$NAME" 2>/dev/null; }
 
@@ -59,21 +72,31 @@ if [ -z "$st" ]; then
   exit 2
 fi
 
-# 1) 容器被停掉（不是崩溃，比如手工 docker stop）
-if [ "$st" != "running" ]; then
+# 1) 容器不在运行
+#    paused 是特例：进程被 SIGSTOP 冻住，docker start 对它是空操作（会白等一轮），
+#    必须先 unpause 再判断健康。
+if [ "$st" = "paused" ]; then
+  log "WARN 容器状态=paused，执行 docker unpause"
+  docker unpause "$NAME" >/dev/null 2>&1
+  if wait_healthy 60; then
+    log "OK unpause 后服务恢复"
+    exit 0
+  fi
+  log "CRIT unpause 后 60s 仍不健康，转重启流程"
+elif [ "$st" != "running" ]; then
   log "WARN 容器状态=$st，尝试 docker start"
   docker start "$NAME" >/dev/null 2>&1
-  for _ in $(seq 1 20); do
-    sleep 3
-    healthy && { log "OK docker start 后服务恢复"; exit 0; }
-  done
+  if wait_healthy 60; then
+    log "OK docker start 后服务恢复"
+    exit 0
+  fi
   log "CRIT docker start 后 60s 仍不健康，转重启流程"
 fi
 
-# 2) 三次探活（间隔 5s），健康就静默退出
+# 2) 三次探活（间隔 3s），健康就静默退出
 for _ in 1 2 3; do
   healthy && exit 0
-  sleep 5
+  sleep 3
 done
 
 log "CRIT /health 连续 3 次探测失败（$HEALTH_URL）"
@@ -82,11 +105,12 @@ log "CRIT /health 连续 3 次探测失败（$HEALTH_URL）"
 if can_restart; then
   log "ACTION docker restart $NAME"
   date +%s >"$STATE"
+  _t0=$(date +%s)
   docker restart "$NAME" >/dev/null 2>&1
-  for i in $(seq 1 30); do
-    sleep 3
-    healthy && { log "OK 重启后恢复，耗时约 $((i * 3))s"; exit 0; }
-  done
+  if wait_healthy 90; then
+    log "OK 重启后恢复，耗时约 $(( $(date +%s) - _t0 ))s"
+    exit 0
+  fi
   log "CRIT 重启后 90s 仍不健康，需人工介入"
   dump_logs
   exit 3
