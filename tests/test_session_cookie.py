@@ -15,8 +15,9 @@ def test_cookie_flags(app):
     assert app.config['SESSION_COOKIE_SAMESITE'] in ('Lax', 'Strict')
 
 
-def test_session_lifetime_default_is_one_day(app):
-    assert app.config['PERMANENT_SESSION_LIFETIME'] == datetime.timedelta(hours=24)
+def test_session_lifetime_default_is_30_days(app):
+    """家人嫌重登烦：默认 30 天，但不是永久（cookie 仍有明确过期时间）。"""
+    assert app.config['PERMANENT_SESSION_LIFETIME'] == datetime.timedelta(days=30)
 
 
 def test_login_sets_permanent_cookie(client_authenticated):
