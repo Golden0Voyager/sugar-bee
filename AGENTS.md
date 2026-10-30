@@ -230,15 +230,17 @@ ignore = ["E501", "E402", "E702"]  # E402/E702 for test files
 
 ## 环境差异（⚠️ 重要）
 
-> **生产平台：腾讯云轻量应用服务器**（2026-10-28 购入，一年期）。原 Google Cloud Run + Cloud SQL 方案已弃用（`deploy/cloud-run.yaml`、Makefile 部署目标仅存档）。新服务器的部署流程与数据库配置待补充；下表的「生产」行描述的是原 Cloud Run 环境，新环境接入前以本地 SQLite 为准。
+> **生产平台：腾讯云轻量应用服务器**（2026-10-28 购入 Lighthouse 4C4G，一年期；IP 直连，无域名无 HTTPS，公网经 nginx → 容器）。原 Google Cloud Run + Cloud SQL 方案已弃用（`deploy/cloud-run.yaml`、Makefile 部署目标仅存档）。**部署、备份、故障处置、密钥清单一律看 `docs/RUNBOOK.md`**（唯一运维入口）；发版只走 `scripts/ops/deploy_app.sh`，别手打 rsync。
 
 | 场景 | 数据库 | 触发条件 |
 |------|--------|---------|
-| 本地开发 | SQLite (`glucose.db`) | 无 `SUGAR_BEE_DATABASE_URL` |
-| 生产（原 Cloud Run，已弃用） | PostgreSQL 17 | 有 `SUGAR_BEE_DATABASE_URL` |
+| 本地开发 / 生产（腾讯云） | SQLite（本地 `glucose.db`；服务器 `/opt/sugar_bee/app/db_data/glucose.db`，WAL 模式） | 无 `SUGAR_BEE_DATABASE_URL` |
+| PostgreSQL 逃生舱 | PostgreSQL 17 | 有 `SUGAR_BEE_DATABASE_URL`；仅 `database is locked` 月度以上频发时启用（脚本 `scripts/migrate_to_cloudsql.py`），不是现役环境 |
 
 **常见陷阱：**
+- 现役生产与本地同为 SQLite，日常改 SQL 只需验证 SQLite 端；PG 分支（`sql_dialect.py`）只有逃生舱演练时才会跑到，改动后必须双端验证
 - `_inline_params()` 只会在 PostgreSQL 模式下被调用（`_CompatCursor.execute`），SQLite 不走此路径
 - `epoch_sql('?')` 在两种模式下都产生占位符（SQLite: `strftime('%s', ?)`，PG: `EXTRACT(EPOCH FROM ?::timestamp)`）
 - `date_sql('timestamp')` 返回列表达式而非占位符（SQLite: `DATE(timestamp)`，PG: `timestamp::date`）
-- 大多数 `utils/sql_dialect.py` 函数在生产模式和本地测试中行为不同；写新 SQL 片段务必双端验证
+- 服务器上备份不在应用里：宿主机 cron 每天 03:10 直读库文件快照（容器停着也照跑），应用内自动备份只影响本地
+- 生产 SQLite 是 WAL 模式，备份/拷贝必须用 Online Backup API（`make_backup`），直拷活库会得到撕裂文件；旧产物 `glucose_auto_*` / `glucose_backup_*` 不可信（见 RUNBOOK §7）
