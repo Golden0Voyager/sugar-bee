@@ -38,15 +38,18 @@ def build_timeline(cursor, user_id, days=90):
         key = 'fasting' if ('空腹' in r['type'] and '血压' not in r['type']) else ('post' if ('餐后' in r['type'] and '血压' not in r['type']) else 'other')
         r['trend'] = 0
         r['trend_dir'] = 'flat'
-        if key in last_values and r['value'] > 0:
-            diff = r['value'] - last_values[key]
+        # value 为 NULL 的记录(如只记了热量的餐食、体成分)不能参与趋势比较,
+        # 否则同 key 有前值时 r['value'] > 0 直接 TypeError 崩掉整条时间线
+        value = r.get('value') or 0
+        if key in last_values and value > 0:
+            diff = value - last_values[key]
             r['trend'] = round(abs(diff), 1)
             if diff > 0:
                 r['trend_dir'] = 'up'
             elif diff < 0:
                 r['trend_dir'] = 'down'
-        if r['value'] > 0:
-            last_values[key] = r['value']
+        if value > 0:
+            last_values[key] = value
 
     # 3. Group by Date
     user_bmr = settings.calculate_bmr(user_id)
