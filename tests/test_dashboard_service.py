@@ -524,6 +524,18 @@ class TestDashboardHealthAnalysis:
 
     @patch('services.dashboard_service.UserManager')
     @patch('services.dashboard_service.settings')
+    def test_score_missing_shows_unrated(self, mock_settings, mock_um):
+        """模型没写得分时库里存的是 NULL,不能显示成 0 分「需关注」。"""
+        _setup_mocks(mock_settings, mock_um)
+        mock_c = _make_minimal_cursor(health_analyses=self._make_health_mock(None))
+        from services.dashboard_service import get_dashboard_stats
+        mock_db = MagicMock(); mock_db.cursor.return_value = mock_c
+        result = get_dashboard_stats(mock_db, user_id=1)
+        assert result['latest_analysis']['score_label'] == '未评分'
+        assert result['latest_analysis']['health_score'] is None
+
+    @patch('services.dashboard_service.UserManager')
+    @patch('services.dashboard_service.settings')
     def test_recommendations_parsed(self, mock_settings, mock_um):
         import json
         _setup_mocks(mock_settings, mock_um)

@@ -63,7 +63,7 @@ Monolithic Flask app (`app.py`) with Blueprint modules for routing. Single-page 
 |---|---|
 | `app.py` | Flask app, route `/`, backup, Garmin sync, Blueprint registration |
 | `routes/` | 11 Blueprint modules: auth, user, records, chat, dashboard, health, meds, prediction, admin, bone, checkup |
-| `ai_client.py` | AI call layer — Gemini chain → OpenAI-compatible providers (Modelscope, Volc), fallback to ZhipuAI |
+| `ai_client.py` | AI call layer — one provider order shared by text/vision/report/chat: 端砚(Sage-A1.5)→ SenseNova → Agnes → ModelScope, configured in `settings.AI_PROVIDERS` |
 | `glucose_parser.py` | AI natural language/image → structured health records |
 | `checkup_parser.py` | 体检报告图片（照片或 PDF 页）→ 结构化指标（视觉模型只抄录，状态按参考范围自算） |
 | `bone_density.py` | 骨密度领域逻辑：T 值 WHO 分级、部位归一化、趋势汇总、入参校验 |
@@ -72,7 +72,7 @@ Monolithic Flask app (`app.py`) with Blueprint modules for routing. Single-page 
 | `routes/api_bone.py` | 骨密度记录 CRUD + `/api/bone/parse` 报告识别，独立表 `bone_density_records` |
 | `routes/api_checkup.py` | 体检历史（`/api/checkup/parse` 只解析、`/save` 落库、`/list`、`/<id>`、`/delete`） |
 | `static/css/main.css` | 全局样式；`.dropdown-item` 是 flex，两行式菜单项要用 `.item-stacked` 改回 block |
-| `user_manager.py` | Multi-user management, password auth, profile CRUD, provider bindings |
+| `user_manager.py` | Multi-user management, password auth, profile CRUD, phone/email auth bindings |
 | `branding.py` | 应用品牌个性化：场景模板（persona）、自定义应用名/图标/标语、模块建议与校验 |
 | `settings.py` | Glucose targets (Chinese Diabetes Guideline 2024), badge system, AI model config, BMI calc |
 | `core/config.py` | `DB_NAME` (env `SUGAR_BEE_DB_PATH`), `AVATAR_FOLDER` |
@@ -105,7 +105,14 @@ Core `records` table stores all health data types (glucose/bp/exercise/diet/weig
 
 ### AI Provider Chain
 
-Modelscope (text/vision) → SenseNova (text only, no vision)
+One ordered list (`settings.AI_PROVIDER_ORDER`) serves all four task types:
+
+端砚 Sage-A1.5 → SenseNova deepseek-flash → Agnes → ModelScope
+
+- `settings.AI_PROVIDERS` holds base URL, per-provider `extra_body` shape, timeout and the model list per task
+- `extra_body` differs per provider: ModelScope needs the flat `{'enable_thinking': False}`; 端砚/Agnes need the nested `chat_template_kwargs` form — the flat form silently does nothing on 端砚
+- Thinking models put their output in `reasoning_content` and return an empty `content`; `_try_provider` treats empty content as a failure and keeps descending, otherwise it would silently return nothing
+- `call_chat_stream` shares the same order but stays a separate function (messages array + generator vs single prompt + string)
 
 ## Linting
 
@@ -152,7 +159,7 @@ ignore = ["E501", "E402", "E702"]  # E402/E702 for test files
 | File | Coverage Target |
 |---|---|
 | `test_app_py.py` | `app.py`: index route, backup, Garmin sync, background tasks |
-| `test_ai_client.py` | `ai_client.py`: provider chain, Gemini model, CN endpoint |
+| `test_ai_client.py` | `ai_client.py`: provider order, empty-content fallback, CN endpoint, stream fallback |
 | `test_auth_decorators.py` | `utils/auth.py`: login_required, login_or_token_required |
 | `test_generate_report.py` | `glucose_parser.py`: parse, history_context |
 | `test_glucose_parser.py` | `glucose_parser.py` additional branches |
@@ -160,7 +167,7 @@ ignore = ["E501", "E402", "E702"]  # E402/E702 for test files
 | `test_routes_coverage.py` | Route coverage gaps: auth, health, records, user |
 | `test_remaining_routes.py` | Prediction, meds, admin, font registration |
 | `test_services_garmin.py` | Garmin connect API, activity mapping, sync logic |
-| `test_user_manager.py` / `test_user_manager_extended.py` | User CRUD, password, provider bindings |
+| `test_user_manager.py` / `test_user_manager_extended.py` | User CRUD, password, phone/email auth bindings |
 
 ### CI (GitHub Actions)
 
@@ -212,7 +219,7 @@ ignore = ["E501", "E402", "E702"]  # E402/E702 for test files
 - Adding new data dimensions to `records` requires a new `ALTER TABLE` migration in `init_db()`
 - `.env` stores API keys, `user_config.json` stores user profiles — both gitignored
 - SQLite `date('now')` uses UTC — use `date('now', 'localtime')` when comparing against local timestamps
-- Coverage pragma `# pragma: no cover` is used on code paths that cannot be traced by coverage.py (subprocess isolation in `app.py`, `google.genai` namespace package in `ai_client.py`)
+- Coverage pragma `# pragma: no cover` is used on code paths that cannot be traced by coverage.py (subprocess isolation in `app.py`)
 
 ## 环境差异（⚠️ 重要）
 

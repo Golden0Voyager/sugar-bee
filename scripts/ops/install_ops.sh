@@ -15,7 +15,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 HOST="${HOST:-$(cat "$HOME/.sugar_bee_host" 2>/dev/null || true)}"
 KEY="${KEY:-$HOME/.ssh/sugar_bee_new_agent}"
 USER_AT="root@${HOST}"
-FILES=(backup_db.py backup_host.sh health_guard.sh run_container.sh)
+FILES=(backup_db.py backup_host.sh backup_to_github.sh health_guard.sh run_container.sh)
 
 DRY=0
 [ "${1:-}" = "--dry-run" ] && DRY=1
@@ -50,27 +50,30 @@ set -eu
 cd /opt/sugar_bee
 # 用显式 755 而不是 chmod +x：scp 覆盖已有文件时会保留目标原有权限
 # （服务器上历史遗留是 700），chmod +x 只会得到 711。
-chmod 755 backup_host.sh health_guard.sh run_container.sh
+chmod 755 backup_host.sh backup_to_github.sh health_guard.sh run_container.sh
 chmod 644 backup_db.py
 
 # 语法自检，别把坏脚本装进 cron
 bash -n backup_host.sh
 bash -n health_guard.sh
+bash -n backup_to_github.sh
 bash -n run_container.sh
 python3 -m py_compile backup_db.py && rm -rf __pycache__
 
 want_backup='10 3 * * * /opt/sugar_bee/backup_host.sh >> /var/log/sugar_bee_backup.log 2>&1'
+want_github='20 3 * * 0 /opt/sugar_bee/backup_to_github.sh >> /var/log/sugar_bee_github_backup.log 2>&1'
 want_health='*/10 * * * * /opt/sugar_bee/health_guard.sh >/dev/null 2>&1'
 
 crontab -l >/tmp/ct.ops 2>/dev/null || true
 grep -qF 'backup_host.sh' /tmp/ct.ops || echo "$want_backup" >>/tmp/ct.ops
 grep -qF 'health_guard.sh' /tmp/ct.ops || echo "$want_health" >>/tmp/ct.ops
+grep -qF 'backup_to_github.sh' /tmp/ct.ops || echo "$want_github" >>/tmp/ct.ops
 crontab /tmp/ct.ops && rm -f /tmp/ct.ops
 
 echo "--- 已安装 ---"
 ls -l /opt/sugar_bee/backup_db.py /opt/sugar_bee/backup_host.sh /opt/sugar_bee/health_guard.sh /opt/sugar_bee/run_container.sh
 echo "--- crontab ---"
-crontab -l | grep -E 'backup_host|health_guard'
+crontab -l | grep -E 'backup_host|backup_to_github|health_guard'
 
 # ---- nginx 站点配置（仓库为准，防"只改服务器"漂移）----
 if [ -f /tmp/ops_nginx_site.conf ]; then

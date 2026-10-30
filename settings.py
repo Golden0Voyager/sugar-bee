@@ -3,29 +3,85 @@ from utils.timezone import now as app_now
 
 CONFIG_FILE = "user_config.json"
 
-# ========== AI 模型配置 ==========
-# 降级链：ModelScope → SenseNova (text/report)
-# vision 不走 SenseNova
-# 应用内置 API Key，用户无需自行配置
+# ========== AI 供应商配置 ==========
+# 四个任务(血糖解析/预测 = text、截图识别 = vision、报告分析 = report、健康助手 = chat)
+# 共用同一条降级顺序 AI_PROVIDER_ORDER,顺序即优先级;某家没有该任务的模型时自动跳过。
+# 应用内置 API Key,用户无需自行配置。
+#
+# 各家 extra_body 写法不同,必须分别配置:
+#   扁平 {'enable_thinking': False}                          —— ModelScope 的 Qwen 系需要
+#   嵌套 {'chat_template_kwargs': {'enable_thinking': ...}}  —— 端砚、Agnes 需要(扁平写法对端砚无效)
+# 忘记关思考的后果不是报错,而是模型把输出全写进 reasoning_content、content 返回空字符串。
 
-# ModelScope 模型配置（国内可用，免费2000次/天，单模型500次/天，OpenAI 兼容接口）
-# 三类任务使用不同模型，有效容量翻3倍（每模型独立500次/天）
-MODELSCOPE_MODELS = {
-    'text': ['deepseek-ai/DeepSeek-V4.1-Flash-1017'],          # JSON解析/预测
-    'vision': ['Qwen/Qwen3-VL-235B-A22B-Instruct', 'Qwen/Qwen3.5-397B-A17B', 'Qwen/Qwen3.5-122B-A10B', 'Qwen/Qwen3-VL-8B-Thinking'],  # 截图识别，能力优先降级
-    'report': ['Qwen/Qwen3.5-397B-A17B'],      # 报告分析
-    'chat': ['deepseek-ai/DeepSeek-V4.1-Flash-1017'],   # 健康助手 fallback（ModelScope 可用）
-    'extra_body': {'enable_thinking': False},        # 仅对 text 任务生效（Qwen3 标准模型需关闭思考模式）
-}
-MODELSCOPE_BASE_URL = 'https://api-inference.modelscope.cn/v1'
+AI_PROVIDER_ORDER = ['intern', 'sensenova', 'agnes', 'modelscope']
 
-# SenseNova（商汤）模型配置
-SENSENOVA_MODELS = {
-    'text': ['deepseek-flash', 'sensenova-6.8-flash-lite'],  # deepseek-flash TPM 配额极小易 429，6.8-flash-lite 兜底
-    'vision': [],   # 图片识别不走 SenseNova
-    'report': ['deepseek-flash', 'sensenova-6.8-flash-lite'],
+AI_PROVIDERS = {
+    # 书生·端砚(上海 AI 实验室,测试期免费额度按月发放)
+    # 全系模型默认思考型,必须靠 extra_body 关掉;实测关掉后中位时延 0.59s
+    'intern': {
+        'name': '端砚',
+        'base_url': 'https://discovery-api.intern-ai.org.cn/v1',
+        'api_key_env': 'INTERN_API_KEY',
+        'timeout': 60,
+        'extra_body': {'chat_template_kwargs': {'enable_thinking': False}},
+        'models': {
+            # Sage-A1.5 免费,实测中位 0.59s;deepseek-v4.1-flash-1017 按墨点计费,作付费兜底
+            # 付费兜底没进 vision:实测读图 93s,超过本家 60s 超时,白等不如直接交给
+            # 后面的 SenseNova(读图 3.7s)。要用它读图就得把本家 timeout 提到 120 以上
+            'text': ['Sage-A1.5', 'deepseek-v4.1-flash-1017'],
+            'vision': ['Sage-A1.5'],
+            'report': ['Sage-A1.5', 'deepseek-v4.1-flash-1017'],
+            'chat': ['Sage-A1.5', 'deepseek-v4.1-flash-1017'],
+        },
+    },
+    # 商汤 SenseNova。deepseek 系已支持图片输入,故 vision 不再留空
+    # deepseek-v4.1-flash / kimi-k3 / sensenova-u1.5-lite 本账号不可用(403 / 429 / 404),不要加进来
+    'sensenova': {
+        'name': 'SenseNova',
+        'base_url': 'https://token.sensenova.cn/v1',
+        'api_key_env': 'SENSENOVA_API_KEY',
+        'timeout': 60,
+        'extra_body': None,
+        'models': {
+            'text': ['deepseek-flash', 'sensenova-6.8-flash-lite'],
+            'vision': ['deepseek-flash', 'sensenova-6.8-flash-lite'],
+            'report': ['deepseek-flash', 'sensenova-6.8-flash-lite'],
+            'chat': ['deepseek-flash'],
+        },
+    },
+    # Agnes。免费档限流很紧(10 RPM + 网关侧连接数上限),实测会 429,只适合兜底
+    # agnes-3.0-flash 文本路径实测中位 26s,故排在 2.5-flash 之后
+    'agnes': {
+        'name': 'Agnes',
+        'base_url': 'https://apihub.agnes-ai.cn/v1',
+        'api_key_env': 'AGNES_API_KEY',
+        'timeout': 90,
+        'extra_body': {'chat_template_kwargs': {'enable_thinking': False}},
+        'models': {
+            'text': ['agnes-2.5-flash', 'agnes-3.0-flash'],
+            'vision': ['agnes-3.0-flash', 'agnes-2.5-flash'],
+            'report': ['agnes-2.5-flash'],
+            'chat': ['agnes-2.5-flash', 'agnes-3.0-flash'],
+        },
+    },
+    # 魔搭 ModelScope。按魔粒计费(每天约 125–500 次),故排在最后,只在前三家都不可用时动用
+    # vision 用 Qwen3.5:同一张报告图实测 122B 3.6s、397B 11.6s,都是 8/8
+    # 这两个已下架、不要写回来(400 no provider support):
+    #   Qwen/Qwen3-VL-235B-A22B-Instruct、Qwen/Qwen3-VL-8B-Thinking
+    'modelscope': {
+        'name': 'ModelScope',
+        'base_url': 'https://api-inference.modelscope.cn/v1',
+        'api_key_env': 'MODELSCOPE_API_KEY',
+        'timeout': 60,
+        'extra_body': {'enable_thinking': False},
+        'models': {
+            'text': ['deepseek-ai/DeepSeek-V4.1-Flash-1017'],
+            'vision': ['Qwen/Qwen3.5-122B-A10B', 'Qwen/Qwen3.5-397B-A17B'],
+            'report': ['Qwen/Qwen3.5-397B-A17B'],
+            'chat': ['deepseek-ai/DeepSeek-V4.1-Flash-1017'],
+        },
+    },
 }
-SENSENOVA_BASE_URL = 'https://token.sensenova.cn/v1'
 
 # ========== 血糖值验证范围常量 ==========
 # 用于数据验证和预测值范围检查，单位：mmol/L

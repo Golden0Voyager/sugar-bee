@@ -6909,8 +6909,8 @@
     }
 
     function renderHealthAnalysisCard(analysis) {
-        const score = analysis.health_score || 0;
-        const scoreLabel = getScoreLabel(score);
+        const score = analysis.health_score;
+        const scoreLabel = (score === null || score === undefined) ? '未评分' : getScoreLabel(score);
         const days = analysis.days || 7;
         const daysLabel = `近${days}天`;
         const generatedAt = analysis.created_at || analysis.analysis_date || '';
@@ -6934,7 +6934,7 @@
                         <div class="d-flex justify-content-between align-items-center">
                             <div class="d-flex align-items-center gap-2">
                                 <div class="text-center" style="min-width: 56px;">
-                                    <div class="fs-1 fw-bold lh-1">${score}</div>
+                                    <div class="fs-1 fw-bold lh-1">${score ?? '—'}</div>
                                     <small style="opacity: 0.8; font-size: 0.7rem;">${scoreLabel}</small>
                                 </div>
                                 <div class="ms-1">
@@ -7116,7 +7116,7 @@
                     <div class="modal-body" id="reportContent">
                         <div class="row mb-4">
                             <div class="col-md-4 text-center">
-                                <div class="display-3 fw-bold text-primary">${analysis.health_score}</div>
+                                <div class="display-3 fw-bold text-primary">${analysis.health_score ?? '—'}</div>
                                 <div class="text-muted">健康评分</div>
                             </div>
                             <div class="col-md-8">

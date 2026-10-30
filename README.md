@@ -26,7 +26,7 @@ uv pip install -r requirements.txt
 
 # 2. 配置 API Key
 cp .env.example .env
-# 编辑 .env，填入 GEMINI_API_KEY 等必要密钥
+# 编辑 .env，填入 INTERN_API_KEY / SENSENOVA_API_KEY / AGNES_API_KEY / MODELSCOPE_API_KEY 中任意几个
 
 # 3. 启动应用
 uv run python app.py

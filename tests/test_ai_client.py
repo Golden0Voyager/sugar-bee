@@ -1,25 +1,56 @@
-"""ai_client.py 测试 — mock OpenAI 测试降级链、_try_provider、call_ai"""
+"""ai_client.py 测试 — mock OpenAI 测试统一降级链、_try_provider、call_ai、流式聊天"""
+from contextlib import contextmanager
 from unittest.mock import MagicMock, patch
 
 import pytest
+
+
+@contextmanager
+def ai_keys(**which):
+    """把四家 API Key 全部置空,只保留 which 里指定的那家。
+
+    本机 .env 有真实 Key,不显式置空会让测试真的去调外网。
+    """
+    with patch.multiple(
+        'ai_client',
+        INTERN_API_KEY=which.get('intern'),
+        SENSENOVA_API_KEY=which.get('sensenova'),
+        AGNES_API_KEY=which.get('agnes'),
+        MODELSCOPE_API_KEY=which.get('modelscope'),
+    ):
+        yield
+
+
+def _chunk(text):
+    chunk = MagicMock()
+    chunk.choices = [MagicMock()]
+    chunk.choices[0].delta.content = text
+    return chunk
 
 
 class TestAiClientConfig:
     """模块级配置常量测试"""
 
     def test_ai_available_detection(self):
-        from ai_client import AI_AVAILABLE, MODELSCOPE_API_KEY, SENSENOVA_API_KEY
-        expected = bool(MODELSCOPE_API_KEY or SENSENOVA_API_KEY)
+        from ai_client import AGNES_API_KEY, AI_AVAILABLE, INTERN_API_KEY, MODELSCOPE_API_KEY, SENSENOVA_API_KEY
+        expected = any([INTERN_API_KEY, SENSENOVA_API_KEY, AGNES_API_KEY, MODELSCOPE_API_KEY])
         assert expected == AI_AVAILABLE
 
     def test_chat_available(self):
-        from ai_client import CHAT_AVAILABLE, SENSENOVA_API_KEY
-        assert bool(SENSENOVA_API_KEY) == CHAT_AVAILABLE
+        from ai_client import AGNES_API_KEY, CHAT_AVAILABLE, INTERN_API_KEY, MODELSCOPE_API_KEY, SENSENOVA_API_KEY
+        expected = any([INTERN_API_KEY, SENSENOVA_API_KEY, AGNES_API_KEY, MODELSCOPE_API_KEY])
+        assert expected == CHAT_AVAILABLE
 
-    def test_chat_model_configured(self):
-        from ai_client import SENSENOVA_CHAT_BASE_URL, SENSENOVA_CHAT_MODEL
-        assert SENSENOVA_CHAT_MODEL == "deepseek-flash"
-        assert "sensenova.cn" in SENSENOVA_CHAT_BASE_URL
+    def test_chat_models_come_from_registry(self):
+        import settings
+        for provider_id in settings.AI_PROVIDER_ORDER:
+            assert settings.AI_PROVIDERS[provider_id]['models']['chat']
+
+    def test_chat_shares_the_same_order(self):
+        """健康助手不再走另一套顺序,与 call_ai 共用 AI_PROVIDER_ORDER。"""
+        import settings
+        assert settings.AI_PROVIDERS['intern']['models']['chat'][0] == 'Sage-A1.5'
+        assert settings.AI_PROVIDERS['sensenova']['models']['chat'][0] == 'deepseek-flash'
 
 
 class TestTryProvider:
@@ -131,9 +162,55 @@ class TestTryProvider:
         )
         assert mock_call.call_args[1].get('extra_body') == {'enable_thinking': False}
 
+    @patch('ai_client._call_openai_compatible')
+    def test_extra_body_also_applied_to_vision(self, mock_call):
+        """视觉调用同样要关思考,否则思考型模型 content 是空的。"""
+        from ai_client import _try_provider
+        mock_call.return_value = "success"
+        models_config = {
+            'vision': ['v1'],
+            'extra_body': {'chat_template_kwargs': {'enable_thinking': False}},
+        }
+
+        _try_provider(
+            'fake-key', 'https://api.test.com', models_config,
+            has_images=True, prompt='look', images_data=[b'fake'],
+            mime_type='image/jpeg', provider='Test', task_type='vision'
+        )
+        assert mock_call.call_args[1].get('extra_body') == {
+            'chat_template_kwargs': {'enable_thinking': False}
+        }
+
+    @patch('ai_client._call_openai_compatible')
+    def test_empty_content_treated_as_failure(self, mock_call):
+        """思考型模型只填 reasoning_content 时 content 是空串,必须继续降级而不是当成功。"""
+        from ai_client import _try_provider
+        mock_call.side_effect = ["", "   ", "real answer"]
+        models_config = {'text': ['m1', 'm2', 'm3'], 'vision': []}
+
+        result, err = _try_provider(
+            'fake-key', 'https://api.test.com', models_config,
+            has_images=False, prompt='hello', images_data=None,
+            mime_type=None, provider='Test'
+        )
+        assert result == "real answer"
+        assert err is None
+        assert mock_call.call_count == 3
+
+    @patch('ai_client._call_openai_compatible')
+    def test_timeout_forwarded(self, mock_call):
+        from ai_client import _try_provider
+        mock_call.return_value = "success"
+        _try_provider(
+            'fake-key', 'https://api.test.com', {'text': ['m1'], 'vision': []},
+            has_images=False, prompt='hello', images_data=None,
+            mime_type=None, provider='Test', timeout=42
+        )
+        assert mock_call.call_args[1].get('timeout') == 42
+
 
 class TestCallAi:
-    """call_ai() 降级链测试"""
+    """call_ai() 统一降级链测试"""
 
     @patch('ai_client.AI_AVAILABLE', False)
     def test_raises_when_no_ai_available(self):
@@ -142,139 +219,180 @@ class TestCallAi:
             call_ai('test prompt')
 
     @patch('ai_client.AI_AVAILABLE', True)
-    @patch('ai_client.MODELSCOPE_API_KEY', 'fake-key')
     @patch('ai_client._try_provider')
-    def test_modelscope_success(self, mock_try):
+    def test_first_provider_in_order_wins(self, mock_try):
         from ai_client import call_ai
-        mock_try.return_value = ("modelscope result", None)
-        result = call_ai('test prompt')
-        assert result == "modelscope result"
+        mock_try.return_value = ("intern result", None)
+        with ai_keys(intern='k1', sensenova='k2'):
+            assert call_ai('test prompt') == "intern result"
+        assert mock_try.call_args[1]['provider'] == '端砚'
 
-    @patch('ai_client.MODELSCOPE_API_KEY', 'fake-key')
-    @patch('ai_client._try_provider')
-    def test_modelscope_fail_no_fallback(self, mock_try):
-        """没有 SenseNova 时 ModelScope 失败直接 raise"""
-        from ai_client import call_ai
-        mock_try.return_value = (None, Exception("fail"))
-        with pytest.raises(Exception):  # noqa: B017
-            call_ai('test prompt')
     @patch('ai_client.AI_AVAILABLE', True)
-    @patch('ai_client.MODELSCOPE_API_KEY', 'fake-key')
+    @patch('ai_client._try_provider')
+    def test_falls_back_to_next_provider(self, mock_try):
+        from ai_client import call_ai
+        seen = []
+
+        def side_effect(*args, **kwargs):
+            seen.append(kwargs['provider'])
+            if kwargs['provider'] == '端砚':
+                return (None, Exception("intern down"))
+            return ("sensenova result", None)
+
+        mock_try.side_effect = side_effect
+        with ai_keys(intern='k1', sensenova='k2'):
+            assert call_ai('test prompt') == "sensenova result"
+        assert seen == ['端砚', 'SenseNova']
+
+    @patch('ai_client.AI_AVAILABLE', True)
+    @patch('ai_client._try_provider')
+    def test_skips_provider_without_key(self, mock_try):
+        from ai_client import call_ai
+        mock_try.return_value = ("ok", None)
+        with ai_keys(agnes='k3'):
+            assert call_ai('test prompt') == "ok"
+        assert mock_try.call_args[1]['provider'] == 'Agnes'
+
+    @patch('ai_client.AI_AVAILABLE', True)
+    @patch('ai_client._try_provider')
+    def test_skips_provider_without_that_task_models(self, mock_try):
+        """某家没配该任务的模型就跳过,不能 KeyError 也不能空调用。"""
+        import settings
+        from ai_client import call_ai
+        mock_try.return_value = ("ok", None)
+        empty = {**settings.AI_PROVIDERS['sensenova'], 'models': {}}
+        with patch.dict('settings.AI_PROVIDERS', {'sensenova': empty}):
+            with ai_keys(sensenova='k2', modelscope='k4'):
+                assert call_ai('test prompt') == "ok"
+        assert mock_try.call_args[1]['provider'] == 'ModelScope'
+
+    @patch('ai_client.AI_AVAILABLE', True)
     @patch('ai_client._try_provider')
     def test_has_images_forces_vision(self, mock_try):
-        """带图片强制 vision task_type，不走 SenseNova"""
         from ai_client import call_ai
         mock_try.return_value = ("result", None)
-        call_ai('test', images_data=[b'fake'])
-        assert mock_try.call_args[1].get('task_type') == 'vision'
+        with ai_keys(intern='k1'):
+            call_ai('test', images_data=[b'fake'])
+        assert mock_try.call_args[1]['task_type'] == 'vision'
 
     @patch('ai_client.AI_AVAILABLE', True)
-    @patch('ai_client.MODELSCOPE_API_KEY', 'ms-key')
-    @patch('ai_client.SENSENOVA_API_KEY', 'sn-key')
     @patch('ai_client._try_provider')
-    def test_modelscope_fail_sensenova_success(self, mock_try):
-        """ModelScope 失败 → SenseNova 降级"""
+    def test_defaults_to_text_task(self, mock_try):
         from ai_client import call_ai
-        def side_effect(*args, **kwargs):
-            provider = kwargs.get('provider', '')
-            if provider == 'ModelScope':
-                return (None, Exception("modelscope down"))
-            return ("sensenova result", None)
-        mock_try.side_effect = side_effect
-        result = call_ai('test prompt')
-        assert result == "sensenova result"
+        mock_try.return_value = ("result", None)
+        with ai_keys(intern='k1'):
+            call_ai('test')
+        assert mock_try.call_args[1]['task_type'] == 'text'
 
     @patch('ai_client.AI_AVAILABLE', True)
-    @patch('ai_client.MODELSCOPE_API_KEY', 'ms-key')
-    @patch('ai_client.SENSENOVA_API_KEY', 'sn-key')
     @patch('ai_client._try_provider')
-    def test_both_providers_fail(self, mock_try):
-        """ModelScope + SenseNova 都失败 → raise last_error"""
+    def test_all_providers_fail(self, mock_try):
         from ai_client import call_ai
         mock_try.return_value = (None, Exception("all failed"))
-        with pytest.raises(Exception, match="all failed"):
-            call_ai('test prompt')
+        with ai_keys(intern='k1', sensenova='k2', agnes='k3', modelscope='k4'):
+            with pytest.raises(Exception, match="all failed"):
+                call_ai('test prompt')
+
+    @patch('ai_client.AI_AVAILABLE', True)
+    def test_no_providers_at_all(self):
+        from ai_client import call_ai
+        with ai_keys():
+            with pytest.raises(Exception, match="所有 AI 模型均不可用"):
+                call_ai('test')
 
 
 class TestCallChatStream:
-    """call_chat_stream() 流式聊天测试 — SenseNova 优先，ModelScope fallback"""
+    """call_chat_stream() 流式聊天测试 — 与 call_ai 同一条供应商顺序"""
 
-    @patch('ai_client.SENSENOVA_API_KEY', 'fake-key')
     @patch('openai.OpenAI')
-    def test_yields_chunks(self, mock_openai_cls):
+    def test_first_provider_streams(self, mock_openai_cls):
         from ai_client import call_chat_stream
-        mock_client = MagicMock()
-        mock_openai_cls.return_value = mock_client
+        client = MagicMock()
+        mock_openai_cls.return_value = client
+        client.chat.completions.create.return_value = [
+            _chunk("Hello"), _chunk(" World"), _chunk(None)
+        ]
+        with ai_keys(intern='k1', sensenova='k2'):
+            assert list(call_chat_stream([{"role": "user", "content": "hi"}])) == ["Hello", " World"]
+        assert client.chat.completions.create.call_args[1]['model'] == 'Sage-A1.5'
 
-        chunk1 = MagicMock()
-        chunk1.choices = [MagicMock()]
-        chunk1.choices[0].delta.content = "Hello"
-
-        chunk2 = MagicMock()
-        chunk2.choices = [MagicMock()]
-        chunk2.choices[0].delta.content = " World"
-
-        chunk_done = MagicMock()
-        chunk_done.choices = [MagicMock()]
-        chunk_done.choices[0].delta.content = None
-
-        mock_client.chat.completions.create.return_value = [chunk1, chunk2, chunk_done]
-
-        result = list(call_chat_stream([{"role": "user", "content": "hi"}]))
-        assert result == ["Hello", " World"]
-        assert mock_client.chat.completions.create.call_args[1]['model'] == 'deepseek-flash'
-
-    @patch('ai_client.SENSENOVA_API_KEY', None)
-    @patch('ai_client.MODELSCOPE_API_KEY', 'fake-key')
     @patch('openai.OpenAI')
-    def test_modelscope_fallback_when_sensenova_missing(self, mock_openai_cls):
+    def test_falls_back_when_first_provider_has_no_key(self, mock_openai_cls):
         from ai_client import call_chat_stream
-        mock_client = MagicMock()
-        mock_openai_cls.return_value = mock_client
+        client = MagicMock()
+        mock_openai_cls.return_value = client
+        client.chat.completions.create.return_value = [_chunk("fallback")]
+        with ai_keys(sensenova='k2'):
+            assert list(call_chat_stream([{"role": "user", "content": "hi"}])) == ["fallback"]
+        assert client.chat.completions.create.call_args[1]['model'] == 'deepseek-flash'
 
-        chunk = MagicMock()
-        chunk.choices = [MagicMock()]
-        chunk.choices[0].delta.content = "fallback"
-        mock_client.chat.completions.create.return_value = [chunk]
-
-        result = list(call_chat_stream([{"role": "user", "content": "hi"}]))
-        assert result == ["fallback"]
-        import settings
-        assert mock_client.chat.completions.create.call_args[1]['model'] == settings.MODELSCOPE_MODELS['chat'][0]
-
-    @patch('ai_client.SENSENOVA_API_KEY', 'fake-key')
-    @patch('ai_client.MODELSCOPE_API_KEY', 'fake-key')
     @patch('openai.OpenAI')
-    def test_modelscope_fallback_when_sensenova_fails(self, mock_openai_cls):
+    def test_falls_back_when_create_raises_before_yield(self, mock_openai_cls):
         from ai_client import call_chat_stream
+        good = MagicMock()
+        good.chat.completions.create.return_value = [_chunk("second")]
 
-        fallback_client = MagicMock()
-        chunk = MagicMock()
-        chunk.choices = [MagicMock()]
-        chunk.choices[0].delta.content = "modelscope"
-        fallback_client.chat.completions.create.return_value = [chunk]
+        def factory(**kwargs):
+            if kwargs['base_url'] == 'https://discovery-api.intern-ai.org.cn/v1':
+                raise Exception("intern down")
+            return good
 
-        def side_effect(*args, **kwargs):
-            if mock_openai_cls.call_count == 1:
-                raise Exception("SenseNova down")
-            return fallback_client
+        mock_openai_cls.side_effect = factory
+        with ai_keys(intern='k1', sensenova='k2'):
+            assert list(call_chat_stream([{"role": "user", "content": "hi"}])) == ["second"]
 
-        mock_openai_cls.side_effect = side_effect
+    @patch('openai.OpenAI')
+    def test_empty_stream_falls_through(self, mock_openai_cls):
+        """思考型模型可能只流 reasoning_content、content 一个字都没有。"""
+        from ai_client import call_chat_stream
+        empty = MagicMock()
+        empty.chat.completions.create.return_value = [_chunk(None)]
+        good = MagicMock()
+        good.chat.completions.create.return_value = [_chunk("real")]
 
-        result = list(call_chat_stream([{"role": "user", "content": "hi"}]))
-        assert result == ["modelscope"]
-        import settings
-        assert fallback_client.chat.completions.create.call_args[1]['model'] == settings.MODELSCOPE_MODELS['chat'][0]
+        def factory(**kwargs):
+            if kwargs['base_url'] == 'https://discovery-api.intern-ai.org.cn/v1':
+                return empty
+            return good
 
-    @patch('ai_client.SENSENOVA_API_KEY', 'fake-key')
-    @patch('ai_client.MODELSCOPE_API_KEY', 'fake-key')
+        mock_openai_cls.side_effect = factory
+        with ai_keys(intern='k1', sensenova='k2'):
+            assert list(call_chat_stream([{"role": "user", "content": "hi"}])) == ["real"]
+
+    @patch('openai.OpenAI')
+    def test_mid_stream_failure_raises_without_repeating(self, mock_openai_cls):
+        """已经开始吐字后再失败,不能再换一家重头来,否则用户会看到重复内容。"""
+        from ai_client import call_chat_stream
+        client = MagicMock()
+
+        def gen():
+            yield _chunk("partial")
+            raise Exception("network broke")
+
+        client.chat.completions.create.return_value = gen()
+        mock_openai_cls.return_value = client
+
+        received = []
+        with ai_keys(intern='k1', sensenova='k2'):
+            with pytest.raises(Exception, match="network broke"):
+                for piece in call_chat_stream([{"role": "user", "content": "hi"}]):
+                    received.append(piece)
+        assert received == ["partial"]
+        assert mock_openai_cls.call_count == 1
+
     @patch('openai.OpenAI')
     def test_all_chat_providers_fail(self, mock_openai_cls):
         from ai_client import call_chat_stream
         mock_openai_cls.side_effect = Exception("all down")
+        with ai_keys(intern='k1', sensenova='k2', agnes='k3', modelscope='k4'):
+            with pytest.raises(Exception):  # noqa: B017
+                list(call_chat_stream([{"role": "user", "content": "hi"}]))
 
-        with pytest.raises(Exception):  # noqa: B017
-            list(call_chat_stream([{"role": "user", "content": "hi"}]))
+    def test_no_api_key_raises(self):
+        from ai_client import call_chat_stream
+        with ai_keys():
+            with pytest.raises(Exception, match="未配置聊天 AI 服务"):
+                list(call_chat_stream([{"role": "user", "content": "hi"}]))
 
 
 class TestCallOpenaiCompatible:
@@ -320,6 +438,22 @@ class TestCallOpenaiCompatible:
         assert result == "image response"
         call_messages = mock_client.chat.completions.create.call_args[1]['messages']
         assert len(call_messages[0]['content']) == 2
+
+    @patch('openai.OpenAI')
+    @patch('ai_client.httpx.Client')
+    def test_timeout_and_retry_forwarded(self, mock_httpx_client, mock_openai_cls):
+        from ai_client import _call_openai_compatible
+        mock_client = MagicMock()
+        mock_openai_cls.return_value = mock_client
+        mock_client.chat.completions.create.return_value = MagicMock(
+            choices=[MagicMock(message=MagicMock(content="ok"))]
+        )
+
+        _call_openai_compatible('key', 'https://api.test.com/v1', 'm', 'hi',
+                                provider='Test', timeout=42)
+        assert mock_openai_cls.call_args[1]['timeout'] == 42
+        # SDK 默认会自己重试 2 次,叠上四家供应商链会等到天荒地老,统一压到 1 次
+        assert mock_openai_cls.call_args[1]['max_retries'] == 1
 
     @patch('openai.OpenAI')
     @patch('ai_client.httpx.Client')
@@ -432,46 +566,6 @@ class TestCnEndpoint:
         assert mock_openai.call_args[1].get('http_client') is None
 
 
-class TestCallAiNoApiKey:
-    """AI_AVAILABLE 检测 — 无任何 API Key"""
-
-    @patch('ai_client.AI_AVAILABLE', True)
-    @patch('ai_client.MODELSCOPE_API_KEY', None)
-    @patch('ai_client.SENSENOVA_API_KEY', None)
-    def test_no_providers_at_all(self):
-        """所有 API Key 为 None → 跳过所有提供商 → raise"""
-        from ai_client import call_ai
-        with pytest.raises(Exception, match="所有 AI 模型均不可用"):
-            call_ai('test')
-
-
-class TestStreamChatSenseNovaFail:
-    """call_chat_stream SenseNova 失败后无 ModelScope 时 raise"""
-
-    @patch('ai_client.SENSENOVA_API_KEY', 'fake-key')
-    @patch('ai_client.MODELSCOPE_API_KEY', None)
-    @patch('openai.OpenAI')
-    def test_sensenova_fail_no_fallback(self, mock_openai_cls):
-        from ai_client import call_chat_stream
-        mock_client = MagicMock()
-        mock_openai_cls.return_value = mock_client
-        mock_client.chat.completions.create.side_effect = Exception("SenseNova down")
-
-        with pytest.raises(Exception):  # noqa: B017
-            list(call_chat_stream([{"role": "user", "content": "hi"}]))
-
-
-class TestStreamChatNoApiKey:
-    """call_chat_stream 无任何 API Key 时 raise"""
-
-    @patch('ai_client.SENSENOVA_API_KEY', None)
-    @patch('ai_client.MODELSCOPE_API_KEY', None)
-    def test_no_api_key_raises(self):
-        from ai_client import call_chat_stream
-        with pytest.raises(Exception, match="未配置聊天 AI 服务"):
-            list(call_chat_stream([{"role": "user", "content": "hi"}]))
-
-
 class TestStreamChatDirect:
     """_stream_chat 直接测试"""
 
@@ -485,8 +579,8 @@ class TestStreamChatDirect:
         mock_client.chat.completions.create.return_value = [chunk]
 
         result = list(_stream_chat(mock_client, 'test-model',
-                                    [{"role": "user", "content": "hi"}],
-                                    extra_body={"extra": "value"}))
+                                   [{"role": "user", "content": "hi"}],
+                                   extra_body={"extra": "value"}))
         assert result == ["test"]
         call_kwargs = mock_client.chat.completions.create.call_args[1]
         assert call_kwargs.get('extra_body') == {"extra": "value"}

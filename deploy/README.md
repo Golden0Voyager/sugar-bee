@@ -124,9 +124,10 @@ crontab -e
 | `REDIS_URL` | 限速共享存储（多实例时） | `redis://localhost:6379` |
 | `GARMIN_EMAIL` | Garmin 账号（可选） | `user@example.com` |
 | `GARMIN_USER_ID` | 绑定 Garmin 的用户 ID | `1` |
-| `MODELSCOPE_API_KEY` | AI 提供商 Key（可选） | `sk-...` |
-| `VOLC_API_KEY` | 火山引擎 Key（可选） | `...` |
-| `GEMINI_API_KEY` | Gemini Key（可选） | `...` |
+| `INTERN_API_KEY` | 书生·端砚 Key(可选) | `sk-...` |
+| `SENSENOVA_API_KEY` | 商汤 SenseNova Key(可选) | `sk-...` |
+| `AGNES_API_KEY` | Agnes Key(可选) | `sk-...` |
+| `MODELSCOPE_API_KEY` | 魔搭 Key(可选,魔粒计费) | `sk-...` |
 
 ## Cloud Run 部署（生产环境）
 
@@ -181,8 +182,10 @@ cloud-run.yaml 中已配置的 Secret Manager 引用：
 | `INTERNAL_API_TOKEN` | `SUGAR_BEE_INTERNAL_API_TOKEN` | 内部 API 鉴权 |
 | `GARMIN_USER_ID` | `SUGAR_BEE_GARMIN_USER_ID` | Garmin 绑定用户 |
 | `GARMIN_EMAIL` | `SUGAR_BEE_GARMIN_EMAIL` | Garmin 账号 |
-| `MODELSCOPE_API_KEY` | `modelscope-api-key` | AI 视觉/文本模型 |
-| `SENSENOVA_API_KEY` | `sensenova-api-key` | AI 文本模型兜底 |
+| `INTERN_API_KEY` | `intern-api-key` | AI 第 1 顺位(端砚 Sage-A1.5) |
+| `SENSENOVA_API_KEY` | `sensenova-api-key` | AI 第 2 顺位 |
+| `AGNES_API_KEY` | `agnes-api-key` | AI 第 3 顺位 |
+| `MODELSCOPE_API_KEY` | `modelscope-api-key` | AI 第 4 顺位(魔粒计费) |
 
 ### 注意事项
 

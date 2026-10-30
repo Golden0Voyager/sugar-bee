@@ -5,6 +5,17 @@ from ai_client import AI_AVAILABLE, call_ai
 from utils.sql_dialect import interval_sql
 from utils.timezone import now as app_now
 
+# 报告末尾的「综合健康得分」。模型常用 Markdown 加粗或全角冒号,正则要放宽;
+# 抓不到时必须返回 None —— 编一个默认分会被用户当成模型给出的评价
+_SCORE_RE = re.compile(r'综合健康得分[*\s:：]*(\d+(?:\.\d+)?)')
+
+
+def _extract_health_score(text):
+    match = _SCORE_RE.search(text or '')
+    if not match:
+        return None
+    return max(0, min(100, int(round(float(match.group(1))))))
+
 
 def generate_health_analysis(db, user_id=1, is_auto=False, days=7):
     """
@@ -246,9 +257,9 @@ def generate_health_analysis(db, user_id=1, is_auto=False, days=7):
         ai_response = re.sub(r'^```(?:markdown|md)?\s*\n?', '', ai_response, flags=re.IGNORECASE)
         ai_response = re.sub(r'\n?```\s*$', '', ai_response)
 
-        # 解析得分
-        score_match = re.search(r'综合健康得分[：:]\s*(\d+)', ai_response)
-        score = int(score_match.group(1)) if score_match else 80
+        # 解析得分:模型未必会写这一行(实测 SenseNova 两次都没写),抓不到就存 NULL,
+        # 不能默认填 80 —— 那等于凭空造一个用户以为是模型给出的评价
+        score = _extract_health_score(ai_response)
 
         # 保存记录
         c.execute("""

@@ -51,7 +51,7 @@
 | ① | **热拷贝止血** | `app.py:346` auto_backup 用 `shutil.copy2` 直拷活库（非 Online Backup API）；`api_admin.py:36` 下载备份接口同款；`api_admin.py:94` 恢复接口 `.before_restore` 同款——**三处都可能产出撕裂页副本**，外观合法，恢复时选中即拿到坏库 | 摘除 auto_backup/periodic_gcs_backup Timer；把 `backup_db.py` 的 Online Backup 抽成单一 `make_backup(dest_path)`，host cron / 下载接口 / .before_restore 三处共用；存量副本批量 quick_check 后归档 | 半天 |
 | ② | **部署固化 `deploy_app.sh`** | rsync 命令只存在于人脑；本地工作树还躺着 `glucose.db`(7M)/`backups/`(90M)——一次疏忽能把**线上库覆盖成旧副本**，空库闸门拦不住"非空旧库覆盖" | `deploy_app.sh` 进仓库：数据路径硬排除 + 推送前后库行数/mtime 比对，不一致即中止 | 1-2h |
 | ③ | **WAL + busy_timeout 三路径** | MCP writer（`writer.py:113` sqlite3.connect 无 timeout，默认 5 秒）+ web 请求 + master 后台线程**三方写同一文件**，无 WAL 下读也挡写；MCP 批量写撞锁 5 秒即抛 OperationalError，调用方不重试 = **记录静默丢失** | db.py / writer.py / reader.py 三处统一 `PRAGMA journal_mode=WAL + busy_timeout`；WAL 落地当天全仓 grep `shutil.copy.*db\|cp .*glucose\|rsync.*db_data\|docker cp.*db` 审计留档 | 半日-1 日 |
-| ④ | **异地备份（3-2-1）+ 恢复验证** | 快照与源库**同机同盘**——磁盘坏/误删/勒索 = 22,123 条不可重测的记录永久消失 | COS 每日加密推送（桶开版本控制 + 子账号无删除权限）+ 月度加密 U 盘放亲友家；每周自动 `restore_verify`（恢复→完整性→行数断言→Bark）+ 季度完整演练 | 半日-1 日 |
+| ④ | **异地备份（3-2-1）+ 恢复验证** ✅ 已落地 GitHub Releases | 快照与源库**同机同盘**——磁盘坏/误删/勒索 = 22,123 条不可重测的记录永久消失 | COS 每日加密推送（桶开版本控制 + 子账号无删除权限）+ 月度加密 U 盘放亲友家；每周自动 `restore_verify`（恢复→完整性→行数断言→Bark）+ 季度完整演练 | 半日-1 日 |
 | ⑤ | **cookie 加固** | IP 明文 HTTP，会话 cookie 无 HttpOnly/SameSite | `HttpOnly + SameSite + 短会话`（无争议项，半天内做） | 半天 |
 | ⑥ | **整型时间戳→1970 修复** | 既有 bug 持续污染统计与预测（健康数据正确性是产品生命线） | 修解析 + 存量数据 audit/修复脚本 | 1-2 天 |
 

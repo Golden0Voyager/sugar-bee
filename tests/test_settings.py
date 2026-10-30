@@ -278,9 +278,18 @@ class TestConfigConstants:
 
     def test_ai_model_config(self):
         """AI 模型配置完整性"""
-        assert 'text' in settings.MODELSCOPE_MODELS
-        assert 'vision' in settings.MODELSCOPE_MODELS
-        assert 'report' in settings.MODELSCOPE_MODELS
+        assert settings.AI_PROVIDER_ORDER == ['intern', 'sensenova', 'agnes', 'modelscope']
+        for provider_id in settings.AI_PROVIDER_ORDER:
+            config = settings.AI_PROVIDERS[provider_id]
+            for task in ('text', 'vision', 'report', 'chat'):
+                assert task in config['models'], f'{provider_id} 缺少 {task} 模型配置'
+            assert config['base_url'].startswith('https://')
+            assert config['api_key_env'].endswith('_API_KEY')
+            flat = [m for models in config['models'].values() for m in models]
+            # 已下架 / 本账号不可用的模型不要写回配置,否则每次都要白试一遍
+            for retired in ('Qwen/Qwen3-VL-235B-A22B-Instruct', 'Qwen/Qwen3-VL-8B-Thinking',
+                            'kimi-k3', 'deepseek-v4.1-flash', 'sensenova-u1.5-lite'):
+                assert retired not in flat, f'{provider_id} 仍在用不可用的模型 {retired}'
 
 
 class TestGetAISystemPrompt:

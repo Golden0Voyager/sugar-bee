@@ -16,7 +16,7 @@
 
 - **后端**：Flask + SQLite（开发），模块化 Blueprint 路由
 - **前端**：单文件 `templates/index.html`（Jinja2 + Bootstrap 5 + Material Design）
-- **AI**：多模型降级链（Gemini / OpenAI-compatible / ZhipuAI 等）
+- **AI**：多模型降级链（端砚 Sage-A1.5 → SenseNova → Agnes → ModelScope,配置见 `settings.AI_PROVIDERS`）
 
 ---
 
@@ -47,10 +47,10 @@ uv run ruff check .
 | `app.py` | Flask 应用入口、首页、后台任务（备份/Garmin 同步）、Blueprint 注册 |
 | `routes/` | 9 个 Blueprint 模块：auth / user / records / chat / dashboard / health / meds / prediction / admin |
 | `services/` | 业务逻辑：健康分析、预测、用药、用户数据等 |
-| `ai_client.py` | 统一 AI 调用层，多模型自动降级 |
+| `ai_client.py` | 统一 AI 调用层，按 `settings.AI_PROVIDER_ORDER` 跨供应商降级(含思考型模型空 content 兜底) |
 | `glucose_parser.py` | 自然语言/图片 → 结构化健康记录 |
 | `settings.py` | 血糖达标标准、AI 模型配置、BMI 计算、徽章逻辑 |
-| `user_manager.py` | 多用户管理、session 切换、profile CRUD、provider 绑定 |
+| `user_manager.py` | 多用户管理、session 切换、profile CRUD、手机/邮箱登录绑定 |
 | `core/config.py` | `DB_NAME`、`AVATAR_FOLDER` 等配置 |
 | `utils/db.py` | `get_db()` / `close_db()` / `init_db()`，Flask `g` 管理连接 |
 | `utils/responses.py` | `api_success()` / `api_error()` 统一 JSON 响应包装 |

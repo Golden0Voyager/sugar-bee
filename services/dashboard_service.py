@@ -472,8 +472,11 @@ def get_dashboard_stats(db, user_id):
                 latest_analysis['recommendations'] = json.loads(latest_analysis['recommendations'])
             except (json.JSONDecodeError, TypeError, ValueError):
                 latest_analysis['recommendations'] = []
-        score = latest_analysis.get('health_score', 0) or 0
-        if score >= 90:
+        score = latest_analysis.get('health_score')
+        if score is None:
+            # 模型没写「综合健康得分」时存的是 NULL,不要拿 0 分冒充
+            latest_analysis['score_label'] = '未评分'
+        elif score >= 90:
             latest_analysis['score_label'] = '优秀'
         elif score >= 80:
             latest_analysis['score_label'] = '良好'

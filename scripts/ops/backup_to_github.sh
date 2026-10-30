@@ -121,20 +121,38 @@ if [ -z "$DL_URL" ]; then
 fi
 log "已上传: $DL_URL"
 
-# ---- 3. 端到端验证：下载回来解密 + 完整性 + 行数 ----
-if ! curl -sL -m 300 -o "$TMP/verify.enc" "$DL_URL"; then
-  log "ERROR 回读下载失败"
-  notify "Sugar Bee 异地备份可疑" "上传成功但下载不回来，异地副本可能不可用"
+# ---- 3. 验证（两条互补断言，不做完整回读）----
+# 为什么不用"下载回来解密"：objects.githubusercontent.com 在国内被限速
+# （实测 ~7KB/s，908KB 要 2 分钟以上），每周跑都会拖很久且容易超时。
+# 改为：
+#   a) 本地解密自己刚产的加密包 → 证明「密钥对 + 数据完整 + 能解压成可用库」
+#   b) API 查 asset 的 state/size → 证明「GitHub 上那份完整收下了」
+# 两者合起来覆盖了「密钥错了」和「上传截断」两个真实失败模式。
+
+if ! openssl enc -d -aes-256-cbc -pbkdf2 -pass "file:$PASS_FILE" -in "$TMP/$ASSET" | gunzip -c > "$TMP/verify.db" 2>/dev/null; then
+  log "ERROR 本地解密失败（密钥不对或文件损坏）"
+  notify "Sugar Bee 异地备份损坏" "加密包解不开，检查 $PASS_FILE"
   rm -rf "$TMP"
   exit 1
 fi
 
-if ! openssl enc -d -aes-256-cbc -pbkdf2 -pass "file:$PASS_FILE" -in "$TMP/verify.enc" | gunzip -c > "$TMP/verify.db" 2>/dev/null; then
-  log "ERROR 回读解密失败（密钥不对或文件损坏）"
-  notify "Sugar Bee 异地备份损坏" "上传的文件解不开，异地副本不可用"
+REMOTE_INFO=$(printf '%s' "$UP_JSON" | python3 -c "import json,sys;a=json.load(sys.stdin);print(a.get('state','?'),a.get('size',0))" 2>/dev/null)
+R_STATE=${REMOTE_INFO%% *}
+R_SIZE=${REMOTE_INFO##* }
+
+if [ "$R_STATE" != "uploaded" ]; then
+  log "ERROR 远端 asset 状态异常: $R_STATE"
+  notify "Sugar Bee 异地备份可疑" "asset 状态 $R_STATE，可能上传未完成"
   rm -rf "$TMP"
   exit 1
 fi
+if [ "$R_SIZE" != "$SIZE" ]; then
+  log "ERROR 远端大小 $R_SIZE 与本地 $SIZE 不符（上传可能截断）"
+  notify "Sugar Bee 异地备份可疑" "远端 $R_SIZE 字节 vs 本地 $SIZE，上传可能截断"
+  rm -rf "$TMP"
+  exit 1
+fi
+log "远端校验通过: state=$R_STATE size=$R_SIZE"
 
 VERIFY=$(python3 - "$TMP/verify.db" "$MIN_RECORDS" <<'PYVERIFY'
 import sqlite3, sys

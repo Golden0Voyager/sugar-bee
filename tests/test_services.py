@@ -567,7 +567,7 @@ class TestHealthAnalysis:
 
     @patch('services.health_service.AI_AVAILABLE', True)
     @patch('services.health_service.call_ai')
-    def test_default_score_when_no_match(self, mock_ai):
+    def test_score_is_none_when_model_omits_line(self, mock_ai):
         from services.health_service import generate_health_analysis
         mock_ai.return_value = "一切正常"
         mock_c = MagicMock()
@@ -576,7 +576,7 @@ class TestHealthAnalysis:
         mock_db = MagicMock()
         mock_db.cursor.return_value = mock_c
         result = generate_health_analysis(mock_db, user_id=1)
-        assert result['score'] == 80
+        assert result['score'] is None
 
     @patch('services.health_service.AI_AVAILABLE', True)
     @patch('services.health_service.call_ai')
@@ -718,3 +718,32 @@ class TestDashboardStats:
         result = get_dashboard_stats(mock_db, user_id=1)
         assert result['compliance'] == 100
         assert result['compliance_badge']['key'] == 'gold'
+
+
+class TestExtractHealthScore:
+    """报告末尾「综合健康得分」的解析 — 抓不到必须是 None,不能编一个默认分"""
+
+    def test_plain_line(self):
+        from services.health_service import _extract_health_score
+        assert _extract_health_score("分析...\n综合健康得分: 87") == 87
+
+    def test_markdown_bold_and_decimal(self):
+        from services.health_service import _extract_health_score
+        assert _extract_health_score("**综合健康得分: 78.6**") == 79
+
+    def test_fullwidth_colon(self):
+        from services.health_service import _extract_health_score
+        assert _extract_health_score("**综合健康得分**：92") == 92
+
+    def test_missing_line_returns_none(self):
+        from services.health_service import _extract_health_score
+        assert _extract_health_score("报告在建议里就结束了") is None
+
+    def test_empty_or_none_text(self):
+        from services.health_service import _extract_health_score
+        assert _extract_health_score("") is None
+        assert _extract_health_score(None) is None
+
+    def test_clamped_to_0_100(self):
+        from services.health_service import _extract_health_score
+        assert _extract_health_score("综合健康得分: 150") == 100
