@@ -7,9 +7,15 @@
 #
 # 判定与动作：
 #   容器不在 running      → docker start（容器被停掉的情况）
-#   /health 连续 3 次失败  → docker restart
+#   /health 连续 3 次失败  → 分类处置：
+#                            · DB 项失败（模板正常）→ 只告警不重启
+#                            · 其他（模板坏 / 连不上 / 响应不是 JSON）→ docker restart
 #   重启后 90s 仍失败      → 记 CRIT + 附容器日志尾部，等人工
 #   限流：30 分钟内最多重启 1 次，避免把真正的故障刷成重启风暴
+#
+# 为什么 DB 故障不重启：SQLite 的库文件和锁都在挂载卷上，重启容器解决不了
+# （文件被删、磁盘满、库损坏、锁死——重启后照样坏），
+# 只会每 30 分钟打断一次线上使用。所以只告警，等人处理。
 #
 # 健康时静默不写日志，保证日志里只剩异常。
 #
@@ -35,6 +41,20 @@ rotate_log() {
 }
 
 healthy() { curl -fsS --max-time 4 -o /dev/null "$HEALTH_URL" 2>/dev/null; }
+
+# 取最近一次探活的完整响应（状态码 + body），失败时用来判断是哪一项坏了。
+# 注意不能用 curl -f：-f 会在 4xx/5xx 时丢掉 body，而我们要的正是失败时的 body。
+probe_detail() {
+  curl -sS --max-time 4 -w ' [HTTP %{http_code}]' "$HEALTH_URL" 2>&1 || true
+}
+
+# body 里能不能看出「模板正常但 DB 坏了」？
+# /health 在本机直连时会返回完整 checks 明细（公网只返回状态）。
+db_broken_only() {
+  local detail="$1"
+  printf '%s' "$detail" | grep -q '"template"[[:space:]]*:[[:space:]]*"ok"' \
+    && ! printf '%s' "$detail" | grep -q '"db"[[:space:]]*:[[:space:]]*"ok"'
+}
 
 # 按截止时间等，不按"次数×sleep"。
 # 教训（假死演练实测）：容器 paused/卡死时每次 curl 都要耗满超时，
@@ -100,8 +120,17 @@ for _ in 1 2 3; do
 done
 
 log "CRIT /health 连续 3 次探测失败（$HEALTH_URL）"
+DETAIL="$(probe_detail)"
+log "DETAIL 最近一次响应: ${DETAIL:0:400}"
 
-# 3) 重启，带限流
+# 3) DB 故障：重启无用，只告警
+if db_broken_only "$DETAIL"; then
+  log "WARN 判定为数据库故障（模板正常），重启容器解决不了，本次只告警不重启"
+  dump_logs
+  exit 5
+fi
+
+# 4) 重启，带限流
 if can_restart; then
   log "ACTION docker restart $NAME"
   date +%s >"$STATE"

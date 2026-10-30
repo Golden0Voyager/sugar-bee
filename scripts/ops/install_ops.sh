@@ -15,7 +15,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 HOST="${HOST:-$(cat "$HOME/.sugar_bee_host" 2>/dev/null || true)}"
 KEY="${KEY:-$HOME/.ssh/sugar_bee_new_agent}"
 USER_AT="root@${HOST}"
-FILES=(backup_db.py backup_host.sh health_guard.sh)
+FILES=(backup_db.py backup_host.sh health_guard.sh run_container.sh)
 
 DRY=0
 [ "${1:-}" = "--dry-run" ] && DRY=1
@@ -48,12 +48,13 @@ fi
 ssh "${SSH_OPTS[@]}" "$USER_AT" 'bash -s' <<'REMOTE'
 set -eu
 cd /opt/sugar_bee
-chmod +x backup_host.sh health_guard.sh
+chmod +x backup_host.sh health_guard.sh run_container.sh
 chmod 644 backup_db.py
 
 # 语法自检，别把坏脚本装进 cron
 bash -n backup_host.sh
 bash -n health_guard.sh
+bash -n run_container.sh
 python3 -m py_compile backup_db.py && rm -rf __pycache__
 
 want_backup='10 3 * * * /opt/sugar_bee/backup_host.sh >> /var/log/sugar_bee_backup.log 2>&1'
@@ -65,7 +66,7 @@ grep -qF 'health_guard.sh' /tmp/ct.ops || echo "$want_health" >>/tmp/ct.ops
 crontab /tmp/ct.ops && rm -f /tmp/ct.ops
 
 echo "--- 已安装 ---"
-ls -l /opt/sugar_bee/backup_db.py /opt/sugar_bee/backup_host.sh /opt/sugar_bee/health_guard.sh
+ls -l /opt/sugar_bee/backup_db.py /opt/sugar_bee/backup_host.sh /opt/sugar_bee/health_guard.sh /opt/sugar_bee/run_container.sh
 echo "--- crontab ---"
 crontab -l | grep -E 'backup_host|health_guard'
 

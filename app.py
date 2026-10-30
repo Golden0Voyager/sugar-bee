@@ -1,13 +1,17 @@
 import atexit
 import datetime
 import glob as glob_mod
+import hashlib
+import ipaddress
 import os
+import re
 import shutil
 import threading
 import traceback
 
 from dotenv import load_dotenv
-from flask import Flask, render_template, session
+from flask import Flask, abort, render_template, request, send_from_directory, session, url_for
+from werkzeug.security import safe_join
 
 import settings
 
@@ -96,6 +100,113 @@ except ImportError:  # pragma: no cover (子进程隔离)
 @app.teardown_appcontext
 def teardown_db(exception):
     close_db()
+
+
+# ========== 静态资源版本化（缓存 busting）============
+# 为什么需要：nginx 已给 /static/ 设了 30 天缓存，而模板里写的是固定路径
+# /static/js/chat.js —— 一旦发了新版本，浏览器和中间缓存仍会用旧文件，
+# 热修根本发不出去（要等 30 天）。加上内容 hash 后，文件一变 URL 就变。
+#
+# 为什么用「路径 hash」而不是「?v= 查询串」：
+#   运营商/企业网关的透明代理会按 path 归一化缓存、忽略 query，
+#   那时 ?v= 会静默失效——热修发不出去且毫无报错。
+#   路径 hash 让每个版本有唯一 URL，中间缓存无从混淆；
+#   而且旧 hash 直接 404（明确的失败），不会悄悄返回旧内容。
+#
+# 为什么不用构建体系生成 hash 文件名：项目没有前端构建链，
+# 运行时按文件内容算 hash 是零构建的等效方案。
+_static_hashes: dict[str, str] = {}
+
+
+def _compute_static_hashes() -> dict[str, str]:
+    """扫描 static 目录，按文件内容算 hash 前 8 位。
+
+    启动时算一次就固定：容器运行期间 static 文件被替换（docker cp 热修）
+    不会更新版本号，旧 URL 会 404 而不是静默返回新内容——
+    这比「悄悄给旧文件」安全，也让"改了文件必须重启容器"这条规矩更明确
+    （部署流程本来就要重建容器）。
+    """
+    hashes: dict[str, str] = {}
+    base = app.static_folder
+    for root, dirs, files in os.walk(base):
+        # 头像目录是用户上传的私人图片，不参与版本化
+        dirs[:] = [d for d in dirs if d != 'avatars']
+        for name in files:
+            full = os.path.join(root, name)
+            rel = os.path.relpath(full, base)
+            try:
+                with open(full, 'rb') as f:
+                    hashes[rel] = hashlib.sha256(f.read()).hexdigest()[:8]
+            except OSError:
+                continue
+    return hashes
+
+
+def static_hv(filename: str) -> str:
+    """返回静态文件内容 hash 的前 8 位（启动时算好的固定值）。"""
+    return _static_hashes.get(filename, 'missing')
+
+
+@app.template_global()
+def static_url(filename: str) -> str:
+    """带内容 hash 的静态资源 URL，例如 /v/js/chat.21f46411.js。"""
+    hv = static_hv(filename)
+    base, ext = os.path.splitext(filename)
+    return url_for('versioned_static', filename=f'{base}.{hv}{ext}')
+
+
+# /v/<路径>.<hash><扩展名>：hash 必须与当前文件内容一致，否则 404。
+# 校验这一步是路径 hash 方案的安全底线——否则任何人都能拿
+# /v/js/chat.deadbeef.js 猜到未来的文件名。
+_V_PATH_RE = re.compile(r'^(?P<stem>.+)\.(?P<hv>[0-9a-f]{8})(?P<ext>\.[A-Za-z0-9]+)$')
+
+
+@app.route('/v/<path:filename>')
+def versioned_static(filename: str):
+    """按内容 hash 提供的静态资源，带 immutable 长缓存。"""
+    m = _V_PATH_RE.match(filename)
+    if not m:
+        abort(404)
+    rel = f"{m.group('stem')}{m.group('ext')}"
+    # safe_join 挡住 ../ 之类的路径穿越
+    if safe_join(app.static_folder, rel) is None:
+        abort(404)
+    if static_hv(rel) != m.group('hv'):
+        # hash 与内容不符：文件已变（或压根不存在）→ 明确的 404
+        abort(404)
+    resp = send_from_directory(app.static_folder, rel, conditional=True)
+    resp.headers['Cache-Control'] = 'public, max-age=31536000, immutable'
+    resp.headers['X-Content-Type-Options'] = 'nosniff'
+    return resp
+
+
+@app.after_request
+def add_html_cache_headers(response):
+    """HTML 明确 no-cache（但保留 ETag），静态资源各自走自己的缓存策略。
+
+    用 no-cache 而不是 no-store：浏览器每次都带 If-None-Match 来验证，
+    内容没变就拿 304（只传 header 不传 body）。
+
+    注意 Flask 3 不再自动生成 ETag（实测：渲染响应的 ETag 为 None），
+    没有 ETag 的 no-cache 等于「每次全量重下」——线上首页 gzip 后仍有 160KB。
+    所以这里自己补 ETag，并调用 make_conditional 处理条件请求。
+
+    private：页面含个人健康数据，不能被共享缓存（公司代理 / 运营商缓存）留存。
+    Vary: Cookie：不同登录用户拿到的 HTML 不同，必须按 Cookie 区分缓存。
+    """
+    if response.mimetype == 'text/html' and not response.is_streamed:
+        response.headers.setdefault('Cache-Control', 'private, no-cache, must-revalidate')
+        if 'ETag' not in response.headers:
+            # md5 与 Werkzeug 惯例一致（ETag 不用于安全用途）
+            response.set_etag(hashlib.md5(response.get_data()).hexdigest())
+        # 命中 If-None-Match → 304 + 空 body
+        response.make_conditional(request)
+        response.headers['Vary'] = 'Cookie'
+    return response
+
+
+# 静态资源版本表：启动时算一次，进程生命周期内固定
+_static_hashes.update(_compute_static_hashes())
 
 # ========== 全局变量 ==========
 _prediction_lock = threading.Lock()
@@ -349,10 +460,96 @@ app.view_functions['health_sync.bind_from_shortcut'] = limiter.limit("10 per min
 app.view_functions['health_sync.sync_health_data'] = limiter.limit("30 per minute")(app.view_functions['health_sync.sync_health_data'])
 
 # ========== 健康检查 ==========
+# 只回 {'status':'ok'} 是不够的：数据库锁死、模板损坏、依赖没起来时页面早就 500 了，
+# 探活却仍然 200 —— docker healthcheck 和 run_container.sh 的自动回滚永远不会触发。
+# 回滚演练实测过：喂了个坏容器，探活一路绿灯，坏容器被当成"健康"留在生产上。
+# 所以这里真的去读一次库、编译一次模板，任一项失败就返回 503。
+
+
+def _client_is_internal(req) -> bool:
+    """判断请求来源是否属于内网/本机。
+
+    /health 通过 nginx 的 location / 对公网可达，异常原文里带着
+    绝对路径和 SQLite 错误细节——没必要让外人看到。
+    所以明细只给内网看，公网只拿到状态码和 status。
+
+    判定顺序：
+      - remote_addr 不是回环 → 直接按它判（容器被外部直接访问的情况）
+      - remote_addr 是回环（说明经过了同机的 nginx 反代）→ 看 X-Forwarded-For
+        的最后一段。nginx 用 $proxy_add_x_forwarded_for 追加，追加的是
+        $remote_addr（真实客户端 IP），所以最后一段才可信；
+        客户端自己伪造的头会排在前面。
+      - 没有 XFF → 说明是直连本机（health_guard / docker healthcheck），算内网
+    """
+    remote = (req.remote_addr or '').strip()
+    if remote not in ('127.0.0.1', '::1', 'localhost'):
+        return _is_private_ip(remote)
+    xff = req.headers.get('X-Forwarded-For', '')
+    if not xff:
+        return True
+    return _is_private_ip(xff.split(',')[-1].strip())
+
+
+def _is_private_ip(value: str) -> bool:
+    try:
+        ip = ipaddress.ip_address(value)
+    except ValueError:
+        return False
+    return ip.is_private or ip.is_loopback
+
+
 @app.route('/health')
 def health_check():
-    """服务健康检查端点（无需认证，用于 Docker/Nginx 探活）。"""
-    return {'status': 'ok', 'service': 'sugar-bee'}, 200
+    """服务健康检查端点（无需认证，用于 Docker/Nginx 探活）。
+
+    返回 200 表示「能真正服务一个请求」；任一子项失败返回 503，
+    让 run_container.sh / health_guard.sh 能据此触发回滚或重启。
+    """
+    checks = {}
+    ok = True
+
+    # 1) 数据库：文件必须在、大小非零、核心表可读
+    db_path = get_db_name()
+    try:
+        if not os.path.isfile(db_path):
+            raise FileNotFoundError(f'数据库文件不存在: {db_path}')
+        if os.path.getsize(db_path) == 0:
+            raise ValueError('数据库文件为空（0 字节）')
+        db = get_db()
+        db.execute('SELECT 1')
+        # 光 SELECT 1 挡不住一种故障：SQLite 的 connect() 遇到不存在的路径会
+        # 自动建一个空库，那时 SELECT 1 照样成功，但数据已经全没了。
+        # 所以再确认两张核心表确实存在且可读。
+        # LIMIT 1 只取一行，不做全表扫描。
+        db.execute('SELECT 1 FROM records LIMIT 1').fetchall()
+        db.execute('SELECT 1 FROM app_users LIMIT 1').fetchall()
+        checks['db'] = 'ok'
+    except Exception as exc:  # noqa: BLE001 —— 探活的语义就是"任何毛病都报出来"
+        checks['db'] = f'{type(exc).__name__}: {exc}'
+        ok = False
+
+    # 2) 模板：只编译不渲染。渲染一次首页要近百毫秒，编译命中 Jinja 缓存几乎零成本。
+    # debug 模式下 TEMPLATES_AUTO_RELOAD 会让它每次重编 11880 行，本地开发没必要付这个代价。
+    if app.debug:
+        checks['template'] = 'skipped(debug)'
+    else:
+        try:
+            app.jinja_env.get_template('index.html')
+            checks['template'] = 'ok'
+        except Exception as exc:  # noqa: BLE001
+            checks['template'] = f'{type(exc).__name__}: {exc}'
+            ok = False
+
+    if not _client_is_internal(request):
+        # 公网只暴露"健康/不健康"，异常原文和路径留在内网
+        return {'status': 'ok' if ok else 'degraded', 'service': 'sugar-bee'}, 200 if ok else 503
+
+    payload = {
+        'status': 'ok' if ok else 'degraded',
+        'service': 'sugar-bee',
+        'checks': checks,
+    }
+    return payload, 200 if ok else 503
 
 
 if __name__ == '__main__':

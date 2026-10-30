@@ -1834,7 +1834,7 @@ wheels = [
 
 [[package]]
 name = "sugar-bee"
-version = "0.2.0.5"
+version = "0.2.0.6"
 source = { virtual = "." }
 dependencies = [
     { name = "alembic" },
