@@ -13,7 +13,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 import branding
 from core import config
 from utils.avatars import default_avatar_for_user
-from utils.db import ConnectionWrapper, get_raw_conn, put_raw_conn
+from utils.db import ConnectionWrapper, get_raw_conn, put_raw_conn, sqlite_connect
 from utils.sql_dialect import insert_or_ignore_sql
 from utils.timezone import today as app_today
 
@@ -26,7 +26,8 @@ def _db_conn(db_path=None):
     否则使用 utils.db 的连接池/Flask g 管理（生产/PostgreSQL 场景）。
     """
     if db_path and config.DB_TYPE == 'sqlite':
-        raw_conn = sqlite3.connect(db_path)
+        # 走统一入口：带上 WAL + busy_timeout（这里也是写路径，不能裸 connect）
+        raw_conn = sqlite_connect(db_path)
         raw_conn.row_factory = sqlite3.Row
         conn = ConnectionWrapper(raw_conn)
         try:
