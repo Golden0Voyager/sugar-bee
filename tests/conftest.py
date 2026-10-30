@@ -14,7 +14,9 @@ os.environ.setdefault('SECRET_KEY', 'test-secret-key-not-for-production')
 os.environ.setdefault('FLASK_ENV', 'testing')
 # 测试库是空的（没有真实用户），而生产的 /health 会检查「用户表至少 1 行」
 # 来识别"连到了空库"这种静默故障。测试环境放行，生产保持默认的 1。
-os.environ.setdefault('SB_MIN_USERS', '0')
+# 强赋值而非 setdefault：开发机 shell 若已导出 SB_MIN_USERS=1，
+# setdefault 不会覆盖，全部 /health happy-path 会以 503 迷惑性炸掉。
+os.environ['SB_MIN_USERS'] = '0'
 
 
 def _make_session_guard_db():

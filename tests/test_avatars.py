@@ -134,3 +134,4 @@ def test_index_renders_all_default_avatar_choices(client_authenticated):
     # 统一保存入口：右下角一个保存按钮，按选中内容分派
     assert 'function saveAvatar' in js
     assert 'saveDefaultAvatarBtn' not in html
+    assert 'saveDefaultAvatarBtn' not in js  # JS 拆出后渲染输出不含脚本，否定断言必须分开跑

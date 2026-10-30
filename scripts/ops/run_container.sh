@@ -11,6 +11,15 @@
 #   ./run_container.sh             实际执行
 set -uo pipefail
 
+# 与 health_guard.sh 共用互斥锁：部署/守卫互不干扰。
+# 不加锁时，部署窗口（停容器→改名→起新容器，最长 90s）内 cron 撞进来会
+# 误判"容器不存在"或误重启（review 实测评估每次部署 5~15% 概率撞上）。
+exec 9>/var/run/sugar_bee.deploy.lock
+if ! flock -n 9; then
+  echo "!! 另一个部署/守卫正在执行（/var/run/sugar_bee.deploy.lock），本次退出"
+  exit 1
+fi
+
 APP=/opt/sugar_bee/app
 NAME=sugar-bee
 PREV="${NAME}-prev"
@@ -25,6 +34,7 @@ run_cmd=(docker run -d --name "$NAME"
   --restart unless-stopped
   --network app_default
   -u appuser -w /app
+  --log-opt max-size=10m --log-opt max-file=3
   -p 127.0.0.1:5000:5000
   --env-file "$APP/.env"
   -v "$APP/backups:/app/backups:rw"
@@ -51,8 +61,8 @@ container_running() {
 # 应用启动时会自动建一个空库并把表全建好——探活全绿、部署"成功"，
 # 但家人的数据其实连不上了（看起来像数据全没了）。
 # 比服务挂掉更危险，因为一切都是绿的。必须在启动新容器之前就拦住。
-if ! ls "$APP"/db_data/*.db >/dev/null 2>&1; then
-  echo "!! 中止：$APP/db_data 下没有任何 .db 文件" >&2
+if [ ! -s "$APP/db_data/glucose.db" ]; then
+  echo "!! 中止：$APP/db_data/glucose.db 不存在或为空" >&2
   echo "!! 继续下去应用会自己建一个空库，家人会看到数据全没了。" >&2
   echo "!! 请检查挂载点与 .env 的 SUGAR_BEE_DB_PATH。" >&2
   exit 1
@@ -94,8 +104,16 @@ health_ok() {
 rollback() {
   echo "!! $1，开始回滚"
   docker logs --tail 25 "$NAME" 2>&1 | sed 's/^/   /' || true
-  docker rm -f "$NAME" >/dev/null 2>&1 || true
-  docker rename "$PREV" "$NAME" || true
+  # rename 失败不能吞：否则 docker start 起的可能是"没删掉的新容器"，
+  # 打印"已回滚成功"实际跑的是坏版本（review 发现的静默吞错路径）
+  if ! docker rm -f "$NAME" >/dev/null 2>&1; then
+    echo "!!! 无法删除失败的容器 $NAME（可能卡在 removing），请人工介入" >&2
+    exit 1
+  fi
+  if ! docker rename "$PREV" "$NAME"; then
+    echo "!!! rename $PREV -> $NAME 失败，旧容器以 $PREV 名义保留，请人工恢复" >&2
+    exit 1
+  fi
   docker start "$NAME" >/dev/null 2>&1 || true
   if health_ok; then
     echo "!! 已回滚，旧容器运行正常"
@@ -106,7 +124,8 @@ rollback() {
 }
 
 docker rm -f "$PREV" >/dev/null 2>&1 || true
-docker stop "$NAME" >/dev/null 2>&1 || { echo "找不到容器 $NAME"; exit 1; }
+# -t 35：gunicorn graceful_timeout=30s，默认 10s 会 SIGKILL 腰斩在途请求（Garmin 同步类最长 120s）
+docker stop -t 35 "$NAME" >/dev/null 2>&1 || { echo "找不到容器 $NAME"; exit 1; }
 docker rename "$NAME" "$PREV" || { echo "重命名失败"; exit 1; }
 
 echo "启动新容器..."

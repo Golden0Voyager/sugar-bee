@@ -100,8 +100,11 @@ def build_timeline(cursor, user_id, days=90):
 
         # BMR Adjustment for today
         if date_str == today_str:
-            current_minutes = now.hour * 60 + now.minute
-            data['stats']['cal_out_bmr'] = int(user_bmr * (current_minutes / 1440))
+            # 按小时折算而非分钟：分钟粒度会让 __BOOT__ 每分钟变一次、ETag 跟着变，
+            # HTML 的 304 通道形同虚设（review 实测命中率≈0）。按小时取整后
+            # 同一小时内回访可命中 304，数值误差 < 4%（BMR 全天约 1500 kcal）。
+            current_hours_rounded = now.hour  # 只到整点，小时内不变
+            data['stats']['cal_out_bmr'] = int(user_bmr * (current_hours_rounded / 24))
 
         # Default meals logic ... (omitted for brevity here, but should be included)
         # 补全缺失餐饮的热量

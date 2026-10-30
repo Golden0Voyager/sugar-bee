@@ -23,6 +23,13 @@
 # 定时：    */10 * * * * /opt/sugar_bee/health_guard.sh >/dev/null 2>&1
 set -u
 
+# 与 run_container.sh 共用互斥锁：部署窗口（最长 90s）内不跑守卫，
+# 否则会把"容器改名中/启动中"误判为故障并误重启（review 评估 5~15% 概率撞上）。
+exec 9>/var/run/sugar_bee.deploy.lock
+if ! flock -n 9; then
+  exit 0   # 部署/另一守卫在跑，本轮静默跳过
+fi
+
 NAME=sugar-bee
 HEALTH_URL=http://127.0.0.1:5000/health
 LOG=/var/log/sugar_bee_health.log
@@ -50,10 +57,27 @@ probe_detail() {
 
 # body 里能不能看出「模板正常但 DB 坏了」？
 # /health 在本机直连时会返回完整 checks 明细（公网只返回状态）。
+# 用 python3 解析而不是 grep：grep 匹配 JSON 文本，键名/取值类型一变
+# （比如 "ok" 改成布尔 true）就静默走错分支且方向是"永不再自动重启"。
+# 解析失败按"未知故障"返回假 → 走重启分支（宁可多重启，不可静默失效）。
 db_broken_only() {
   local detail="$1"
-  printf '%s' "$detail" | grep -q '"template"[[:space:]]*:[[:space:]]*"ok"' \
-    && ! printf '%s' "$detail" | grep -q '"db"[[:space:]]*:[[:space:]]*"ok"'
+  printf '%s' "$detail" | python3 -c '
+import json, sys
+raw = sys.stdin.read()
+start = raw.find("{")
+if start < 0:
+    sys.exit(1)
+try:
+    d = json.loads(raw[start:])
+except Exception:
+    sys.exit(1)
+checks = d.get("checks") or {}
+# 只有「模板明确正常 + db 明确是错误描述字符串」才判 DB 故障（只告警）。
+# 其他形状（值类型变了/键没了/解析失败）一律走重启：宁可多重启，不可静默丧失自愈。
+db_val = checks.get("db")
+sys.exit(0 if (checks.get("template") == "ok" and isinstance(db_val, str) and db_val != "ok") else 1)
+' 2>/dev/null
 }
 
 # 按截止时间等，不按"次数×sleep"。

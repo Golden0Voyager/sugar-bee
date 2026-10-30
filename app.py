@@ -199,6 +199,13 @@ def add_html_cache_headers(response):
     private：页面含个人健康数据，不能被共享缓存（公司代理 / 运营商缓存）留存。
     Vary: Cookie：不同登录用户拿到的 HTML 不同，必须按 Cookie 区分缓存。
     """
+    if response.mimetype == 'application/json':
+        # JSON 是接口数据（timeline/stats/records），个人健康数据不能被共享缓存，
+        # 也不该走启发式缓存（无 Cache-Control 时浏览器按 Last-Modified 推 10% 过期）
+        # —— 那会让 /api/timeline 返回陈旧数据。
+        response.headers.setdefault('Cache-Control', 'private, no-store')
+        response.vary.add('Cookie')
+        return response
     if response.mimetype == 'text/html' and not response.is_streamed:
         response.headers.setdefault('Cache-Control', 'private, no-cache, must-revalidate')
         if 'ETag' not in response.headers:
@@ -206,7 +213,7 @@ def add_html_cache_headers(response):
             response.set_etag(hashlib.md5(response.get_data()).hexdigest())
         # 命中 If-None-Match → 304 + 空 body
         response.make_conditional(request)
-        response.headers['Vary'] = 'Cookie'
+        response.vary.add('Cookie')  # add 而非赋值：不覆盖上游已有 Vary 项
     return response
 
 
@@ -475,6 +482,15 @@ app.view_functions['health_sync.bind_device'] = limiter.limit("5 per minute")(ap
 app.view_functions['health_sync.bind_from_shortcut'] = limiter.limit("10 per minute")(app.view_functions['health_sync.bind_from_shortcut'])
 app.view_functions['health_sync.sync_health_data'] = limiter.limit("30 per minute")(app.view_functions['health_sync.sync_health_data'])
 
+# ========== robots.txt ==========
+# 必须挂在根路径 /robots.txt（爬虫规范只认根路径）。
+# 文件放 static/ 下是不够的——那只能从 /static/robots.txt 访问到，
+# Googlebot 请求 /robots.txt 会得到 404，按"无协议"继续爬（review 实测确认）。
+@app.route('/robots.txt')
+def robots_txt():
+    return send_from_directory(app.static_folder, 'robots.txt', mimetype='text/plain')
+
+
 # ========== 健康检查 ==========
 # 只回 {'status':'ok'} 是不够的：数据库锁死、模板损坏、依赖没起来时页面早就 500 了，
 # 探活却仍然 200 —— docker healthcheck 和 run_container.sh 的自动回滚永远不会触发。
@@ -560,7 +576,9 @@ def health_check():
         checks['template'] = 'skipped(debug)'
     else:
         try:
-            app.jinja_env.get_template('index.html')
+            # 两张都要编译：login.html 是所有人的入口，它坏了探活也得报
+            for _tpl_name in ('index.html', 'login.html'):
+                app.jinja_env.get_template(_tpl_name)
             checks['template'] = 'ok'
         except Exception as exc:  # noqa: BLE001
             checks['template'] = f'{type(exc).__name__}: {exc}'

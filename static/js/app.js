@@ -118,7 +118,7 @@
         if (isEmpty && message) empty.querySelector('.chart-empty-text').textContent = message;
     }
 
-    // Injected from server (初始 90 天，按需加载更多)
+    // Injected from server (初始 30 天（P1c），按需加载更多)
     let timelineData = B.timeline;
     // 当前启用的全部用药方案。无记录日期没有 timeline 节点，前端按日期范围补齐当日用药。
     const ACTIVE_MEDICATION_PLANS = B.medicationPlans;
@@ -1204,9 +1204,9 @@
         document.getElementById('bpRangeLabel').textContent = days ? (labelMap[days] || `近${days}天`) : '全部';
         const calLabel = document.getElementById('bpCalLabel');
         if (calLabel) calLabel.textContent = days ? days + 'd' : '全部';
-        if (days === null || days > 90) {
-            await ensureTimelineData(days);
-        }
+        // P1c 预载从 90 天改为 30 天，不能再用 >90 当门槛；
+        // ensureTimelineData 自己会判断已加载范围是否覆盖（不足才请求）。
+        await ensureTimelineData(days);
         initBloodPressureChart(days);
     }
 
@@ -1224,9 +1224,9 @@
         document.getElementById('weightRangeLabel').textContent = days ? (labelMap[days] || `近${days}天`) : '全部';
         const calLabel = document.getElementById('weightCalLabel');
         if (calLabel) calLabel.textContent = days ? days + 'd' : '全部';
-        if (days === null || days > 90) {
-            await ensureTimelineData(days);
-        }
+        // P1c 预载从 90 天改为 30 天，不能再用 >90 当门槛；
+        // ensureTimelineData 自己会判断已加载范围是否覆盖（不足才请求）。
+        await ensureTimelineData(days);
         initWeightChart(days);
     }
 
@@ -1238,9 +1238,8 @@
         bpOffset = Math.max(0, bpOffset - delta * step);
         document.getElementById('bpNavNext').style.display = bpOffset > 0 ? 'flex' : 'none';
         const totalDaysNeeded = (days || 90) + bpOffset;
-        if (totalDaysNeeded > 90) {
-            await ensureTimelineData(totalDaysNeeded);
-        }
+        // 同上：覆盖判断交给 ensureTimelineData
+        await ensureTimelineData(totalDaysNeeded);
         initBloodPressureChart(days, bpOffset);
     }
 
@@ -1252,9 +1251,8 @@
         weightOffset = Math.max(0, weightOffset - delta * step);
         document.getElementById('weightNavNext').style.display = weightOffset > 0 ? 'flex' : 'none';
         const totalDaysNeeded = (days || 90) + weightOffset;
-        if (totalDaysNeeded > 90) {
-            await ensureTimelineData(totalDaysNeeded);
-        }
+        // 同上：覆盖判断交给 ensureTimelineData
+        await ensureTimelineData(totalDaysNeeded);
         initWeightChart(days, weightOffset);
     }
 
@@ -1328,9 +1326,8 @@
         // 重新渲染图表
         const days = savedRange === 'all' ? null : rangeVal;
         const totalDaysNeeded = (days || 90) + trendOffset;
-        if (totalDaysNeeded > 90) {
-            await ensureTimelineData(totalDaysNeeded);
-        }
+        // 同上：覆盖判断交给 ensureTimelineData
+        await ensureTimelineData(totalDaysNeeded);
         initGlucoseChart(days, trendOffset);
     }
 
@@ -1351,9 +1348,9 @@
 
         // 按需加载超出 90 天的数据
         const days = range === 'all' ? null : parseFloat(range);
-        if (days === null || days > 90) {
-            await ensureTimelineData(days);
-        }
+        // P1c 预载从 90 天改为 30 天，不能再用 >90 当门槛；
+        // ensureTimelineData 自己会判断已加载范围是否覆盖（不足才请求）。
+        await ensureTimelineData(days);
 
         // 前端重新渲染趋势图（不刷新页面）
         initGlucoseChart(days, trendOffset);

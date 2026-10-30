@@ -411,8 +411,10 @@ class TestTimelineMedicationPlans:
         assert len(data['medication_plans']) == 1
         assert data['medication_plans'][0]['medication_name'] == '二甲双胍'
 
-        current_minutes = now.hour * 60 + now.minute
-        expected_bmr = int(1600 * (current_minutes / 1440))
+        # P1c 收尾：BMR 折算从分钟粒度改为整点粒度——分钟粒度会让 __BOOT__
+        # 每分钟变一次、HTML ETag 跟着变，304 通道形同虚设（review 实测命中率≈0）。
+        current_hours = now.hour
+        expected_bmr = int(1600 * (current_hours / 24))
         assert data['stats']['cal_out_bmr'] == expected_bmr
 
 

@@ -2660,7 +2660,7 @@ window.__BOOT__ = {
     userTargetWeight: {{ (stats.target_weight or None)|tojson }},
     userName: {{ stats.user.name|tojson }},
     userGenderLabel: {{ (stats.user.gender == 'male' and '男' or '女')|tojson }},
-    userAge: {{ (2026 - stats.user.birth_year)|tojson }},
+    userAge: {{ stats.user.age|tojson }},  # 已按生日月日修正，与侧栏同口径
     persona: {{ brand.persona|tojson }},
     onboarded: {{ brand.onboarded|tojson }},
 };
