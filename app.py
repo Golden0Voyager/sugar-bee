@@ -66,10 +66,11 @@ app.config['SESSION_COOKIE_SECURE'] = (
 app.config['SESSION_COOKIE_HTTPONLY'] = True          # 禁止 JS 访问 cookie（XSS 偷不走会话）
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'         # CSRF 基础防护
 # 会话有效期（小时）：闲置超过这个时间就要重新登录。
-# 默认 24 小时 —— 家人基本每天都会打开，一天不碰就重登一次，
-# 比「永久登录」安全得多；嫌烦可把 SESSION_LIFETIME_HOURS 调大。
+# 默认 720 小时 = 30 天 —— 家人嫌重登烦，一个月不碰才需要重登；
+# 不是「永久登录」，cookie 仍有明确过期时间，设备丢了也能靠它兜底。
+# 想更严就调小（例如 168 = 7 天），想更松就调大。
 # 注意：只有登录时标记了 session.permanent 才生效（见 utils.auth.start_session）。
-SESSION_LIFETIME_HOURS = float(os.environ.get('SESSION_LIFETIME_HOURS', '24'))
+SESSION_LIFETIME_HOURS = float(os.environ.get('SESSION_LIFETIME_HOURS', '720'))
 app.config['PERMANENT_SESSION_LIFETIME'] = datetime.timedelta(hours=SESSION_LIFETIME_HOURS)
 
 os.makedirs(AVATAR_FOLDER, exist_ok=True)
