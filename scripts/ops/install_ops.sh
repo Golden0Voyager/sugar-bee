@@ -48,7 +48,9 @@ fi
 ssh "${SSH_OPTS[@]}" "$USER_AT" 'bash -s' <<'REMOTE'
 set -eu
 cd /opt/sugar_bee
-chmod +x backup_host.sh health_guard.sh run_container.sh
+# 用显式 755 而不是 chmod +x：scp 覆盖已有文件时会保留目标原有权限
+# （服务器上历史遗留是 700），chmod +x 只会得到 711。
+chmod 755 backup_host.sh health_guard.sh run_container.sh
 chmod 644 backup_db.py
 
 # 语法自检，别把坏脚本装进 cron

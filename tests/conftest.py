@@ -12,6 +12,9 @@ import pytest
 # 强制测试环境配置
 os.environ.setdefault('SECRET_KEY', 'test-secret-key-not-for-production')
 os.environ.setdefault('FLASK_ENV', 'testing')
+# 测试库是空的（没有真实用户），而生产的 /health 会检查「用户表至少 1 行」
+# 来识别"连到了空库"这种静默故障。测试环境放行，生产保持默认的 1。
+os.environ.setdefault('SB_MIN_USERS', '0')
 
 
 def _make_session_guard_db():

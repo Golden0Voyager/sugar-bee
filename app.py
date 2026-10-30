@@ -508,7 +508,7 @@ def health_check():
     checks = {}
     ok = True
 
-    # 1) 数据库：文件必须在、大小非零、核心表可读
+    # 1) 数据库：文件必须在、大小非零、核心表可读、且不是"空库"
     db_path = get_db_name()
     try:
         if not os.path.isfile(db_path):
@@ -520,9 +520,19 @@ def health_check():
         # 光 SELECT 1 挡不住一种故障：SQLite 的 connect() 遇到不存在的路径会
         # 自动建一个空库，那时 SELECT 1 照样成功，但数据已经全没了。
         # 所以再确认两张核心表确实存在且可读。
-        # LIMIT 1 只取一行，不做全表扫描。
         db.execute('SELECT 1 FROM records LIMIT 1').fetchall()
-        db.execute('SELECT 1 FROM app_users LIMIT 1').fetchall()
+        # 关键一条：光有表还不够。应用启动时会自动给缺失的库建表，
+        # 于是「.env 里 DB 路径写错 / 挂载点没挂上」会得到一个全新的空库，
+        # 表齐全、探活全绿，但家人的数据"消失"了——比服务挂掉更危险。
+        # 判据：用户表至少要有 1 行（这个系统必须有人才能用）。
+        # 全新部署（还没注册第一个用户）可设 SB_MIN_USERS=0 放行。
+        min_users = int(os.environ.get('SB_MIN_USERS', '1') or 0)
+        n_users = db.execute('SELECT COUNT(*) FROM app_users').fetchone()[0]
+        if n_users < min_users:
+            raise RuntimeError(
+                f'用户表只有 {n_users} 行（期望 >= {min_users}）'
+                f'，疑似连到了空库而不是真正的数据文件'
+            )
         checks['db'] = 'ok'
     except Exception as exc:  # noqa: BLE001 —— 探活的语义就是"任何毛病都报出来"
         checks['db'] = f'{type(exc).__name__}: {exc}'

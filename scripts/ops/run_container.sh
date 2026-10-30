@@ -45,6 +45,19 @@ container_running() {
   [ "$(docker inspect -f '{{.State.Running}}' "$NAME" 2>/dev/null)" = "true" ]
 }
 
+# 部署前的硬闸门：挂载的数据库目录里必须有 .db 文件。
+#
+# 教训（回滚演练实测）：把 .env 里的 SUGAR_BEE_DB_PATH 指到一个不存在的路径，
+# 应用启动时会自动建一个空库并把表全建好——探活全绿、部署"成功"，
+# 但家人的数据其实连不上了（看起来像数据全没了）。
+# 比服务挂掉更危险，因为一切都是绿的。必须在启动新容器之前就拦住。
+if ! ls "$APP"/db_data/*.db >/dev/null 2>&1; then
+  echo "!! 中止：$APP/db_data 下没有任何 .db 文件" >&2
+  echo "!! 继续下去应用会自己建一个空库，家人会看到数据全没了。" >&2
+  echo "!! 请检查挂载点与 .env 的 SUGAR_BEE_DB_PATH。" >&2
+  exit 1
+fi
+
 # 健康检查：按截止时间等，不按"次数 × sleep"。
 #
 # 教训（回滚演练实测）：旧写法是 for i in $(seq 1 40) + sleep 2，
