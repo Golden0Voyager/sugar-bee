@@ -1,4 +1,6 @@
 
+import datetime
+
 from utils.timezone import now as app_now
 
 CONFIG_FILE = "user_config.json"
@@ -373,7 +375,13 @@ def load_config(user_id: int | None = None) -> dict:
     }
 
 def calculate_bmr(user_id: int) -> int:
-    """根据用户档案计算基础代谢率(BMR,kcal/日)。user_id 必填。"""
+    """根据用户档案计算基础代谢率(BMR,kcal/日)。user_id 必填。
+
+    优先用 Katch-McArdle 体成分公式(需要 30 天内的体脂秤读数):
+        BMR = 370 + 21.6 × 去脂体重kg,去脂体重 = 体重 × (1 − 体脂率/100)
+    体脂数据缺失/过旧/离谱(结果超出 800–3000)时,退回 Mifflin-St Jeor:
+        10×体重 + 6.25×身高 − 5×年龄 + 5(男)/−161(女)
+    """
     config = load_config(user_id)
     current_year = app_now().year
     age = current_year - (config.get("birth_year") or DEFAULT_PROFILE["birth_year"])
@@ -381,7 +389,58 @@ def calculate_bmr(user_id: int) -> int:
     weight = config.get("weight") or DEFAULT_PROFILE["weight"]
     height = config.get("height") or DEFAULT_PROFILE["height"]
     s = 5 if gender == "male" else -161
-    return int(10 * weight + 6.25 * height - 5 * age + s)
+    bmr = int(10 * weight + 6.25 * height - 5 * age + s)
+
+    body_fat = _latest_body_fat(user_id)
+    if body_fat is not None:
+        rate, rec_weight = body_fat
+        lbm_weight = rec_weight if rec_weight else weight
+        katch = int(KATCH_MCARDLE_CONSTANT + KATCH_MCARDLE_PER_LBM * lbm_weight * (1 - rate / 100))
+        if BMR_MIN_PLAUSIBLE <= katch <= BMR_MAX_PLAUSIBLE:
+            return katch
+    return bmr
+
+
+# 体成分 BMR 口径:体脂读数超过这个天数视为过旧,退回 Mifflin-St Jeor
+BODY_FAT_BMR_MAX_AGE_DAYS = 30
+KATCH_MCARDLE_CONSTANT = 370
+KATCH_MCARDLE_PER_LBM = 21.6
+# Katch-McArdle 结果落在这个区间外说明体脂/体重读数离谱,不采用
+BMR_MIN_PLAUSIBLE = 800
+BMR_MAX_PLAUSIBLE = 3000
+
+
+def _latest_body_fat(user_id):
+    """取该用户最近一条带体脂率的体成分记录。
+
+    Returns:
+        (rate, weight) 元组;rate 必为 float,weight 记录里没有时为 None;
+        无记录/记录超过 30 天/任何异常一律返回 None(调用方退回 Mifflin)。
+    """
+    try:
+        # 延迟 import 避免循环依赖(utils.db 可能反向 import settings)
+        from utils.db import get_raw_conn, put_raw_conn
+        conn = get_raw_conn()
+        try:
+            c = conn.cursor()
+            c.execute(
+                "SELECT body_fat_rate, weight, timestamp FROM records "
+                "WHERE user_id = ? AND body_fat_rate IS NOT NULL "
+                "AND body_fat_rate > 0 AND body_fat_rate < 70 "
+                "ORDER BY timestamp DESC LIMIT 1",
+                (user_id,),
+            )
+            row = c.fetchone()
+        finally:
+            put_raw_conn(conn)
+        if not row:
+            return None
+        measured = datetime.datetime.strptime(str(row['timestamp'])[:19], '%Y-%m-%d %H:%M:%S')
+        if (app_now() - measured).days > BODY_FAT_BMR_MAX_AGE_DAYS:
+            return None
+        return float(row['body_fat_rate']), (float(row['weight']) if row['weight'] else None)
+    except Exception:
+        return None
 
 
 def calculate_bmi(weight_kg, height_cm=None, user_id: int | None = None):
