@@ -460,20 +460,20 @@ class TestAdminBackupRestore:
             assert result.status_code == 404
 
     def test_backup_successful(self, client_authenticated, tmp_path, monkeypatch):
-        """正常备份 → 返回文件下载"""
+        """正常备份 → 返回文件下载（走 make_safe_backup，不再直拷活库）"""
         db_path = tmp_path / 'test.db'
         db_path.write_text('fake db content')
         monkeypatch.setattr('routes.api_admin.os.path.join', lambda *a: str(db_path))
         monkeypatch.setenv('SUGAR_BEE_DB_PATH', str(db_path))
         monkeypatch.setattr('routes.api_admin.os.path.exists', lambda p: True)
-        with patch('routes.api_admin.shutil.copy2') as mock_copy, \
+        with patch('routes.api_admin.make_safe_backup') as mock_backup, \
              patch('routes.api_admin.send_file') as mock_send:
-            mock_copy.return_value = None
+            mock_backup.return_value = (str(db_path), 16, 1)
             mock_send.return_value = 'file data'
             with patch('routes.api_admin.get_db'):
                 result = client_authenticated.get('/backup_database')
                 assert result.status_code == 200
-                mock_copy.assert_called_once()
+                mock_backup.assert_called_once()
 
     def test_restore_no_file(self, client_authenticated):
         """未选择文件 → 400"""
@@ -513,13 +513,15 @@ class TestAdminBackupRestore:
                 assert result.status_code == 400
 
     @patch('routes.api_admin.shutil.move')
-    @patch('routes.api_admin.shutil.copy2')
-    def test_restore_success(self, mock_copy, mock_move, client_authenticated, tmp_path, monkeypatch):
-        """正常恢复成功"""
+    @patch('routes.api_admin.make_safe_backup')
+    def test_restore_success(self, mock_backup, mock_move, client_authenticated, tmp_path, monkeypatch):
+        """正常恢复成功（恢复前留底走 make_safe_backup）"""
         import io
         import sqlite3
         monkeypatch.setattr('routes.api_admin.BASE_DIR', str(tmp_path))
         monkeypatch.setenv('SUGAR_BEE_DB_PATH', str(tmp_path / 'glucose.db'))
+        # 目标库存在才会走"恢复前留底"分支
+        (tmp_path / 'glucose.db').write_bytes(b'existing-db')
         # Create the temporary restore DB and the target DB
         real_conn = sqlite3.connect(':memory:')
         real_conn.execute("CREATE TABLE records (id INTEGER)")
@@ -529,6 +531,7 @@ class TestAdminBackupRestore:
         with patch('routes.api_admin.sqlite3.connect') as mock_connect:
             mock_conn = MagicMock()
             mock_cursor = MagicMock()
+            mock_cursor.execute.return_value.fetchall.return_value = [('ok',)]
             mock_conn.cursor.return_value = mock_cursor
             mock_connect.return_value = mock_conn
             with patch('routes.api_admin.get_db'):
@@ -536,6 +539,7 @@ class TestAdminBackupRestore:
                 result = client_authenticated.post('/restore_database', data=data,
                                                    content_type='multipart/form-data')
                 assert result.status_code == 200
+                mock_backup.assert_called_once()
 
 
 class TestAdminFindDeleteDuplicates:
