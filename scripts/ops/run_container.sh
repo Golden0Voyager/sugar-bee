@@ -68,15 +68,23 @@ fi
 #      按次数算出来的预算和真实耗时对不上。
 # 现在：容器一退出就立刻失败；预算按墙钟时间算，间隔压到 1 秒。
 health_ok() {
-  local budget="${1:-$HEALTH_BUDGET}" deadline
+  local budget="${1:-$HEALTH_BUDGET}" deadline out code
   deadline=$(( $(date +%s) + budget ))
   while [ "$(date +%s)" -lt "$deadline" ]; do
     # 容器已经退出 = 根本起不来，继续等没有意义
     if ! container_running; then
       return 1
     fi
-    if curl -fsS --max-time 3 "$HEALTH_URL" >/dev/null 2>&1; then
+    out=$(curl -sS --max-time 3 -w '\n%{http_code}' "$HEALTH_URL" 2>/dev/null) || true
+    code=$(printf '%s' "$out" | tail -1)
+    if [ "$code" = "200" ]; then
       return 0
+    fi
+    # 应用能应答但状态不对（503）：/health 已经告诉我们是哪一项坏了，
+    # 重试同一个容器不会有帮助（空的库不会自己长出数据，坏的模板也不会自己好），
+    # 立刻判失败，把时间留给回滚。
+    if printf '%s' "$out" | grep -q '"checks"'; then
+      return 1
     fi
     sleep 1
   done
