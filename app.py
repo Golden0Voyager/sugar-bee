@@ -57,6 +57,11 @@ app.secret_key = _secret_key
 app.config['UPLOAD_FOLDER'] = AVATAR_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB
 
+# JSON 序列化不转义非 ASCII（P1c）：中文写成原文而不是 \uXXXX。
+# timeline 里全是中文（备注、AI 饮食分析），转义会让体积白涨 3 倍。
+# Flask 的 tojson 仍会转义 < > &（htmlsafe_dumps），防 </script> 逃逸不受影响。
+app.json.ensure_ascii = False
+
 # Session 安全配置
 # SESSION_COOKIE_SECURE 默认跟随 FLASK_ENV（生产模式=仅经 HTTPS 传输 cookie）。
 # 若暂时以 HTTP / IP 直连访问（例如无域名的试用环境），需显式设为 false，
@@ -281,12 +286,14 @@ def index():
             threading.Thread(target=_run_predictions, args=(current_user_id,), daemon=True).start()
 
         # 2. 调用汇总服务获取统计数据
-        # 默认加载 90 天数据
-        sorted_dates, records = build_timeline(c, current_user_id, days=90)
+        # P1c：初始时间轴 90→30 天。前端已有懒加载（ensureTimelineData 按需
+        # fetch /api/timeline 并按日期合并），默认趋势视图是 14 天、日历只显示本月，
+        # 30 天足够覆盖首屏；往回翻或切到 60/90/全部时才补拉。
+        sorted_dates, records = build_timeline(c, current_user_id, days=30)
         stats = get_dashboard_stats(db, current_user_id)
 
         # 补全 stats 中的时间轴数据（如果需要）
-        stats['current_days'] = 90
+        stats['current_days'] = 30
 
         # 3.1 应用品牌个性化（应用名/图标/标语/使用场景），未自定义时回落默认品牌
         brand = branding.resolve_branding(user)
