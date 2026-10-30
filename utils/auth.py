@@ -29,6 +29,22 @@ def login_required(f):
     return decorated
 
 
+def start_session(user_id, username=None):
+    """登录 / 切换用户时统一写会话。
+
+    三件事必须一起做，缺一个就是安全洞：
+      1. clear()：防会话固定攻击（攻击者预先塞一个 session id，用户登录后沿用）
+      2. permanent = True：不标记的话 Flask 只发「关浏览器即失效」的会话 cookie，
+         app.config['PERMANENT_SESSION_LIFETIME'] 形同虚设，超时永远不生效
+      3. 写 current_user_id / username
+    """
+    session.clear()
+    session.permanent = True
+    session['current_user_id'] = user_id
+    if username:
+        session['username'] = username
+
+
 def get_admin_usernames():
     """管理员用户名集合，来自环境变量 SUGAR_BEE_ADMIN_USERS（逗号分隔）。
 
