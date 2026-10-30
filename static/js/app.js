@@ -3498,6 +3498,11 @@
         return red;  // 超标
     }
 
+    // 运动类型唯一清单（跟后端 services/timeline_service.py / prediction_service.py
+    // 的口径一致）：日历徽章、日视图事件、每日详情、录入分类都从这里取，
+    // 不要再各自硬编码运动类型判断——力量训练（健身）等会静默漏掉。
+    const EXERCISE_TYPES = ['跑步', '运动', '走路', '骑行', '游泳', '健身'];
+
     // 非血糖记录的类型：这些记录也带 value，但数值不是 mmol/L，
     // 混进达标率计算会把「血糖 68」这种假数据算出来。
     // 名单跟 services/timeline_service.py 里统计 avg_glucose 的黑名单保持一致。
@@ -3635,24 +3640,42 @@
 
             // 3. 运动标记 Badge
             const exerciseEntries = entries.filter(e =>
-                e.distance > 0 || e.type === '跑步' || e.type === '运动'
+                e.distance > 0 || EXERCISE_TYPES.includes(e.type)
             );
             if (exerciseEntries.length > 0) {
                 const totalDistance = exerciseEntries.reduce((sum, e) => sum + (e.distance || 0), 0);
-                const displayText = totalDistance > 0
-                    ? `🏃 ${totalDistance.toFixed(1)}km`
-                    : `🏃 运动`;
-
-                events.push({
-                    title: displayText,
-                    start: day.date,
-                    backgroundColor: '#d4edda',
-                    textColor: '#155724',
-                    borderColor: '#d4edda',
-                    allDay: true,
-                    display: 'auto',
-                    classNames: ['summary-event']
-                });
+                // 距离类（跑步/走路/骑行…）汇总成一个 km 徽章
+                if (totalDistance > 0) {
+                    events.push({
+                        title: `🏃 ${totalDistance.toFixed(1)}km`,
+                        start: day.date,
+                        backgroundColor: '#d4edda',
+                        textColor: '#155724',
+                        borderColor: '#d4edda',
+                        allDay: true,
+                        display: 'auto',
+                        classNames: ['summary-event']
+                    });
+                }
+                // 无距离的运动（健身/力量训练/游泳等）单独出徽章，不再被静默漏掉
+                const otherTypes = [...new Set(
+                    exerciseEntries
+                        .filter(e => !(e.distance > 0))
+                        .map(e => e.type)
+                        .filter(Boolean)
+                )];
+                if (otherTypes.length > 0) {
+                    events.push({
+                        title: `🏋️ ${otherTypes.join('·')}`,
+                        start: day.date,
+                        backgroundColor: '#d4edda',
+                        textColor: '#155724',
+                        borderColor: '#d4edda',
+                        allDay: true,
+                        display: 'auto',
+                        classNames: ['summary-event']
+                    });
+                }
             }
 
             // 4. 用药打卡 Badge
@@ -3686,10 +3709,10 @@
                     eventColor = entry.type === '加餐' ? '#e91e8c' : '#fd7e14';
                 }
                 // Exercise
-                else if (entry.distance || entry.type === '跑步' || entry.type === '运动') {
+                else if (entry.distance || EXERCISE_TYPES.includes(entry.type)) {
                     eventTitle = `${entry.type}`;
                     if (entry.distance) eventTitle += ` ${entry.distance}km`;
-                    eventIcon = '🏃 ';
+                    eventIcon = entry.type === '健身' ? '🏋️ ' : '🏃 ';
                     eventColor = '#7cb889';
                 }
 
@@ -3950,7 +3973,7 @@
 
             // 运动（排除餐食记录：有碳水/GI/饮食分析的不算运动）
             const _hasMealTraits1 = r.carbs_grams || r.gi_value || r.diet_analysis;
-            const _isExerciseType1 = ['跑步', '运动'].includes(r.type);
+            const _isExerciseType1 = EXERCISE_TYPES.includes(r.type);
             const _hasRealExerciseData1 = r.distance || r.heart_rate || r.cadence || r.steps;
             if (!r.systolic_pressure && !_hasMealTraits1 && (_isExerciseType1 || _hasRealExerciseData1) && (r.distance || r.duration || r.heart_rate)) {
                 html += `
@@ -4151,7 +4174,7 @@
 
             // Exercise - 排除血压记录和餐食记录
             const _hasMealTraits2 = r.carbs_grams || r.gi_value || r.diet_analysis;
-            const _isExerciseType2 = ['跑步', '运动'].includes(r.type);
+            const _isExerciseType2 = EXERCISE_TYPES.includes(r.type);
             const _hasRealExerciseData2 = r.distance || r.heart_rate || r.cadence || r.steps;
             if (!r.systolic_pressure && !_hasMealTraits2 && (_isExerciseType2 || _hasRealExerciseData2) && (r.distance || r.duration || r.heart_rate)) {
                 itemHtml += `
@@ -4667,7 +4690,7 @@
         const medicationRecords = [];
 
         const mealTypes = ['早餐', '午餐', '晚餐', '加餐'];
-        const exerciseTypes = ['跑步', '运动'];
+        const exerciseTypes = EXERCISE_TYPES;
 
         parsedData.forEach(item => {
             // 判断是否有餐食特征（碳水/GI/饮食分析）

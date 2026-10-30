@@ -62,15 +62,18 @@ def get_dashboard_stats(db, user_id):
                 min_glucose_detail = {'timestamp': row[0], 'type': row[1]}
 
     # === 3. 运动统计（7天） ===
-    c.execute("""
+    # 运动类型口径与 timeline_service / prediction_service 一致（6 类），
+    # 只算 跑步/运动 会把健身（力量训练）等室内运动整类漏掉
+    _exercise_types = "('跑步', '运动', '走路', '骑行', '游泳', '健身')"
+    c.execute(f"""
         SELECT
             SUM(distance) as total_distance,
-            SUM(CASE WHEN (type = '跑步' OR type = '运动' OR distance > 0) AND calories > 0 THEN calories END) as total_cal,
+            SUM(CASE WHEN type IN {_exercise_types} AND calories > 0 THEN calories END) as total_cal,
             AVG(CASE WHEN heart_rate IS NOT NULL AND (type = '跑步' OR type = '运动') THEN heart_rate END) as avg_hr,
             COUNT(DISTINCT DATE(timestamp)) as exercise_count
         FROM records
         WHERE user_id = ? AND timestamp > ?
-        AND (distance > 0 OR type IN ('跑步', '运动'))
+        AND (distance > 0 OR type IN {_exercise_types})
     """, (user_id, seven_days_ago))
     exercise_stats = c.fetchone()
 
