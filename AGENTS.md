@@ -225,6 +225,7 @@ ignore = ["E501", "E402", "E702"]  # E402/E702 for test files
 - `.env` stores API keys, `user_config.json` stores user profiles — both gitignored
 - SQLite `date('now')` uses UTC — use `date('now', 'localtime')` when comparing against local timestamps
 - **本地调试端口被抢的「假乱码」**（2026-10-28、2026-10-30 各中一次）：Kimi 桌面等外部程序会抢占 `127.0.0.1:5001`（macOS SO_REUSEPORT 共存分流），应答时返回它缓存的未渲染模板快照。症状：页面满屏 `{{ brand.app_name }}` / `{% if %}`、标题变成原始 `{{ ... }}`、响应头没有 Werkzeug `Server`、**Flask 日志里没有该请求记录**——不是代码 bug，别去改模板。排查三连：`lsof -nP -i :5001` 看是否有 Kimi 之类无关进程 LISTEN；带随机参数 curl 一次再查 Flask 日志有没有记录；确认后换 `PORT=50xx` 重启应用并把浏览器切到新端口（登录 cookie 按 host 不区分端口，会话保留）
+- **Kimi 右侧面板的「假空白」**（2026-10-30）：Kimi 内置浏览器面板会给页面注入来源不可追溯的隐藏样式（实测把 `#calendar` 算成 `display:none`，项目 CSS/JS/内联样式全部排查过均无来源），症状是每日复盘等区块空白，但系统浏览器（Safari/Chrome）完全正常——不是代码 bug，别去改应用。排查口径：页面里 `getComputedStyle(document.getElementById('calendar')).display` 为 none 且遍历 `document.styleSheets` 所有规则（含 @media）无匹配 → 用系统浏览器对照确认 → 定性为面板环境问题；临时验证可在页面里 `el.style.setProperty('display','block','important')`，刷新即失效
 - Coverage pragma `# pragma: no cover` is used on code paths that cannot be traced by coverage.py (subprocess isolation in `app.py`)
 
 ## 环境差异（⚠️ 重要）
