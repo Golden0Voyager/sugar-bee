@@ -39,6 +39,12 @@ fi
 
 scp -q "${SSH_OPTS[@]}" "${FILES[@]/#/$HERE/}" "$USER_AT:/opt/sugar_bee/"
 
+# nginx 站点配置也一起送（远程有 nginx -t 门禁与自动回滚）
+NGX="$HERE/nginx/sugar-bee.site.conf"
+if [ -f "$NGX" ]; then
+  scp -q "${SSH_OPTS[@]}" "$NGX" "$USER_AT:/tmp/ops_nginx_site.conf"
+fi
+
 ssh "${SSH_OPTS[@]}" "$USER_AT" 'bash -s' <<'REMOTE'
 set -eu
 cd /opt/sugar_bee
@@ -62,6 +68,27 @@ echo "--- 已安装 ---"
 ls -l /opt/sugar_bee/backup_db.py /opt/sugar_bee/backup_host.sh /opt/sugar_bee/health_guard.sh
 echo "--- crontab ---"
 crontab -l | grep -E 'backup_host|health_guard'
+
+# ---- nginx 站点配置（仓库为准，防"只改服务器"漂移）----
+if [ -f /tmp/ops_nginx_site.conf ]; then
+  CUR=/etc/nginx/sites-available/sugar-bee
+  if [ -f "$CUR" ] && cmp -s /tmp/ops_nginx_site.conf "$CUR"; then
+    echo "--- nginx: 配置一致，跳过 ---"
+  else
+    cp "$CUR" "/root/sugar-bee.site.bak_$(date +%Y%m%d_%H%M%S)" 2>/dev/null || true
+    cp /tmp/ops_nginx_site.conf "$CUR"
+    if nginx -t >/dev/null 2>&1; then
+      nginx -s reload
+      echo "--- nginx: 已更新并 reload ---"
+    else
+      echo "!! nginx -t 失败，已回滚" >&2
+      cp "$(ls -t /root/sugar-bee.site.bak_* | head -1)" "$CUR"
+      rm -f /tmp/ops_nginx_site.conf
+      exit 1
+    fi
+  fi
+  rm -f /tmp/ops_nginx_site.conf
+fi
 REMOTE
 
 echo "完成。日志: /var/log/sugar_bee_backup.log  /var/log/sugar_bee_health.log"
