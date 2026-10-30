@@ -380,7 +380,7 @@ class TestInlineBatchInsertEdgeCases:
 
 class TestRecordBloodPressureNotes:
     @pytest.mark.asyncio
-    async def test_with_notes(self, mock_api):
+    async def test_with_notes(self, mock_api, patch_db):
         from mcp_adapter.servers.writer import record_blood_pressure
         result = await record_blood_pressure(1, systolic=120, diastolic=80, notes="晨起测量")
         assert "✅" in result
@@ -392,7 +392,7 @@ class TestRecordBloodPressureNotes:
 
 class TestRecordWeightNotes:
     @pytest.mark.asyncio
-    async def test_with_notes(self, mock_api):
+    async def test_with_notes(self, mock_api, patch_db):
         from mcp_adapter.servers.writer import record_weight
         result = await record_weight(1, weight=70.0, notes="空腹")
         assert "✅" in result
@@ -404,7 +404,7 @@ class TestRecordWeightNotes:
 
 class TestRecordGlucoseNotes:
     @pytest.mark.asyncio
-    async def test_with_notes(self, mock_api):
+    async def test_with_notes(self, mock_api, patch_db):
         from mcp_adapter.servers.writer import record_glucose
         result = await record_glucose(1, value=5.5, record_type="空腹", notes="早餐前")
         assert "✅" in result
@@ -416,7 +416,7 @@ class TestRecordGlucoseNotes:
 
 class TestRecordExerciseEdgeCases:
     @pytest.mark.asyncio
-    async def test_with_notes(self, mock_api):
+    async def test_with_notes(self, mock_api, patch_db):
         from mcp_adapter.servers.writer import record_exercise
         result = await record_exercise(1, exercise_type="跑步", distance=5.0, notes="公园跑")
         assert "✅" in result
