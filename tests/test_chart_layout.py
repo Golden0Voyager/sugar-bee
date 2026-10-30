@@ -14,7 +14,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 MAIN_CSS = REPO_ROOT / "static" / "css" / "main.css"
-INDEX_HTML = REPO_ROOT / "templates" / "index.html"
+INDEX_HTML = REPO_ROOT / "static/js/app.js"
 
 
 def _chart_box_block() -> str:

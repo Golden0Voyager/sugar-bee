@@ -300,7 +300,7 @@ class TestFrontendGating:
 
     @staticmethod
     def _html():
-        with open(os.path.join(REPO_ROOT, 'templates/index.html'), encoding='utf-8') as f:
+        with open(os.path.join(REPO_ROOT, 'static/js/app.js'), encoding='utf-8') as f:
             return f.read()
 
     def test_predicted_badge_requires_glucose_module(self):

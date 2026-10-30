@@ -2,7 +2,8 @@
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-HTML = (REPO_ROOT / 'templates/index.html').read_text(encoding='utf-8')
+# P1b：内联 JS 已拆到 static/js/app.js，页面 JS 函数改从那里读。
+HTML = (REPO_ROOT / 'static/js/app.js').read_text(encoding='utf-8')
 REPORT_RENDERERS = HTML[
     HTML.index('function renderBone()'):HTML.index('function cancelCheckupPreview()')
 ]

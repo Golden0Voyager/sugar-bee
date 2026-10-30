@@ -1,7 +1,13 @@
 """体成分前端锚点与首页渲染测试。"""
 from pathlib import Path
 
-INDEX = Path(__file__).resolve().parents[1] / "templates" / "index.html"
+INDEX_HTML = Path(__file__).resolve().parents[1] / "templates" / "index.html"
+APP_JS = Path(__file__).resolve().parents[1] / "static/js/app.js"
+
+
+def _frontend():
+    """P1b：页面 JS 已拆到 app.js，拼接后结构/JS 断言都能命中。"""
+    return INDEX_HTML.read_text(encoding="utf-8") + "\n" + APP_JS.read_text(encoding="utf-8")
 
 BODY_COMP_FIELDS = (
     'body_fat_rate', 'visceral_fat', 'muscle_mass', 'body_fat_mass',
@@ -10,7 +16,7 @@ BODY_COMP_FIELDS = (
 
 
 def test_weight_panel_has_body_comp_row_anchors():
-    html = INDEX.read_text(encoding="utf-8")
+    html = _frontend()
     for anchor in ('id="bodyCompRow"', 'id="bodyCompTiles"', 'id="bodyCompMore"',
                    'id="bodyCompExpand"', 'id="bodyCompBody"'):
         assert anchor in html, f"缺少 {anchor}"
@@ -20,14 +26,14 @@ def test_weight_panel_has_body_comp_row_anchors():
 
 def test_body_comp_row_is_collapsed_by_default():
     """默认只显示体重管理:体成分容器收起,展开后才是全部 7 项。"""
-    html = INDEX.read_text(encoding="utf-8")
+    html = _frontend()
     assert 'id="bodyCompBody" style="display:none;"' in html
     assert '展开更多数据' in html
     assert '展开查看趋势' not in html
 
 
 def test_toggle_body_comp_details_exists():
-    html = INDEX.read_text(encoding="utf-8")
+    html = _frontend()
     assert 'function toggleBodyCompDetails' in html
     body = html.split('function toggleBodyCompDetails')[1].split('function ')[0]
     assert "getElementById('bodyCompBody')" in body
@@ -90,7 +96,7 @@ def test_secondary_metric_without_value_is_not_clickable(client_authenticated, a
 
 def test_body_comp_trend_merged_into_weight_card():
     """趋势只保留一张卡:体重卡里加指标页签,不再有独立的体成分卡。"""
-    html = INDEX.read_text(encoding="utf-8")
+    html = _frontend()
     assert 'id="bodyCompChartCard"' not in html
     assert 'id="bodyCompChart"' not in html
     for anchor in ('id="weightMetricTabs"', 'id="weightChart"',
@@ -106,14 +112,14 @@ def test_body_comp_trend_merged_into_weight_card():
 
 def test_weight_chart_reads_thresholds_from_stats():
     """阈值只能来自后端下发,不得在模板里写死数值(spec: 阈值单一来源)。"""
-    html = INDEX.read_text(encoding="utf-8")
+    html = _frontend()
     assert 'stats.body_comp.thresholds' in html
     assert 'BODY_COMP_THRESHOLDS' in html
 
 
 def test_weight_chart_guards_missing_canvas():
     """模块关闭或缺卡时 initWeightChart 必须安全返回。"""
-    html = INDEX.read_text(encoding="utf-8")
+    html = _frontend()
     body = html.split('function initWeightChart')[1].split('function ')[0]
     assert "getElementById('weightChart')" in body
     assert 'return' in body
@@ -121,21 +127,21 @@ def test_weight_chart_guards_missing_canvas():
 
 def test_secondary_metrics_are_greyed_without_values():
     """没测过的次级指标在下拉里置灰,避免点开是空图。"""
-    html = INDEX.read_text(encoding="utf-8")
+    html = _frontend()
     assert 'stats.body_comp.latest[field] is none' in html
     assert 'aria-disabled="true"' in html
 
 
 def test_select_weight_metric_keeps_current_range():
     """切页签只换指标,不能把时间范围和翻页重置回默认。"""
-    html = INDEX.read_text(encoding="utf-8")
+    html = _frontend()
     body = html.split('function selectWeightMetric')[1].split('function toggleBodyCompDetails')[0]
     assert 'initWeightChart(currentWeightDays, weightOffset)' in body
 
 
 def test_empty_range_keeps_card_and_tabs():
     """区间无数据时保留卡片与全部导航，纯体重用户也不能被卡在空区间。"""
-    html = INDEX.read_text(encoding="utf-8")
+    html = _frontend()
     body = html.split('function initWeightChart')[1].split('// Get point border color')[0]
     assert "document.getElementById('weightChartCard').style.display = ''" in body
     assert "document.getElementById('weightChartCard').style.display = 'none'" not in body
@@ -144,7 +150,7 @@ def test_empty_range_keeps_card_and_tabs():
 
 def test_weight_chart_card_does_not_clip_dropdowns():
     """空状态下卡片变矮,不能让 .card 的 overflow:hidden 把下拉菜单裁掉。"""
-    css = (INDEX.parents[1] / "static" / "css" / "main.css").read_text(encoding="utf-8")
+    css = (INDEX_HTML.parents[1] / "static" / "css" / "main.css").read_text(encoding="utf-8")
     assert '#weightChartCard' in css
     rule = css.split('#weightChartCard')[1].split('}')[0]
     assert 'overflow: visible' in rule
@@ -152,7 +158,7 @@ def test_weight_chart_card_does_not_clip_dropdowns():
 
 def test_ai_preview_lists_recognized_body_comp_values():
     """保存确认卡必须逐项展示体成分,不能让用户误以为只保存了体重。"""
-    html = INDEX.read_text(encoding="utf-8")
+    html = _frontend()
     fields = html.split('const BODY_COMP_PREVIEW_ITEMS')[1].split('// 压缩图片')[0]
     preview = html.split('function renderPreview')[1].split('function createMedicationPlan')[0]
     assert '体重与体成分记录' in preview
@@ -173,7 +179,7 @@ def test_ai_preview_lists_recognized_body_comp_values():
 
 def test_ai_save_success_confirms_body_comp_saved():
     """页面刷新前的成功提示必须说明体成分已随体重一起保存。"""
-    html = INDEX.read_text(encoding="utf-8")
+    html = _frontend()
     save = html.split('async function confirmBatchAdd')[1].split('// 显示冲突确认对话框')[0]
     assert '已保存体重与体成分数据' in save
     assert 'savedBodyCompCount' in save

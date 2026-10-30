@@ -14,8 +14,9 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def _index_html():
+    # P1b：页面 JS 已拆到 static/js/app.js，拼接后结构断言与 JS 断言都能命中
     with open(os.path.join(REPO_ROOT, 'templates/index.html'), encoding='utf-8') as f:
-        return f.read()
+        return f.read() + '\n' + open(os.path.join(REPO_ROOT, 'static/js/app.js'), encoding='utf-8').read()
 
 
 def _main_css():

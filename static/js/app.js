@@ -1,0 +1,8767 @@
+/* Sugar Bee 首页交互逻辑（P1b 从 templates/index.html 内联脚本拆出）。
+ * 数据统一由模板里的 window.__BOOT__ 传入；本文件不含任何服务端数据，
+ * 因此可走 /v/ 内容 hash 路径 + immutable 永久缓存。
+ * 改动本文件后无需改版本号——static_hv() 按内容算 hash。 */
+
+    // 当前用户启用的功能模块（后端渲染，供 JS 侧按模块隐藏内容）
+    const B = window.__BOOT__;
+    const ACTIVE_MODULES = new Set(B.activeModules);
+    // 是否管理员（后端按 SUGAR_BEE_ADMIN_USERS 判定）：切换用户等调试入口只对管理员开放
+    const IS_ADMIN = B.isAdmin;
+    // 所有健康趋势图共用一套视觉语言；医学阈值和数据筛选仍在各图表内维护。
+    const IS_MOBILE = window.innerWidth <= 480;
+    const CHART_FONT_FAMILY = "'Noto Sans SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
+    const CHART_COLORS = {
+        text: '#475569', muted: '#718096', grid: 'rgba(100, 116, 139, 0.12)',
+        tooltip: '#1E293B', tooltipBody: '#E2E8F0'
+    };
+    const CHART_REDUCED_MOTION = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    Chart.defaults.font.family = CHART_FONT_FAMILY;
+    Chart.defaults.font.size = IS_MOBILE ? 11 : 12;
+    Chart.defaults.color = CHART_COLORS.text;
+    Chart.defaults.plugins.legend.labels.font = { size: IS_MOBILE ? 11 : 12, family: CHART_FONT_FAMILY, weight: '500' };
+    Chart.defaults.plugins.legend.labels.boxWidth = 10;
+    Chart.defaults.plugins.legend.labels.boxHeight = 10;
+    Chart.defaults.plugins.legend.labels.usePointStyle = true;
+    Chart.defaults.scale.ticks.font = { size: IS_MOBILE ? 10 : 11, family: CHART_FONT_FAMILY };
+    Chart.defaults.scale.ticks.padding = IS_MOBILE ? 4 : 8;
+    Chart.defaults.scale.title.font = { size: 11, family: CHART_FONT_FAMILY, weight: '600' };
+    Chart.defaults.scale.ticks.maxTicksLimit = IS_MOBILE ? 6 : 10;
+    Chart.defaults.aspectRatio = IS_MOBILE ? 1.35 : 2.4;
+    // CSS 与 Chart.js 使用同一个比例来源，七类图表在桌面和手机上高度一致。
+    document.documentElement.style.setProperty('--chart-aspect-ratio', Chart.defaults.aspectRatio);
+    Chart.defaults.layout.padding = { top: 4, right: 4, bottom: 4, left: 4 };
+
+    function mergeChartOptions(base, overrides) {
+        const result = { ...base };
+        Object.entries(overrides || {}).forEach(([key, value]) => {
+            const isPlainObject = value && typeof value === 'object' && !Array.isArray(value) && typeof value !== 'function';
+            result[key] = isPlainObject && base[key] && typeof base[key] === 'object' && !Array.isArray(base[key])
+                ? mergeChartOptions(base[key], value)
+                : value;
+        });
+        return result;
+    }
+
+    function createHealthChart(context, config) {
+        const canvas = context.canvas || context;
+        const isContinuous = canvas.id === 'cgmChart';
+        const datasets = (config.data.datasets || []).map((dataset, datasetIndex) => ({
+            borderWidth: 2.5,
+            pointRadius: 4,
+            pointHoverRadius: 6,
+            pointHitRadius: 14,
+            pointBorderColor: '#FFFFFF',
+            pointBorderWidth: 2,
+            pointBackgroundColor: dataset.borderColor,
+            ...dataset,
+            // 离散测量不做圆滑插值；只有连续血糖仪曲线保留轻微平滑。
+            tension: isContinuous ? 0.25 : 0,
+            // 除颜色外，再用点形和虚线区分系列，色弱用户也能辨认。
+            pointStyle: dataset.borderDash && dataset.borderDash.length ? 'rectRot' : (datasetIndex % 2 ? 'rect' : 'circle')
+        }));
+        const themedOptions = mergeChartOptions({
+            responsive: true,
+            maintainAspectRatio: false,
+            layout: { padding: { top: 4, right: 4, bottom: 4, left: 4 } },
+            animation: CHART_REDUCED_MOTION ? false : { duration: 400, easing: 'easeOutQuart' },
+            interaction: { mode: 'nearest', axis: 'x', intersect: false },
+            plugins: {
+                legend: {
+                    position: 'top', align: 'start',
+                    labels: { color: CHART_COLORS.text, padding: 16, usePointStyle: true, pointStyle: 'circle', boxWidth: 9, boxHeight: 9 }
+                },
+                tooltip: {
+                    backgroundColor: CHART_COLORS.tooltip,
+                    titleColor: '#FFFFFF', bodyColor: CHART_COLORS.tooltipBody, footerColor: CHART_COLORS.tooltipBody,
+                    titleFont: { size: 13, weight: '600', family: CHART_FONT_FAMILY },
+                    bodyFont: { size: 12, family: CHART_FONT_FAMILY },
+                    padding: 12, cornerRadius: 10, caretSize: 6, displayColors: true,
+                    usePointStyle: true, boxWidth: 8, boxHeight: 8, boxPadding: 4
+                }
+            },
+            scales: {
+                x: {
+                    border: { display: false }, grid: { display: false },
+                    ticks: { color: CHART_COLORS.muted, maxRotation: 0, autoSkip: true }
+                },
+                y: {
+                    border: { display: false }, grid: { color: CHART_COLORS.grid, drawTicks: false },
+                    ticks: { color: CHART_COLORS.muted }
+                }
+            }
+        }, config.options);
+        if (IS_MOBILE) {
+            themedOptions.layout.padding.bottom = 0;
+            themedOptions.plugins.legend.labels.padding = 10;
+            if (canvas.id === 'glucoseChart' && themedOptions.plugins.legend.display !== false) {
+                const shortLabels = {
+                    'FPG (空腹/餐前)': '空腹', 'PPG-2h (餐后2小时)': '餐后',
+                    'Post-Ex (运动后)': '运动后', 'BT (睡前)': '睡前'
+                };
+                themedOptions.plugins.legend.labels.generateLabels = chart =>
+                    Chart.defaults.plugins.legend.labels.generateLabels(chart).map(item => ({
+                        ...item, text: shortLabels[item.text] || item.text
+                    }));
+            }
+        }
+        return new Chart(context, { ...config, data: { ...config.data, datasets }, options: themedOptions });
+    }
+
+    function setChartEmptyState(canvasId, emptyId, isEmpty, message = '') {
+        const canvas = document.getElementById(canvasId);
+        const empty = document.getElementById(emptyId);
+        if (!canvas || !empty) return;
+        canvas.closest('.chart-box')?.classList.toggle('is-empty', isEmpty);
+        canvas.setAttribute('aria-hidden', String(isEmpty));
+        empty.hidden = !isEmpty;
+        if (isEmpty && message) empty.querySelector('.chart-empty-text').textContent = message;
+    }
+
+    // Injected from server (初始 90 天，按需加载更多)
+    let timelineData = B.timeline;
+    // 当前启用的全部用药方案。无记录日期没有 timeline 节点，前端按日期范围补齐当日用药。
+    const ACTIVE_MEDICATION_PLANS = B.medicationPlans;
+
+    function getMedicationPlansForDate(dateStr) {
+        return ACTIVE_MEDICATION_PLANS.filter(plan => {
+            const start = plan.start_date || dateStr;
+            const end = plan.end_date || '9999-12-31';
+            return start <= dateStr && dateStr <= end;
+        });
+    }
+
+    // 无记录日期合成一个仅含用药方案的日节点，让长期用药连续显示
+    function getDayDataForDate(dateStr) {
+        const dayData = timelineData.find(d => d.date === dateStr);
+        if (dayData) return dayData;
+        const medication_plans = getMedicationPlansForDate(dateStr);
+        if (medication_plans.length === 0) return null;
+        return {
+            date: dateStr,
+            isEmptyDay: true,
+            data: {
+                entries: [],
+                medication_plans,
+                stats: { cal_in: 0, cal_out_exercise: 0, cal_out_bmr: 0, avg_glucose: 0, glucose_count: 0 }
+            }
+        };
+    }
+    let timelineLoaded = { minDate: null, maxDate: null };
+    // 初始化已加载范围
+    (function() {
+        if (timelineData.length > 0) {
+            const dates = timelineData.map(d => d.date).sort();
+            timelineLoaded.minDate = dates[0];
+            timelineLoaded.maxDate = dates[dates.length - 1];
+        }
+    })();
+    let _timelineLoading = null;  // 防止并发请求
+
+    async function ensureTimelineData(days) {
+        if (!days || days <= 0) days = 3650;  // "全部" 用大数
+        const cutoff = new Date(Date.now() - days * 86400000);
+        const cutoffStr = localDateString(cutoff);
+        if (timelineLoaded.minDate && timelineLoaded.minDate <= cutoffStr) {
+            return;  // 已有数据覆盖所需范围
+        }
+        // 避免重复请求相同或更小范围
+        if (_timelineLoading) await _timelineLoading;
+        // 再次检查（上一个请求可能已满足）
+        if (timelineLoaded.minDate && timelineLoaded.minDate <= cutoffStr) return;
+        _timelineLoading = (async () => {
+            try {
+                const resp = await fetch(`/api/timeline?days=${days}`);
+                if (!resp.ok) return;
+                const newData = await resp.json();
+                const existingDates = new Set(timelineData.map(d => d.date));
+                newData.forEach(d => {
+                    if (!existingDates.has(d.date)) {
+                        timelineData.push(d);
+                    }
+                });
+                const allDates = timelineData.map(d => d.date).sort();
+                if (allDates.length > 0) {
+                    timelineLoaded.minDate = allDates[0];
+                    timelineLoaded.maxDate = allDates[allDates.length - 1];
+                }
+            } catch(e) {
+                console.error('ensureTimelineData error:', e);
+            }
+        })();
+        await _timelineLoading;
+        _timelineLoading = null;
+    }
+
+    let dayModal = null;
+    let glucoseChart = null;  // 全局图表实例
+
+    // ========== 全局血糖达标标准和徽章奖励系统 ==========
+    // 使用后端传递的科学达标标准（基于《中国糖尿病防治指南（2024版）》）
+    const GLUCOSE_TARGETS = B.glucoseTargets;
+    // 体成分阈值(唯一来源:后端 stats.body_comp.thresholds;参考线方向与数值全部取自这里)
+    const BODY_COMP_THRESHOLDS = B.bodyCompThresholds;
+    const BADGE_SYSTEM = B.badgeSystem;
+    const USER_EMOJI_MAP = B.userEmojiMap;  // {user_id: emoji}
+    const USER_EMOJI_MAP_STR = Object.fromEntries(Object.entries(USER_EMOJI_MAP).map(([k,v]) => [String(k), v]));
+
+    /**
+     * HTML 转义函数，防止 XSS 攻击
+     * @param {string} str - 要转义的字符串
+     * @returns {string} 转义后的安全字符串
+     */
+    function escapeHtml(str) {
+        if (str === null || str === undefined) return '';
+        const div = document.createElement('div');
+        div.textContent = String(str);
+        return div.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+
+    /** 获取用户 emoji 标识（多用户模式下显示） */
+    function getUserBadge(item) {
+        if (!item.user_id) return '';
+        const emoji = USER_EMOJI_MAP_STR[String(item.user_id)];
+        if (!emoji) return '';
+        return `<span class="me-1" title="用户 ${item.user_id}">${emoji}</span>`;
+    }
+
+    /** 判断是否为多用户解析结果 */
+    function isMultiUser(data) {
+        if (!data || data.length < 2) return false;
+        const ids = new Set(data.map(r => r.user_id).filter(Boolean));
+        return ids.size > 1;
+    }
+
+    /** 本地日期/时间字符串，避免 toISOString() 在东八区早晨返回 UTC 前一天 */
+    function localDateString(date = new Date()) {
+        const d = new Date(date);
+        d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+        return d.toISOString().slice(0, 10);
+    }
+
+    function localDateTimeInputValue(date = new Date()) {
+        const d = new Date(date);
+        d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+        return d.toISOString().slice(0, 16);
+    }
+
+    /**
+     * 统一的 API 调用辅助函数
+     * 处理标准化的响应格式，自动处理错误和 loading 状态
+     * @param {string} url - API URL
+     * @param {object} options - fetch options
+     * @param {object} callbacks - 可选的回调函数 {onSuccess, onError, showLoading}
+     * @returns {Promise<object>} 响应数据或 null（错误时）
+     */
+    async function apiCall(url, options = {}, callbacks = {}) {
+        const { onSuccess, onError, showLoading = true } = callbacks;
+
+        try {
+            if (showLoading) toggleLoading(true);
+
+            const defaultOptions = {
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            };
+
+            const res = await fetch(url, { ...defaultOptions, ...options });
+
+            // 先读取文本，再尝试解析 JSON（避免 body stream 重复读取）
+            const text = await res.text();
+            let data;
+            try {
+                data = JSON.parse(text);
+            } catch (jsonError) {
+                throw new Error(`HTTP ${res.status}: ${text.substring(0, 200)}`);
+            }
+
+            // 检查 HTTP 状态码和响应状态
+            if (!res.ok || data.status === 'error') {
+                const errorMsg = data.message || `请求失败 (${res.status})`;
+                const error = new Error(errorMsg);
+                error.data = data;
+                error.httpStatus = res.status;
+                error.errorType = data.error_type;
+                error.details = data.details;
+
+                // 401 未登录，跳转登录页
+                if (res.status === 401) {
+                    window.location.href = '/login';
+                    return null;
+                }
+
+                // 特殊处理 429 配额错误
+                if (res.status === 429 || data.error_type === 'quota_exceeded') {
+                    const retryAfter = data.details?.retry_after || data.retry_after || 60;
+                    error.message = `AI 服务配额已用尽，请等待 ${retryAfter} 秒后重试`;
+                    error.retryAfter = retryAfter;
+                }
+
+                throw error;
+            }
+
+            // 成功回调
+            if (onSuccess) {
+                onSuccess(data.data, data.message);
+            }
+
+            return data;
+
+        } catch (error) {
+            console.error('API Error:', error);
+
+            // 错误回调或默认弹窗
+            if (onError) {
+                onError(error);
+            } else {
+                alert(error.message || '请求失败，请稍后重试');
+            }
+
+            return null;
+
+        } finally {
+            if (showLoading) toggleLoading(false);
+        }
+    }
+
+    /**
+     * 根据血糖类型获取对应的达标标准
+     * @param {string} glucoseType - 血糖类型（如 '空腹', '餐后2小时' 等）
+     * @returns {object} 达标标准 {min, max, optimal_max, name}
+     */
+    function getGlucoseTarget(glucoseType) {
+        glucoseType = glucoseType || '';
+        if (glucoseType.includes('空腹') && !glucoseType.includes('血压')) {
+            return GLUCOSE_TARGETS.fasting;
+        } else if (glucoseType.includes('餐后1小时') || glucoseType.toLowerCase().includes('餐后1h')) {
+            return GLUCOSE_TARGETS.postmeal_1h;
+        } else if (glucoseType.includes('餐后2小时') || glucoseType.toLowerCase().includes('餐后2h') || glucoseType.includes('餐后')) {
+            return GLUCOSE_TARGETS.postmeal_2h;
+        } else if (glucoseType.includes('餐前')) {
+            return GLUCOSE_TARGETS.premeal;
+        } else if (glucoseType.includes('睡前')) {
+            return GLUCOSE_TARGETS.bedtime;
+        } else if (glucoseType.includes('运动后')) {
+            return GLUCOSE_TARGETS.post_exercise;
+        }
+        return GLUCOSE_TARGETS.default;
+    }
+
+    /**
+     * 检查血糖值是否达标，返回状态和对应的徽章
+     * @param {number} value - 血糖值 (mmol/L)
+     * @param {string} glucoseType - 血糖类型
+     * @returns {object} {level, badge, isCompliant, isOptimal, target}
+     */
+    function checkGlucoseCompliance(value, glucoseType) {
+        const target = getGlucoseTarget(glucoseType);
+        const isCompliant = value >= target.min && value <= target.max;
+        const isOptimal = value >= target.min && value <= target.optimal_max;
+
+        // Google Fit 配色方案
+        let level, badge;
+        if (value < target.min) {
+            level = 'low';
+            badge = { icon: '⚠️', name: '偏低', color: '#EA4335', bgColor: '#fce8e6', textColor: '#c5221f' };  // Google Red
+        } else if (value <= target.optimal_max) {
+            level = 'optimal';
+            badge = { icon: '🌟', name: '理想', color: '#34A853', bgColor: '#e6f4ea', textColor: '#1e8e3e' };  // Google Green
+        } else if (value <= target.max) {
+            level = 'acceptable';
+            badge = { icon: '👍', name: '达标', color: '#FBBC04', bgColor: '#fef7e0', textColor: '#b06000' };  // Google Yellow
+        } else {
+            level = 'high';
+            badge = { icon: '⚠️', name: '偏高', color: '#EA4335', bgColor: '#fce8e6', textColor: '#c5221f' };  // Google Red
+        }
+
+        return { level, badge, isCompliant, isOptimal, target };
+    }
+
+    /**
+     * 根据达标率获取对应的徽章
+     * @param {number} rate - 达标率 (0-100)
+     * @returns {object} 徽章信息
+     */
+    function getBadgeForRate(rate) {
+        if (rate >= BADGE_SYSTEM.gold.min_rate) return { key: 'gold', ...BADGE_SYSTEM.gold };
+        if (rate >= BADGE_SYSTEM.silver.min_rate) return { key: 'silver', ...BADGE_SYSTEM.silver };
+        if (rate >= BADGE_SYSTEM.bronze.min_rate) return { key: 'bronze', ...BADGE_SYSTEM.bronze };
+        return { key: 'encourage', ...BADGE_SYSTEM.encourage };
+    }
+
+    // ========== 今日概览功能 ==========
+
+    // 健康数据统计标签页切换
+    function switchStatsTab(delta) {
+        const tabs = document.querySelectorAll('#statsTab .nav-link');
+        let activeIdx = 0;
+        tabs.forEach((t, i) => { if (t.classList.contains('active')) activeIdx = i; });
+        let newIdx = activeIdx + delta;
+        if (newIdx < 0) newIdx = tabs.length - 1;
+        if (newIdx >= tabs.length) newIdx = 0;
+        tabs[newIdx].click();
+    }
+
+    // 健康数据统计时间范围下拉菜单切换
+    function changeStatsRange(days) {
+        // 更新dropdown active状态
+        document.querySelectorAll('#statsRangeDropdown .dropdown-item').forEach(b => b.classList.remove('active'));
+        const daysAttr = days === null ? 'all' : days;
+        const activeItem = document.querySelector(`#statsRangeDropdown .dropdown-item[data-days="${daysAttr}"]`);
+        if (activeItem) activeItem.classList.add('active');
+        // 更新按钮文字和日历icon
+        const labelMap = {7: '近7天', 14: '近14天', 30: '近30天', 60: '近60天', 90: '近90天'};
+        document.getElementById('statsRangeLabel').textContent = days ? (labelMap[days] || `近${days}天`) : '全部';
+        const calLabel = document.getElementById('statsCalLabel');
+        if (calLabel) calLabel.textContent = days ? days + 'd' : '全部';
+        // 加载数据
+        loadHealthStats(days);
+    }
+
+    // 计算统计区间起止日期字符串（MM-DD ~ MM-DD）
+    function formatStatsDateRange(days) {
+        const now = new Date();
+        const start = new Date(now.getTime() - days * 86400000);
+        const fmt = d => (String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'));
+        return fmt(start) + ' ~ ' + fmt(now);
+    }
+    // 更新所有 .stats-date-range 元素
+    function updateStatsDateRange(days) {
+        const text = formatStatsDateRange(days);
+        document.querySelectorAll('.stats-date-range').forEach(el => el.textContent = text);
+    }
+    // 初始填充（默认7天）
+    updateStatsDateRange(7);
+
+    // 同步健康数据统计下拉菜单宽度
+    (function() {
+        const dropdown = document.getElementById('statsRangeDropdown');
+        if (!dropdown) return;
+        const btn = dropdown.querySelector('.btn');
+        const menu = dropdown.querySelector('.dropdown-menu');
+        dropdown.addEventListener('shown.bs.dropdown', function() {
+            menu.style.minWidth = btn.offsetWidth + 'px';
+        });
+    })();
+
+    // 健康数据统计数据加载
+    async function loadHealthStats(days) {
+        try {
+            const res = await fetch(`/api/health_stats?days=${days}`);
+            const d = await res.json();
+            if (d.error) return;
+
+            const label = days ? `近${days}天` : '全部';
+            const dateRange = days ? formatStatsDateRange(days) : '全部数据';
+
+            const labelShort = days ? `近${days}天均值` : '全部均值';
+
+            // 血糖
+            if (document.getElementById('glucose-stats')) {
+            document.querySelector('#glucose-stats h6').innerHTML = `<i class="bi bi-droplet-fill me-2"></i>血糖监测（${label}）`;
+            document.querySelector('#glucose-stats .badge').textContent = `达标率 ${d.glucose.compliance}%`;
+            const gCols = document.querySelectorAll('#glucose-stats .col-6');
+            function setGlucoseValue(col, val) {
+                const el = col.querySelector('.fs-4');
+                const unit = el.querySelector('small');
+                el.textContent = val || '-';
+                if (unit) el.appendChild(unit); else {
+                    const s = document.createElement('small');
+                    s.className = 'text-muted fw-normal';
+                    s.style.fontSize = '0.7rem';
+                    s.textContent = 'mmol/L';
+                    el.appendChild(s);
+                }
+            }
+            setGlucoseValue(gCols[0], d.glucose.avg_fasting);
+            setGlucoseValue(gCols[1], d.glucose.avg_post2h);
+            setGlucoseValue(gCols[2], d.glucose.max);
+            setGlucoseValue(gCols[3], d.glucose.min);
+            function formatGlucoseDetail(detail) {
+                if (!detail || !detail.timestamp) return '&nbsp;<br>&nbsp;';
+                const ts = detail.timestamp.substring(5, 16);
+                return detail.type + '<br>' + ts;
+            }
+            gCols[0].querySelector('.glucose-detail').innerHTML = labelShort + '<br>' + dateRange;
+            gCols[1].querySelector('.glucose-detail').innerHTML = labelShort + '<br>' + dateRange;
+            gCols[2].querySelector('.glucose-detail').innerHTML = formatGlucoseDetail(d.glucose.max_detail);
+            gCols[3].querySelector('.glucose-detail').innerHTML = formatGlucoseDetail(d.glucose.min_detail);
+            }
+
+            function setValueKeepUnit(card, val) {
+                if (!card) return;
+                const el = card.querySelector('.fw-bold');
+                const unit = el.querySelector('small');
+                el.textContent = val;
+                if (unit) el.appendChild(unit);
+            }
+
+            // 运动 — 更新数值（保留内嵌单位）+ 详情
+            if (document.getElementById('exercise-stats')) {
+            document.querySelector('#exercise-stats h6').innerHTML = `<i class="bi bi-activity me-2"></i>运动记录（${label}）`;
+            document.querySelector('#exercise-stats .badge').textContent = `${d.exercise.count}次运动`;
+            const eCards = document.querySelectorAll('#exercise-stats .rounded');
+            setValueKeepUnit(eCards[0], d.exercise.total_distance || '0');
+            setValueKeepUnit(eCards[1], d.exercise.total_calories || '0');
+            setValueKeepUnit(eCards[2], d.exercise.avg_heart_rate || '-');
+            setValueKeepUnit(eCards[3], d.exercise.latest_vo2max || '-');
+            const eDetails = document.querySelectorAll('#exercise-stats .exercise-detail');
+            if (eDetails[0]) eDetails[0].innerHTML = `${days ? '近'+days+'天' : ''}累计<br>${dateRange}`;
+            if (eDetails[1]) eDetails[1].innerHTML = `${days ? '近'+days+'天' : ''}累计<br>${dateRange}`;
+            if (eDetails[2]) eDetails[2].innerHTML = `${days ? '近'+days+'天' : ''}均值<br>${dateRange}`;
+            if (eDetails[3]) {
+                if (d.exercise.latest_vo2max && d.exercise.prev_vo2max) {
+                    const diff = (d.exercise.latest_vo2max - d.exercise.prev_vo2max).toFixed(1);
+                    eDetails[3].innerHTML = `${diff > 0 ? '+' : ''}${diff} 较上次`;
+                } else if (d.exercise.latest_vo2max_date) {
+                    eDetails[3].innerHTML = `测量于<br>${d.exercise.latest_vo2max_date.substring(5, 16)}`;
+                } else {
+                    eDetails[3].innerHTML = '&nbsp;<br>&nbsp;';
+                }
+            }
+            }
+
+            // 血压 — 更新数值（保留内嵌单位）+ 详情
+            if (document.getElementById('bp-stats')) {
+            document.querySelector('#bp-stats h6').innerHTML = `<i class="bi bi-heart-pulse-fill me-2"></i>血压监测（${label}）`;
+            document.querySelector('#bp-stats .badge').textContent = `${d.bp.count}次测量`;
+            const bCards = document.querySelectorAll('#bp-stats .rounded');
+            setValueKeepUnit(bCards[0], d.bp.avg_sys > 0 ? `${d.bp.avg_sys}/${d.bp.avg_dia}` : '-/-');
+            setValueKeepUnit(bCards[1], d.bp.max_sys > 0 ? `${d.bp.max_sys}/${d.bp.max_dia}` : '-/-');
+            setValueKeepUnit(bCards[2], d.bp.min_sys > 0 ? `${d.bp.min_sys}/${d.bp.min_dia}` : '-/-');
+            const bDetails = document.querySelectorAll('#bp-stats .bp-detail');
+            if (bDetails[0]) bDetails[0].innerHTML = `${labelShort}<br>${dateRange}`;
+            if (bDetails[1]) bDetails[1].innerHTML = d.bp.max_timestamp ? `发生于<br>${d.bp.max_timestamp.substring(5, 16)}` : '&nbsp;<br>&nbsp;';
+            if (bDetails[2]) bDetails[2].innerHTML = d.bp.min_timestamp ? `发生于<br>${d.bp.min_timestamp.substring(5, 16)}` : '&nbsp;<br>&nbsp;';
+            }
+
+            // 体重 — 更新数值（保留内嵌单位）+ 详情
+            if (document.getElementById('weight-stats')) {
+            document.querySelector('#weight-stats h6').innerHTML = `<i class="bi bi-speedometer me-2"></i>体重管理`;
+            const wCards = document.querySelectorAll('#weight-stats .rounded');
+            if (wCards.length >= 4) {
+                setValueKeepUnit(wCards[0], d.weight.latest || '-');
+                wCards[1].querySelector('.fw-bold').textContent = d.weight.bmi || '-';
+                const wDetails = document.querySelectorAll('#weight-stats .weight-detail');
+                if (wDetails[0]) wDetails[0].innerHTML = d.weight.latest_timestamp ? `测量于<br>${d.weight.latest_timestamp.substring(5, 16)}` : '&nbsp;<br>&nbsp;';
+                if (wDetails[1]) {
+                    let bmiDetail = (d.weight.bmi_label || '-') + '<br>';
+                    if (d.weight.target_weight && d.weight.latest) {
+                        bmiDetail += '距目标 ' + (d.weight.latest - d.weight.target_weight).toFixed(1) + 'kg';
+                    } else {
+                        bmiDetail += '&nbsp;';
+                    }
+                    wDetails[1].innerHTML = bmiDetail;
+                    if (d.weight.bmi_color) wDetails[1].style.color = d.weight.bmi_color;
+                }
+                wCards[2].querySelector('small:first-child').textContent = days ? `${days}天均值` : '全部均值';
+                setValueKeepUnit(wCards[2], d.weight.avg || '-');
+                if (wDetails[2]) wDetails[2].innerHTML = `${labelShort}<br>${dateRange}`;
+                wCards[3].querySelector('small:first-child').textContent = days ? `${days}天变化` : '总变化';
+                setValueKeepUnit(wCards[3], d.weight.change !== null ? (d.weight.change > 0 ? '+' : '') + d.weight.change : '-');
+                if (wDetails[3]) wDetails[3].innerHTML = days ? `对比${days}天前<br>&nbsp;` : `对比最早记录<br>&nbsp;`;
+            }
+            }
+        } catch(e) { console.error('loadHealthStats error:', e); }
+    }
+
+    // 概览日期导航
+    let overviewDate = B.todayStr;
+    const todayStr = B.todayStr;
+
+    async function overviewNav(delta) {
+        const d = new Date(overviewDate);
+        d.setDate(d.getDate() + delta);
+        const newDate = localDateString(d);
+        if (newDate > todayStr) return;
+
+        try {
+            await refreshOverview(newDate);
+        } catch(e) {
+            console.error(e);
+            showToast('概览刷新失败，请稍后重试', 'danger');
+        }
+    }
+
+    async function refreshOverview(dateStr = overviewDate) {
+        const res = await fetch(`/api/day_overview?date=${dateStr}`);
+        const data = await res.json();
+        if (!res.ok || data.error || data.status === 'error') {
+            throw new Error(data.error || data.message || '概览刷新失败');
+        }
+        overviewDate = data.date || dateStr;
+        renderOverview(data);
+        return data;
+    }
+
+    // === 概览卡片多条记录切换 ===
+    window._ovData = { exercise: [], bp: [], weight: [] };
+    window._ovIdx = { exercise: 0, bp: 0, weight: 0 };
+
+    function _rebuildCardHeader(cardEl, type, icon, label, color) {
+        const items = window._ovData[type];
+        const headerEl = cardEl.querySelector('.d-flex.align-items-center');
+        let navHtml = '';
+        if (items.length > 1) {
+            navHtml = `<span class="ms-auto overview-card-nav" id="nav-${type}">
+                <button onclick="overviewCardNav('${type}',-1)" title="上一条">&lsaquo;</button>
+                <span class="nav-idx">1/${items.length}</span>
+                <button onclick="overviewCardNav('${type}',1)" title="下一条">&rsaquo;</button></span>`;
+        }
+        headerEl.innerHTML = `<span style="font-size:1rem;">${icon}</span><span class="fw-bold" style="color:${color};">${label}</span>${navHtml}`;
+        // 确保内容容器存在
+        if (!cardEl.querySelector(`#overview-${type}-content`)) {
+            const div = document.createElement('div');
+            div.id = `overview-${type}-content`;
+            cardEl.appendChild(div);
+        }
+    }
+
+    function _renderExerciseItem() {
+        const el = document.getElementById('overview-exercise-content');
+        if (!el) return;
+        const items = window._ovData.exercise;
+        const idx = window._ovIdx.exercise;
+        if (!items.length) { el.innerHTML = '<div class="text-muted small">暂无运动记录</div>'; return; }
+        const e = items[idx];
+        const isStrength = !!e.total_sets;
+        const rawName = (e.notes && e.notes !== e.type) ? ` · ${e.notes}` : '';
+        let h = `<div style="font-size:0.85rem;" class="text-muted">
+            <div class="fw-semibold text-dark mb-1">${e.type}${rawName}${e.total_sets ? ` · ${e.total_sets}组` : ''}${e.total_reps ? ` / ${e.total_reps}次` : ''}</div>`;
+        if (e.distance) h += `<div>📏 ${e.distance}km · ${e.duration||'--'}</div>`;
+        else h += `<div>⏱️ ${e.duration||'--'}</div>`;
+        if (e.pace) h += `<div>⏱️ 平均配速 ${e.pace}${String(e.pace).includes('/km') ? '' : '/km'}</div>`;
+        if (e.max_pace) h += `<div>⏱️ 最大配速 ${e.max_pace}${String(e.max_pace).includes('/km') ? '' : '/km'}</div>`;
+        if (e.heart_rate) h += `<div>💓 平均心率 ${e.heart_rate}bpm</div>`;
+        if (e.max_heart_rate) h += `<div>💓 最大心率 ${e.max_heart_rate}bpm</div>`;
+        if (e.training_load) h += `<div>🏋️ 训练负荷 ${e.training_load}</div>`;
+        if (e.te_aerobic !== null && e.te_aerobic !== undefined) h += `<div>🫀 训练效果 有氧 ${e.te_aerobic} / 无氧 ${e.te_anaerobic ?? 0}</div>`;
+        if (e.intensity_minutes) h += `<div>⚡ 中高强度 ${e.intensity_minutes}min</div>`;
+        if (e.elevation_gain) h += `<div>⛰️ 爬升 ${Math.round(e.elevation_gain)}m</div>`;
+        if (e.cadence) h += `<div>👟 步频 ${e.cadence}spm</div>`;
+        if (e.steps && !isStrength) h += `<div>👣 ${e.steps}步</div>`;
+        if (e.calories) h += `<div>🔥 ${e.calories}kcal</div>`;
+        if (e.vo2max) h += `<div>🫁 VO₂max ${e.vo2max}</div>`;
+        h += '</div>';
+        el.innerHTML = h;
+    }
+
+    function _renderBpItem() {
+        const el = document.getElementById('overview-bp-content');
+        if (!el) return;
+        const items = window._ovData.bp;
+        const idx = window._ovIdx.bp;
+        if (!items.length) { el.innerHTML = '<div class="text-muted small">暂无血压记录</div>'; return; }
+        const b = items[idx];
+        let h = `<div style="font-size:0.85rem;" class="text-muted">
+            <div class="fw-semibold text-dark mb-1">${b.systolic}/${b.diastolic} mmHg</div>
+            ${b.heart_rate ? `<div>💓 静息心率 ${b.heart_rate}bpm</div>` : ''}
+            ${b.spo2 ? `<div>🫁 血氧 ${b.spo2}%</div>` : ''}
+            <div>🕐 测量时间 ${b.time}</div>`;
+        if (items.length >= 2) {
+            const avgSys = Math.round(items.reduce((s, v) => s + v.systolic, 0) / items.length);
+            const avgDia = Math.round(items.reduce((s, v) => s + v.diastolic, 0) / items.length);
+            h += `<div style="margin-top:6px; padding-top:5px; border-top:1px dashed #e0e0e0; color:#888;">📊 当日均值 ${avgSys}/${avgDia} mmHg</div>`;
+        }
+        h += '</div>';
+        el.innerHTML = h;
+    }
+
+    function _renderWeightItem() {
+        const el = document.getElementById('overview-weight-content');
+        if (!el) return;
+        const items = window._ovData.weight;
+        const idx = window._ovIdx.weight;
+        if (!items.length) { el.innerHTML = '<div class="text-muted small">暂无体重记录</div>'; return; }
+        const w = items[idx];
+        let h = `<div style="font-size:0.85rem;" class="text-muted">
+            <div class="fw-semibold text-dark mb-1">${w.weight.toFixed ? w.weight.toFixed(1) : w.weight} kg</div>`;
+        if (w.bmi) h += `<div>📊 BMI ${w.bmi.toFixed ? w.bmi.toFixed(1) : w.bmi} <span style="color:${w.bmi_category.color};">${w.bmi_category.label}</span></div>`;
+        h += `<div>🕐 ${w.time}</div></div>`;
+        el.innerHTML = h;
+    }
+
+    function overviewCardNav(type, delta) {
+        const items = window._ovData[type];
+        if (!items || items.length <= 1) return;
+        let idx = window._ovIdx[type] + delta;
+        if (idx < 0) idx = items.length - 1;
+        if (idx >= items.length) idx = 0;
+        window._ovIdx[type] = idx;
+        // 更新导航指示器
+        const navEl = document.getElementById(`nav-${type}`);
+        if (navEl) navEl.querySelector('.nav-idx').textContent = `${idx + 1}/${items.length}`;
+        // 重新渲染内容
+        if (type === 'exercise') _renderExerciseItem();
+        else if (type === 'bp') _renderBpItem();
+        else if (type === 'weight') _renderWeightItem();
+    }
+
+    function renderOverview(data) {
+        const isToday = data.date === todayStr;
+        document.getElementById('overviewTitle').textContent = isToday ? '今日概览' : '旧日重温';
+        document.getElementById('overviewNext').style.display = isToday ? 'none' : 'flex';
+
+        // 更新迷你日历
+        const parts = data.date.split('-');
+        document.getElementById('miniCalMonth').textContent = parseInt(parts[1]) + '月';
+        document.getElementById('miniCalDay').textContent = parseInt(parts[2]);
+
+        // 血糖时间轴
+        const slotsHtml = data.overview.map(s => {
+            let valueHtml = '<span class="text-muted">--</span>';
+            if (s.value) {
+                let cls = 'text-muted';
+                if (s.status === 'predicted') cls = 'text-info';
+                else if (s.compliance === 'optimal') cls = 'text-success';
+                else if (s.compliance === 'high' || s.compliance === 'low') cls = 'text-danger';
+                else cls = 'text-warning';
+                const badge = s.status === 'predicted' ? ' <small class="text-info" title="AI预测值">✦</small>'
+                            : s.cgm ? ' <small style="color:#26C6DA;" title="CGM动态数据">◉</small>'
+                            : s.status === 'measured' ? ' <small class="text-success" title="实测值">✓</small>' : '';
+                valueHtml = `<span class="${cls}">${s.value.toFixed(1)}</span>${badge}`;
+            }
+            return `<div class="text-center glucose-slot slot-${s.status}" data-slot-key="${s.key}" style="cursor:pointer;">
+                <div class="mb-1 slot-icon">${s.icon}</div>
+                <div class="fw-bold slot-value">${valueHtml}</div>
+                <div class="text-muted slot-name">${s.name}</div>
+                <div class="text-muted slot-time">${s.time}</div>
+            </div>`;
+        }).join('');
+
+        const timelineEl = document.querySelector('.today-glucose-timeline .glucose-slots-row');
+        if (timelineEl) timelineEl.innerHTML = slotsHtml;
+
+        // 进度条：每个slot对应一个等宽分段（时间感知）
+        const total = data.completion.total;
+        const pending = total - data.completion.measured - data.completion.predicted;
+        const now = new Date();
+        const nowMinutes = now.getHours() * 60 + now.getMinutes();
+        let missedCount = 0;
+        let barHtml = data.overview.map(s => {
+            let cls = '';
+            if (s.status === 'measured') cls = 'seg-measured';
+            else if (s.status === 'predicted') cls = 'seg-predicted';
+            else {
+                const [h, m] = s.time.split(':').map(Number);
+                if (!isToday || nowMinutes >= h * 60 + m) {
+                    cls = 'seg-missed';
+                    missedCount++;
+                }
+            }
+            return `<div class="progress-segment ${cls}"></div>`;
+        }).join('');
+        const progressEl = document.querySelector('.today-progress');
+        if (progressEl) {
+            progressEl.innerHTML = barHtml;
+            progressEl.classList.toggle('past-day', !isToday);
+
+            // 进度条下方文字 + 状态胶囊
+            const futurePending = pending - missedCount;
+            let footLeft = `<div class="overview-status"><div class="status-inner"><div class="status-label">实测</div><div class="status-count"><span class="count-measured">${data.completion.measured}</span></div></div>`;
+            if (data.completion.predicted > 0) footLeft += `<span class="status-badge" style="background:rgba(6,182,212,0.12);color:#0891B2;">✦ 预测 ${data.completion.predicted}</span>`;
+            if (missedCount > 0) footLeft += `<span class="status-badge" style="background:rgba(239,83,80,0.10);color:#EF5350;">未测 ${missedCount}</span>`;
+            if (futurePending > 0) footLeft += `<span class="status-badge" style="background:rgba(0,0,0,0.06);color:#6c757d;">待测 ${futurePending}</span>`;
+            footLeft += `</div>`;
+
+            let footRight = `<div class="overview-status"><div class="status-inner"><div class="status-label">已测量</div><div class="status-count"><span class="count-measured">${data.completion.measured}</span><span class="count-sep">/</span><span>${total}</span></div></div>`;
+            if (data.compliance_badge && data.completion.measured > 0) {
+                footRight += `<span class="status-badge" style="background:${data.compliance_badge.bg_color};color:${data.compliance_badge.text_color};">血糖达标 ${data.compliance_badge.icon} ${data.compliance}%</span>`;
+            }
+            footRight += `</div>`;
+
+            const footEl = progressEl.nextElementSibling;
+            if (footEl) footEl.innerHTML = footLeft + footRight;
+        }
+
+        // 存储数组数据到全局状态，用于箭头切换
+        window._ovData = {
+            exercise: data.exercises || (data.exercise ? [data.exercise] : []),
+            bp: data.bps || (data.bp ? [data.bp] : []),
+            weight: data.weights || (data.weight ? [data.weight] : [])
+        };
+        window._ovIdx = { exercise: 0, bp: 0, weight: 0 };
+
+        // 运动
+        const exCard = document.querySelector('#todayOverviewCard .col-md-3:nth-child(1) .p-2');
+        _rebuildCardHeader(exCard, 'exercise', '🏃', '运动', 'var(--md-primary)');
+        _renderExerciseItem();
+
+        // 血压
+        const bpCard = document.querySelector('#todayOverviewCard .col-md-3:nth-child(2) .p-2');
+        _rebuildCardHeader(bpCard, 'bp', '❤️', '血压', 'var(--md-secondary)');
+        _renderBpItem();
+
+        // 体重
+        const wtCard = document.querySelector('#todayOverviewCard .col-md-3:nth-child(3) .p-2');
+        _rebuildCardHeader(wtCard, 'weight', '⚖️', '体重', '#00897B');
+        _renderWeightItem();
+
+        // 用药
+        const medEl = document.querySelector('#todayOverviewCard .col-md-3:nth-child(4) .p-2');
+        if (data.med_status.plans && data.med_status.plans.length > 0) {
+            const weekdayMap = {Monday:'周一',Tuesday:'周二',Wednesday:'周三',Thursday:'周四',Friday:'周五',Saturday:'周六',Sunday:'周日'};
+            const longTermMeds = data.med_status.plans.filter(m => (m.category || 'long_term') !== 'temporary');
+            const tempPlanMeds = data.med_status.plans.filter(m => (m.category || 'long_term') === 'temporary');
+            const suppMeds = data.med_status.plans.filter(m => (m.category || 'long_term') === 'supplement');
+            const nonSuppMeds = data.med_status.plans.filter(m => (m.category || 'long_term') !== 'supplement');
+            const tempMeds = data.med_status.temp_medications || [];
+
+            let medHtml = `<div class="d-flex align-items-center gap-1 mb-2"><span style="font-size:1rem;">💊</span><span class="fw-bold" style="color:var(--md-info);">用药</span></div>
+                <div id="render-med-wrap" style="font-size:0.7rem;" class="text-muted">
+                <div class="med-tab-bar mb-2">
+                    <button class="med-tab-pill active" onclick="switchOverviewMedTab(this, 'render-med-list')" style="font-size:0.7rem;padding:3px 8px;">💊 药物 (${nonSuppMeds.length})</button>
+                    <button class="med-tab-pill" onclick="switchOverviewMedTab(this, 'render-supp-list')" style="font-size:0.7rem;padding:3px 8px;">🧬 补剂 (${suppMeds.length})</button>
+                </div>
+                <div class="med-list-collapse" id="render-med-inner">`;
+
+            // 长期用药（按 med_type 分组）
+            if (longTermMeds.length > 0) {
+                const groups = {};
+                longTermMeds.forEach(med => {
+                    const t = med.med_type || '';
+                    if (!groups[t]) groups[t] = [];
+                    groups[t].push(med);
+                });
+                let first = true;
+                Object.keys(groups).sort().forEach(groupType => {
+                    medHtml += `<div style="margin:${first ? '0' : '6px'} 0 4px;"><span style="font-size:0.65rem; color:#1565c0; background:#e3f2fd; padding:1px 6px; border-radius:3px;">${groupType || '未分类'}</span></div>`;
+                    first = false;
+                    groups[groupType].forEach(med => {
+                        const taken = data.med_status.taken_details[med.id] || 0;
+                        const icon = taken >= med.times ? '<span style="color:#4CAF50; flex-shrink:0;">✓</span>' : '<span style="color:#ccc; flex-shrink:0;">○</span>';
+                        const dosageStr = med.dosage ? ` <span class="text-muted">${med.dosage}</span>` : '';
+                        let badge = '';
+                        const freq = med.frequency || 'daily';
+                        const fd = med.frequency_detail || '';
+                        if (freq === 'weekly') badge = `<span style="font-size:0.65rem; background:#e3f2fd; color:#1976d2; padding:0 4px; border-radius:3px; margin-left:3px;">每周${weekdayMap[fd] || fd}</span>`;
+                        else if (freq === 'biweekly') badge = `<span style="font-size:0.65rem; background:#f3e5f5; color:#7b1fa2; padding:0 4px; border-radius:3px; margin-left:3px;">每两周·${weekdayMap[fd] || fd}</span>`;
+                        else if (freq === 'monthly') badge = `<span style="font-size:0.65rem; background:#fff3e0; color:#e65100; padding:0 4px; border-radius:3px; margin-left:3px;">每月${fd}号</span>`;
+                        const timingStr = med.timing ? `<div style="font-size:0.7rem; color:#999;">${med.timing}</div>` : '';
+                        medHtml += `<div class="d-flex align-items-start gap-1 mb-1">${icon}<div style="line-height:1.3;"><span class="text-dark">${med.name}</span>${dosageStr}${badge}${timingStr}</div></div>`;
+                    });
+                });
+            }
+
+            // 临时用药
+            if (tempPlanMeds.length > 0 || tempMeds.length > 0) {
+                medHtml += `<div style="margin:6px 0 4px;"><span style="font-size:0.65rem; color:#e65100; background:#fff3e0; padding:1px 6px; border-radius:3px;">临时用药</span></div>`;
+                tempPlanMeds.forEach(med => {
+                    const taken = data.med_status.taken_details[med.id] || 0;
+                    const icon = taken >= med.times ? '<span style="color:#4CAF50; flex-shrink:0;">✓</span>' : '<span style="color:#ccc; flex-shrink:0;">○</span>';
+                    const dosageStr = med.dosage ? ` <span class="text-muted">${med.dosage}</span>` : '';
+                    const timingStr = med.timing ? `<div style="font-size:0.7rem; color:#999;">${med.timing}</div>` : '';
+                    medHtml += `<div class="d-flex align-items-start gap-1 mb-1">${icon}<div style="line-height:1.3;"><span class="text-dark">${med.name}</span>${dosageStr}${timingStr}</div></div>`;
+                });
+                tempMeds.forEach(med => {
+                    const timeStr = med.time ? `<span class="text-muted" style="font-size:0.7rem; margin-left:3px;">${med.time}</span>` : '';
+                    const notesStr = med.notes ? `<div style="font-size:0.7rem; color:#999;">${med.notes}</div>` : '';
+                    medHtml += `<div class="d-flex align-items-start gap-1 mb-1"><span style="color:#ff9800; flex-shrink:0;">·</span><div style="line-height:1.3;"><span class="text-dark">${med.name}</span>${timeStr}${notesStr}</div></div>`;
+                });
+            }
+
+            medHtml += `<div class="med-list-fade" id="render-med-fade"></div></div>`;
+            medHtml += `<button class="med-list-expand-btn" onclick="toggleMedListCollapse('render-med-inner', 'render-med-fade')"><span class="expand-text">展开更多 ▾</span><span class="collapse-text">收起 ▴</span></button>`;
+            medHtml += `</div>`;
+            medEl.innerHTML = medHtml;
+            setTimeout(() => checkMedListOverflow('render-med-wrap'), 0);
+        } else {
+            medEl.innerHTML = `<div class="d-flex align-items-center gap-1 mb-2"><span style="font-size:1rem;">💊</span><span class="fw-bold" style="color:var(--md-info);">用药</span></div><div class="text-muted small">无用药计划</div>`;
+        }
+    }
+
+    function weekdayLabel(dateStr) {
+        const days = ['周日','周一','周二','周三','周四','周五','周六'];
+        return days[new Date(dateStr).getDay()];
+    }
+
+    /**
+     * 点击时间点槽位，滚动到输入区域并预填类型
+     */
+    // 长按触发录入，短按提示
+    const slotTypeMap = {
+        'fasting': '空腹', 'post_exercise': '运动后', 'post_breakfast': '早餐后2小时',
+        'post_lunch': '午餐后2小时', 'pre_dinner': '晚饭前', 'post_dinner': '晚餐后2小时', 'bedtime': '睡前'
+    };
+    // 各槽位的预测值/已测值，用于输入框默认值
+    const slotPredictions = B.slotPredictions;
+    const slotIconMap = {
+        'fasting': '🌅', 'post_exercise': '🏃', 'post_breakfast': '☕',
+        'post_lunch': '🌞', 'pre_dinner': '🍽️', 'post_dinner': '🌙', 'bedtime': '😴'
+    };
+
+    function initSlotLongPress() {
+        const container = document.querySelector('.glucose-slots-row');
+        if (!container) return;
+
+        let activeKey = null;
+        let activeTimer = null;
+        let activeTriggered = false;
+
+        const clearActive = () => {
+            if (activeTimer) clearTimeout(activeTimer);
+            activeTimer = null;
+            activeKey = null;
+            activeTriggered = false;
+        };
+
+        const startSlot = (key) => {
+            clearActive();
+            activeKey = key;
+            activeTriggered = false;
+            activeTimer = setTimeout(() => {
+                activeTriggered = true;
+                if (navigator.vibrate) navigator.vibrate(30);
+                openGlucoseInput(key);
+            }, 500);
+        };
+
+        const endSlot = (key) => {
+            if (activeKey !== key) return;
+            clearTimeout(activeTimer);
+            activeTimer = null;
+            const wasTriggered = activeTriggered;
+            activeKey = null;
+            activeTriggered = false;
+            if (!wasTriggered) {
+                const name = slotTypeMap[key] || '';
+                showToast(`长按可录入${name}血糖`, 'info');
+            }
+        };
+
+        const cancelSlot = (key) => {
+            if (activeKey === key) clearActive();
+        };
+
+        const slotFromEvent = (e) => e.target.closest('.glucose-slot');
+
+        container.addEventListener('mousedown', (e) => {
+            const slot = slotFromEvent(e);
+            if (!slot) return;
+            startSlot(slot.dataset.slotKey);
+        });
+        container.addEventListener('mouseup', (e) => {
+            const slot = slotFromEvent(e);
+            if (!slot) return;
+            endSlot(slot.dataset.slotKey);
+        });
+        container.addEventListener('touchstart', (e) => {
+            const slot = slotFromEvent(e);
+            if (!slot) return;
+            startSlot(slot.dataset.slotKey);
+        }, { passive: true });
+        container.addEventListener('touchmove', (e) => {
+            const slot = slotFromEvent(e);
+            if (!slot) return;
+            cancelSlot(slot.dataset.slotKey);
+        });
+        container.addEventListener('touchend', (e) => {
+            const slot = slotFromEvent(e);
+            if (!slot) return;
+            endSlot(slot.dataset.slotKey);
+        });
+        container.addEventListener('touchcancel', (e) => {
+            const slot = slotFromEvent(e);
+            if (!slot) return;
+            cancelSlot(slot.dataset.slotKey);
+        });
+        container.addEventListener('contextmenu', (e) => {
+            if (slotFromEvent(e)) e.preventDefault();
+        });
+
+        // 鼠标在容器外松开时，清理当前计时器（不显示短按提示）
+        document.addEventListener('mouseup', () => {
+            if (activeKey && !activeTriggered) clearActive();
+        });
+    }
+
+    function openGlucoseInput(slotKey) {
+        const typeName = slotTypeMap[slotKey] || '';
+        const icon = slotIconMap[slotKey] || '🩸';
+        const defaultValue = slotPredictions[slotKey] || 6.5;
+
+        let modal = document.getElementById('glucoseInputModal');
+        if (modal) modal.remove();
+
+        const dateHint = overviewDate === todayStr ? '' : ` (${overviewDate.substring(5)})`;
+
+        const modalHtml = `
+            <div class="modal fade" id="glucoseInputModal" tabindex="-1">
+                <div class="modal-dialog modal-sm modal-dialog-centered">
+                    <div class="modal-content">
+                        <div class="modal-header py-2">
+                            <h6 class="modal-title mb-0">${icon} 录入${typeName}血糖${dateHint}</h6>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                        </div>
+                        <div class="modal-body py-3">
+                            <div class="input-group input-group-lg">
+                                <input type="number" class="form-control text-center fw-bold" id="glucoseInputValue"
+                                       value="${defaultValue}" step="0.1" min="1" max="35" autofocus
+                                       style="font-size: 1.5rem;">
+                                <span class="input-group-text">mmol/L</span>
+                            </div>
+                            <small class="text-muted d-block mt-2 text-center">输入${typeName}血糖值后点击保存</small>
+                        </div>
+                        <div class="modal-footer py-2">
+                            <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">取消</button>
+                            <button type="button" class="btn btn-primary btn-sm" id="glucoseInputSaveBtn" onclick="saveSlotGlucose('${slotKey}')">
+                                <i class="bi bi-check-lg me-1"></i>保存
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>`;
+
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+        modal = document.getElementById('glucoseInputModal');
+        const bsModal = new bootstrap.Modal(modal);
+        bsModal.show();
+
+        modal.addEventListener('shown.bs.modal', () => {
+            const inp = document.getElementById('glucoseInputValue');
+            inp.focus();
+            inp.select();
+        }, { once: true });
+
+        document.getElementById('glucoseInputValue').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') saveSlotGlucose(slotKey);
+        });
+
+        modal.addEventListener('hidden.bs.modal', () => modal.remove(), { once: true });
+    }
+
+    // 保存血糖槽位数据
+    async function saveSlotGlucose(slotKey) {
+        const typeMap = {
+            'fasting': '空腹', 'post_exercise': '运动后', 'post_breakfast': '早餐后2小时',
+            'post_lunch': '午餐后2小时', 'pre_dinner': '晚饭前', 'post_dinner': '晚餐后2小时', 'bedtime': '睡前'
+        };
+        // 每个槽位的目标时间（与后端 today_schedule 一致）
+        const slotTimeMap = {
+            'fasting': '07:15', 'post_exercise': '08:45', 'post_breakfast': '11:00',
+            'post_lunch': '14:30', 'pre_dinner': '17:30', 'post_dinner': '20:00', 'bedtime': '22:00'
+        };
+        const input = document.getElementById('glucoseInputValue');
+        const value = parseFloat(input.value);
+        if (!value || value < 1 || value > 35) {
+            input.classList.add('is-invalid');
+            return;
+        }
+
+        const btn = document.getElementById('glucoseInputSaveBtn');
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+
+        try {
+            // 使用当前概览日期 + 槽位的目标时间，避免因录入时间造成的匹配错误
+            const dateStr = overviewDate;
+            const targetTime = slotTimeMap[slotKey] || (String(new Date().getHours()).padStart(2, '0') + ':' + String(new Date().getMinutes()).padStart(2, '0'));
+            const timestamp = dateStr + ' ' + targetTime + ':00';
+
+            const res = await fetch('/add', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    value: value,
+                    unit: 'mmol/L',
+                    type: typeMap[slotKey] || '',
+                    timestamp: timestamp,
+                    notes: '',
+                    upsert: true,
+                    user_id: currentUserId
+                })
+            });
+
+            if (res.ok) {
+                const modal = bootstrap.Modal.getInstance(document.getElementById('glucoseInputModal'));
+                modal.hide();
+                showToast(`${typeMap[slotKey]} ${value.toFixed(1)} mmol/L 已保存`, 'success');
+                slotPredictions[slotKey] = value;
+                try {
+                    await refreshOverview(overviewDate);
+                } catch (e) {
+                    console.error(e);
+                    showToast('已保存，但概览刷新失败，请手动刷新页面', 'warning');
+                }
+            } else {
+                let msg = '保存失败，请重试';
+                try {
+                    const data = await res.json();
+                    msg = data.message || msg;
+                } catch (_) {}
+                showToast(msg, 'danger');
+                btn.disabled = false;
+                btn.innerHTML = '<i class="bi bi-check-lg me-1"></i>保存';
+            }
+        } catch (e) {
+            showToast('保存失败: ' + e, 'danger');
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-check-lg me-1"></i>保存';
+        }
+    }
+
+    /**
+     * 触发AI预测剩余时间点血糖
+     */
+    async function triggerRemainingPredictions() {
+        const btn = document.getElementById('btnAiPredict');
+        const originalHTML = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<i class="bi bi-hourglass-split"></i> 预测中...';
+
+        try {
+            const response = await fetch('/trigger_prediction', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ type: 'remaining', date: overviewDate })
+            });
+
+            const data = await response.json();
+
+            if (response.status === 429) {
+                // API 配额已用尽
+                showPredictionQuotaModal((data.details && data.details.retry_after) || data.retry_after || 60);
+                return;
+            }
+
+            if (data.status === 'success' && (data.results || (data.data && data.data.results))) {
+                const results = data.results || data.data.results;
+                const successCount = results.filter(r => r.status === 'success').length;
+                if (successCount > 0) {
+                    showToast(`成功生成 ${successCount} 个时间点的预测`, 'success');
+                    // 刷新页面显示新预测
+                    setTimeout(() => window.location.reload(), 1000);
+                } else {
+                    const skipped = results.find(r => r.status === 'skipped');
+                    const reason = skipped && skipped.reason ? skipped.reason : '';
+                    if (reason.includes('无实测')) {
+                        showToast('请先录入至少一条实测血糖值，AI 才能预测其余时间点', 'warning');
+                    } else if (reason.includes('已有实测')) {
+                        showToast('所有时间点已有实测数据，无需预测', 'info');
+                    } else if (reason.includes('已有AI预测') || reason.includes('已有预测')) {
+                        showToast('这些时间点已有AI预测结果，无需重复生成', 'info');
+                    } else {
+                        showToast(reason || '预测未返回有效结果，请稍后重试', 'warning');
+                    }
+                }
+            } else {
+                showToast(data.message || '预测失败', 'warning');
+            }
+        } catch (error) {
+            console.error('Prediction error:', error);
+            showToast('预测请求失败，请检查网络', 'danger');
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = originalHTML;
+        }
+    }
+
+    // 同步血糖趋势下拉菜单宽度与按钮一致
+    (function() {
+        const dropdown = document.getElementById('trendRangeDropdown');
+        if (!dropdown) return;
+        const btn = dropdown.querySelector('.btn');
+        const menu = dropdown.querySelector('.dropdown-menu');
+        dropdown.addEventListener('shown.bs.dropdown', function() {
+            menu.style.minWidth = btn.offsetWidth + 'px';
+        });
+    })();
+
+    // 血糖趋势时间范围下拉菜单切换
+    function changeTrendRange(range) {
+        // 更新dropdown状态
+        document.querySelectorAll('#trendRangeDropdown .dropdown-item').forEach(b => b.classList.remove('active'));
+        const activeItem = document.querySelector(`#trendRangeDropdown .dropdown-item[data-days="${range}"]`);
+        if (activeItem) activeItem.classList.add('active');
+        // 更新按钮label
+        const labelMap = {'1': '近1天', '3': '近3天', '7': '近7天', '14': '近14天', '30': '近30天', '60': '近60天', '90': '近90天', 'all': '全部'};
+        document.getElementById('trendRangeLabel').textContent = labelMap[range] || '';
+        // 更新日历icon label
+        const calLabel = document.getElementById('trendCalLabel');
+        if (calLabel) calLabel.textContent = range === 'all' ? '全部' : range + 'd';
+        // 同步隐藏select
+        const selector = document.getElementById('timeRangeSelector');
+        if (selector) selector.value = range;
+        // 触发图表更新（重置offset）
+        trendOffset = 0;
+        document.getElementById('trendNavNext').style.display = 'none';
+        changeTimeRange(range);
+    }
+
+    // 血压时间范围切换
+    let currentBpDays = 30;
+    async function changeBPRange(days) {
+        currentBpDays = days;
+        bpOffset = 0;
+        document.getElementById('bpNavNext').style.display = 'none';
+        const labelMap = {7: '近7天', 14: '近14天', 30: '近30天', 60: '近60天', 90: '近90天'};
+        document.querySelectorAll('#bpRangeDropdown .dropdown-item').forEach(b => b.classList.remove('active'));
+        const daysAttr = days === null ? 'all' : days;
+        const activeItem = document.querySelector(`#bpRangeDropdown .dropdown-item[data-days="${daysAttr}"]`);
+        if (activeItem) activeItem.classList.add('active');
+        document.getElementById('bpRangeLabel').textContent = days ? (labelMap[days] || `近${days}天`) : '全部';
+        const calLabel = document.getElementById('bpCalLabel');
+        if (calLabel) calLabel.textContent = days ? days + 'd' : '全部';
+        if (days === null || days > 90) {
+            await ensureTimelineData(days);
+        }
+        initBloodPressureChart(days);
+    }
+
+    // 体重时间范围切换
+    let currentWeightDays = 30;
+    async function changeWeightRange(days) {
+        currentWeightDays = days;
+        weightOffset = 0;
+        document.getElementById('weightNavNext').style.display = 'none';
+        const labelMap = {7: '近7天', 14: '近14天', 30: '近30天', 60: '近60天', 90: '近90天'};
+        document.querySelectorAll('#weightRangeDropdown .dropdown-item').forEach(b => b.classList.remove('active'));
+        const daysAttr = days === null ? 'all' : days;
+        const activeItem = document.querySelector(`#weightRangeDropdown .dropdown-item[data-days="${daysAttr}"]`);
+        if (activeItem) activeItem.classList.add('active');
+        document.getElementById('weightRangeLabel').textContent = days ? (labelMap[days] || `近${days}天`) : '全部';
+        const calLabel = document.getElementById('weightCalLabel');
+        if (calLabel) calLabel.textContent = days ? days + 'd' : '全部';
+        if (days === null || days > 90) {
+            await ensureTimelineData(days);
+        }
+        initWeightChart(days);
+    }
+
+    // 血压趋势日导航
+    let bpOffset = 0;
+    async function bpNav(delta) {
+        const days = currentBpDays;
+        const step = 1;
+        bpOffset = Math.max(0, bpOffset - delta * step);
+        document.getElementById('bpNavNext').style.display = bpOffset > 0 ? 'flex' : 'none';
+        const totalDaysNeeded = (days || 90) + bpOffset;
+        if (totalDaysNeeded > 90) {
+            await ensureTimelineData(totalDaysNeeded);
+        }
+        initBloodPressureChart(days, bpOffset);
+    }
+
+    // 体重趋势日导航
+    let weightOffset = 0;
+    async function weightNav(delta) {
+        const days = currentWeightDays;
+        const step = 1;
+        weightOffset = Math.max(0, weightOffset - delta * step);
+        document.getElementById('weightNavNext').style.display = weightOffset > 0 ? 'flex' : 'none';
+        const totalDaysNeeded = (days || 90) + weightOffset;
+        if (totalDaysNeeded > 90) {
+            await ensureTimelineData(totalDaysNeeded);
+        }
+        initWeightChart(days, weightOffset);
+    }
+
+    // ========== 体重 / 体成分趋势卡 ==========
+    // 一张卡、多个指标:weight_fat 为双轴双线(体重 kg + 体脂率 %),其余为单指标。
+    // 阈值/参考线数值只来自 BODY_COMP_THRESHOLDS,本文件不写死任何数字。
+    let weightChartMetric = 'weight_fat';
+
+    // 指标元数据(标题/单位/颜色)。body_fat_rate 不单独占页签:它既是默认页签
+    // 「体重+体脂率」的右轴,也是「只有体脂、没有体重」时退化成的单指标。
+    // 其余 3 项是页签,最后 4 项收在「更多」下拉里。
+    const BODY_COMP_METRICS = {
+        body_fat_rate: { label: '体脂率', unit: '%', color: '#FF7043' },
+        visceral_fat: { label: '内脏脂肪', unit: '', color: '#F4511E' },
+        muscle_mass: { label: '肌肉量', unit: 'kg', color: '#1A73E8' },
+        body_fat_mass: { label: '体脂量', unit: 'kg', color: '#FB8C00' },
+        skeletal_muscle_mass: { label: '骨骼肌量', unit: 'kg', color: '#5E35B1' },
+        protein_mass: { label: '蛋白量', unit: 'kg', color: '#00897B' },
+        basal_metabolism: { label: '基础代谢', unit: 'kcal', color: '#6D4C41' }
+    };
+
+    // 页签切换:更新选中态(含「更多」下拉里的勾与按钮文案),再按当前范围重画
+    function selectWeightMetric(metric) {
+        if (metric !== 'weight_fat' && !BODY_COMP_METRICS[metric]) return;
+        weightChartMetric = metric;
+        document.querySelectorAll('[data-weight-metric]').forEach(el => {
+            const on = el.getAttribute('data-weight-metric') === metric;
+            if (el.classList.contains('cal-seg-btn')) {
+                el.classList.toggle('cal-seg-active', on);
+            } else {
+                el.classList.toggle('active', on);
+            }
+            if (el.hasAttribute('aria-pressed')) {
+                el.setAttribute('aria-pressed', on ? 'true' : 'false');
+            }
+        });
+        const moreBtn = document.getElementById('weightMoreBtn');
+        if (moreBtn) {
+            const moreMetrics = ['body_fat_mass', 'skeletal_muscle_mass', 'protein_mass', 'basal_metabolism'];
+            const inMore = moreMetrics.includes(metric);
+            moreBtn.classList.toggle('cal-seg-active', inMore);
+            moreBtn.textContent = inMore ? BODY_COMP_METRICS[metric].label + ' ⌄' : '更多 ⌄';
+        }
+        initWeightChart(currentWeightDays, weightOffset);
+    }
+
+    // 体重面板「展开更多数据」:默认收起,展开后显示全部 7 项体成分
+    function toggleBodyCompDetails() {
+        const body = document.getElementById('bodyCompBody');
+        const link = document.getElementById('bodyCompExpand');
+        if (!body) return;
+        const open = body.style.display === 'none';
+        body.style.display = open ? '' : 'none';
+        if (link) {
+            link.textContent = open ? '收起 ⌃' : '展开更多数据 ⌄';
+            link.setAttribute('aria-expanded', open ? 'true' : 'false');
+        }
+    }
+
+    // 血糖趋势日导航
+    let trendOffset = 0;
+    async function trendNav(delta) {
+        const savedRange = localStorage.getItem('glucoseTimeRange') || '14';
+        const rangeVal = parseFloat(savedRange);
+        // 导航步长：小于1天按该范围步进，否则按1天
+        const step = 1;
+        // delta: -1往前看（offset增大），+1往后看（offset减小）
+        trendOffset = Math.max(0, trendOffset - delta * step);
+        // 更新右箭头显示
+        document.getElementById('trendNavNext').style.display = trendOffset > 0 ? 'flex' : 'none';
+        // 重新渲染图表
+        const days = savedRange === 'all' ? null : rangeVal;
+        const totalDaysNeeded = (days || 90) + trendOffset;
+        if (totalDaysNeeded > 90) {
+            await ensureTimelineData(totalDaysNeeded);
+        }
+        initGlucoseChart(days, trendOffset);
+    }
+
+    // 时间范围切换函数（前端筛选，无需刷新页面）
+    async function changeTimeRange(range) {
+        // 保存用户选择到localStorage
+        localStorage.setItem('glucoseTimeRange', range);
+
+        // 清除URL中的days参数（避免影响后端全局数据加载量）
+        const url = new URL(window.location.href);
+        url.searchParams.delete('days');
+        url.searchParams.delete('all');
+        history.replaceState(null, '', url.toString());
+
+        // 显示加载提示
+        const selector = document.getElementById('timeRangeSelector');
+        selector.disabled = true;
+
+        // 按需加载超出 90 天的数据
+        const days = range === 'all' ? null : parseFloat(range);
+        if (days === null || days > 90) {
+            await ensureTimelineData(days);
+        }
+
+        // 前端重新渲染趋势图（不刷新页面）
+        initGlucoseChart(days, trendOffset);
+        selector.disabled = false;
+    }
+
+    // ========== 预测状态功能 ==========
+    let predictionComparisonChart = null;
+
+    /**
+     * 手动触发预测
+     */
+    async function triggerManualPrediction(evt) {
+        try {
+            const btn = evt ? evt.target.closest('button') : document.querySelector('[onclick*="triggerManualPrediction"]');
+            if (btn) {
+                btn.disabled = true;
+                btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>生成中...';
+            }
+
+            const response = await fetch('/trigger_prediction', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ type: 'all' })
+            });
+
+            const data = await response.json();
+
+            if (data.status === 'success') {
+                showToast('预测生成完成，刷新页面查看', 'success');
+                setTimeout(() => location.reload(), 1500);
+            } else {
+                if (data.error_type === 'quota_exceeded' && ((data.details && data.details.retry_after) || data.retry_after)) {
+                    showPredictionQuotaModal((data.details && data.details.retry_after) || data.retry_after || 60);
+                } else {
+                    showToast('预测生成失败: ' + (data.message || '未知错误'), 'danger');
+                }
+            }
+
+        } catch (error) {
+            console.error('Error triggering prediction:', error);
+            showToast('预测生成失败，请重试', 'danger');
+        } finally {
+            const btn = document.querySelector('[onclick*="triggerManualPrediction"]');
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="bi bi-plus-lg me-1"></i>生成预测';
+            }
+        }
+    }
+
+    /**
+     * 通用配额耗尽模态框
+     */
+    function showQuotaModal({modalId, title, message, retryAfter, onRetry, autoRetry = false}) {
+        const countdownId = modalId + 'Countdown';
+        const retryBtnId = modalId + 'Retry';
+        let modal = document.getElementById(modalId);
+        if (!modal) {
+            modal = document.createElement('div');
+            modal.className = 'modal fade';
+            modal.id = modalId;
+            modal.innerHTML = `
+                <div class="modal-dialog modal-dialog-centered">
+                    <div class="modal-content">
+                        <div class="modal-header bg-warning text-dark">
+                            <h5 class="modal-title">
+                                <i class="bi bi-hourglass-split me-2"></i>${title}
+                            </h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                        </div>
+                        <div class="modal-body text-center py-4">
+                            <i class="bi bi-clock-history text-warning" style="font-size: 3rem;"></i>
+                            <p class="mt-3 mb-2">${message}</p>
+                            <p class="text-muted mb-3">系统将在倒计时结束后自动重试</p>
+                            <div class="display-4 fw-bold text-primary" id="${countdownId}">${retryAfter}</div>
+                            <small class="text-muted">秒后自动重试</small>
+                        </div>
+                        <div class="modal-footer justify-content-center">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                            <button type="button" class="btn btn-primary" id="${retryBtnId}" disabled>
+                                <i class="bi bi-arrow-clockwise me-1"></i>立即重试
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+            document.getElementById(retryBtnId).addEventListener('click', () => {
+                bootstrap.Modal.getInstance(modal).hide();
+                onRetry();
+            });
+        }
+
+        const bsModal = new bootstrap.Modal(modal);
+        bsModal.show();
+
+        let countdown = retryAfter;
+        const countdownEl = document.getElementById(countdownId);
+        const retryBtn = document.getElementById(retryBtnId);
+        countdownEl.textContent = retryAfter;
+        retryBtn.disabled = true;
+
+        const timer = setInterval(() => {
+            countdown--;
+            countdownEl.textContent = countdown;
+
+            if (countdown <= 0) {
+                clearInterval(timer);
+                retryBtn.disabled = false;
+                countdownEl.textContent = '0';
+                if (autoRetry) {
+                    bsModal.hide();
+                    onRetry();
+                }
+            }
+        }, 1000);
+
+        modal.addEventListener('hidden.bs.modal', () => clearInterval(timer), { once: true });
+    }
+
+    /**
+     * 显示预测配额耗尽模态框
+     */
+    function showPredictionQuotaModal(retryAfter) {
+        showQuotaModal({
+            modalId: 'predictionQuotaModal',
+            title: 'AI 服务繁忙',
+            message: 'AI 预测服务配额暂时用尽',
+            retryAfter,
+            onRetry: () => triggerManualPrediction(),
+            autoRetry: true
+        });
+    }
+
+    /**
+     * 显示预测对比图
+     */
+    function showPredictionComparison() {
+        const modal = new bootstrap.Modal(document.getElementById('predictionComparisonModal'));
+        modal.show();
+        loadPredictionComparison();
+    }
+
+    /**
+     * 加载预测对比数据并绘制图表
+     */
+    async function loadPredictionComparison() {
+        try {
+            const days = document.getElementById('comparisonDaysSelect').value;
+            const response = await fetch(`/prediction_comparison?days=${days}`);
+            const data = await response.json();
+
+            renderPredictionComparisonChart(data.data);
+            renderComparisonStats(data.data);
+
+        } catch (error) {
+            console.error('Error loading prediction comparison:', error);
+        }
+    }
+
+    /**
+     * 绘制预测对比图表
+     */
+    function renderPredictionComparisonChart(data) {
+        if (predictionComparisonChart) {
+            predictionComparisonChart.destroy();
+            predictionComparisonChart = null;
+        }
+
+        const isEmpty = !data || data.length === 0;
+        setChartEmptyState('predictionComparisonChart', 'predictionComparisonEmpty', isEmpty, '该区间暂无已验证的预测，切换时间范围可查看其他记录');
+        if (isEmpty) return;
+        const ctx = document.getElementById('predictionComparisonChart').getContext('2d');
+
+        // 按日期分组
+        const dates = [...new Set(data.map(d => d.date))];
+        const predictedValues = dates.map(date => {
+            const items = data.filter(d => d.date === date);
+            return items.length > 0 ? items.reduce((sum, d) => sum + d.predicted, 0) / items.length : null;
+        });
+        const realValues = dates.map(date => {
+            const items = data.filter(d => d.date === date);
+            return items.length > 0 ? items.reduce((sum, d) => sum + d.real, 0) / items.length : null;
+        });
+
+        predictionComparisonChart = createHealthChart(ctx, {
+            type: 'line',
+            data: {
+                labels: dates.map(d => d.substring(5)),  // MM-DD 格式
+                datasets: [
+                    {
+                        label: '预测值',
+                        data: predictedValues,
+                        borderColor: '#1A73E8',
+                        backgroundColor: 'rgba(26, 115, 232, 0.1)',
+                        borderWidth: 2,
+                        borderDash: [5, 5],
+                        pointRadius: 4,
+                        pointBackgroundColor: '#1A73E8',
+                        tension: 0.3
+                    },
+                    {
+                        label: '真实值',
+                        data: realValues,
+                        borderColor: '#34A853',
+                        backgroundColor: 'rgba(52, 168, 83, 0.1)',
+                        borderWidth: 2,
+                        pointRadius: 5,
+                        pointBackgroundColor: '#34A853',
+                        tension: 0.3
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'top',
+                        labels: {
+                            usePointStyle: true,
+                            pointStyle: 'circle',
+                            padding: 20
+                        }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return `${context.dataset.label}: ${context.parsed.y.toFixed(1)} mmol/L`;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: false,
+                        min: 4,
+                        max: 10,
+                        title: {
+                            display: !IS_MOBILE,
+                            text: '血糖 (mmol/L)'
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    /**
+     * 渲染对比统计数据
+     */
+    function renderComparisonStats(data) {
+        const container = document.getElementById('comparisonStats');
+
+        if (!data || data.length === 0) {
+            container.innerHTML = '';
+            return;
+        }
+
+        const totalPredictions = data.length;
+        const avgError = data.reduce((sum, d) => sum + (d.error || 0), 0) / totalPredictions;
+        const mae = data.reduce((sum, d) => sum + Math.abs(d.error || 0), 0) / totalPredictions;
+        const accurateCount = data.filter(d => Math.abs(d.error || 0) < 0.5).length;
+        const accuracy = (accurateCount / totalPredictions * 100).toFixed(1);
+
+        // 偏差方向判断
+        let biasText = '预测准确';
+        let biasColor = 'success';
+        if (avgError > 0.2) {
+            biasText = '预测偏低';
+            biasColor = 'warning';
+        } else if (avgError < -0.2) {
+            biasText = '预测偏高';
+            biasColor = 'info';
+        }
+
+        container.innerHTML = `
+            <div class="row text-center">
+                <div class="col-3">
+                    <div class="fs-4 fw-bold text-primary">${totalPredictions}</div>
+                    <small class="text-muted">预测次数</small>
+                </div>
+                <div class="col-3">
+                    <div class="fs-4 fw-bold text-success">${accuracy}%</div>
+                    <small class="text-muted">准确率</small>
+                </div>
+                <div class="col-3">
+                    <div class="fs-4 fw-bold text-warning">${mae.toFixed(2)}</div>
+                    <small class="text-muted">MAE</small>
+                </div>
+                <div class="col-3">
+                    <div class="fs-4 fw-bold text-${biasColor}">${avgError > 0 ? '+' : ''}${avgError.toFixed(2)}</div>
+                    <small class="text-muted">${biasText}</small>
+                </div>
+            </div>
+        `;
+    }
+
+    /**
+     * 显示 Toast 提示（如果没有定义）
+     */
+    function showToast(message, type = 'info') {
+        // 移除已有的 snackbar
+        const existing = document.querySelector('.snackbar-toast');
+        if (existing) existing.remove();
+
+        const themes = {
+            success: { bg: 'rgba(16,185,129,0.92)', icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>' },
+            danger:  { bg: 'rgba(239,68,68,0.92)',   icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>' },
+            error:   { bg: 'rgba(239,68,68,0.92)',   icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>' },
+            warning: { bg: 'rgba(45,55,72,0.88)',     icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>' },
+            info:    { bg: 'rgba(45,55,72,0.88)',     icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>' }
+        };
+        const t = themes[type] || themes.info;
+
+        const snackbar = document.createElement('div');
+        snackbar.className = 'snackbar-toast';
+        snackbar.innerHTML = `<span style="flex-shrink:0;display:flex">${t.icon}</span><span style="flex:1;line-height:1.4">${message}</span><span class="snackbar-x" style="flex-shrink:0;cursor:pointer;opacity:0.6;font-size:20px;line-height:1;padding:0 0 0 4px">&times;</span>`;
+        snackbar.style.cssText = `position:fixed;bottom:80px;left:50%;transform:translateX(-50%) translateY(16px);background:${t.bg};color:#fff;padding:12px 16px;border-radius:14px;font-size:14px;font-weight:500;display:flex;align-items:center;gap:10px;max-width:min(420px,calc(100vw - 32px));box-shadow:0 8px 30px rgba(0,0,0,0.25);z-index:99999;opacity:0;transition:all .3s cubic-bezier(.4,0,.2,1);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);word-break:break-word`;
+        document.body.appendChild(snackbar);
+
+        requestAnimationFrame(() => { snackbar.style.opacity = '1'; snackbar.style.transform = 'translateX(-50%) translateY(0)'; });
+
+        const dismiss = () => { snackbar.style.opacity = '0'; snackbar.style.transform = 'translateX(-50%) translateY(16px)'; setTimeout(() => snackbar.remove(), 300); };
+        const timer = setTimeout(dismiss, 3500);
+        snackbar.querySelector('.snackbar-x').addEventListener('click', () => { clearTimeout(timer); dismiss(); });
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        // 图标按钮保留视觉简洁，同时为读屏软件提供明确名称。
+        document.querySelectorAll('.btn-overview-nav[title]').forEach(button => {
+            button.setAttribute('aria-label', button.getAttribute('title'));
+        });
+        // 同步AI预测按钮宽度与最后一个槽位（仅桌面端，手机端保持自然宽度）
+        function syncAiPredictWidth() {
+            const slots = document.querySelectorAll('.glucose-slot');
+            const btn = document.getElementById('btnAiPredict');
+            if (slots.length && btn) {
+                if (window.innerWidth >= 768) {
+                    btn.style.width = slots[slots.length - 1].offsetWidth + 'px';
+                    btn.style.minWidth = '';
+                } else {
+                    btn.style.width = '';
+                    btn.style.minWidth = '72px';
+                }
+            }
+        }
+        syncAiPredictWidth();
+        window.addEventListener('resize', syncAiPredictWidth);
+
+        // 初始化长按录入
+        initSlotLongPress();
+
+        // 检查用药列表是否需要折叠按钮
+        checkMedListOverflow('card-med-list');
+        checkMedListOverflow('card-supp-list');
+
+        // 初始化概览卡片多条记录数据
+        window._ovData = {
+            exercise: B.todayExercises,
+            bp: B.todayBps,
+            weight: B.todayWeights
+        };
+        window._ovIdx = { exercise: 0, bp: 0, weight: 0 };
+
+        // 初始进度条：为今天已过时间但未测的slot添加seg-missed
+        (function() {
+            const segs = document.querySelectorAll('.today-progress .progress-segment');
+            const now = new Date();
+            const nowMin = now.getHours() * 60 + now.getMinutes();
+            segs.forEach(seg => {
+                if (seg.classList.contains('seg-measured') || seg.classList.contains('seg-predicted')) return;
+                const t = seg.dataset.time;
+                if (!t) return;
+                const [h, m] = t.split(':').map(Number);
+                if (nowMin >= h * 60 + m) seg.classList.add('seg-missed');
+            });
+        })();
+
+        // Initialize dayModal after DOM is ready
+        dayModal = new bootstrap.Modal(document.getElementById('dayDetailsModal'));
+
+        // Fix aria-hidden focus warning for modals
+        document.querySelectorAll('.modal').forEach(modal => {
+            modal.addEventListener('hide.bs.modal', function(e) {
+                // Remove focus from any focused element within the modal
+                const focusedElement = modal.querySelector(':focus');
+                if (focusedElement) {
+                    focusedElement.blur();
+                }
+            });
+        });
+
+        // 获取保存的时间范围（仅从 localStorage 读取，不再使用 URL 参数）
+        const savedRange = localStorage.getItem('glucoseTimeRange');
+        let initialRange = savedRange || '14';
+        if (initialRange === '0.33') initialRange = '1';
+
+        // 更新选择器显示
+        const selector = document.getElementById('timeRangeSelector');
+        if (selector) {
+            selector.value = initialRange;
+        }
+
+        // 初始化血糖趋势下拉菜单
+        const trendDropdown = document.getElementById('trendRangeDropdown');
+        if (trendDropdown) {
+            trendDropdown.querySelectorAll('.dropdown-item').forEach(b => b.classList.remove('active'));
+            const activeItem = trendDropdown.querySelector(`.dropdown-item[data-days="${initialRange}"]`);
+            if (activeItem) activeItem.classList.add('active');
+            const labelMap = {'1': '近1天', '3': '近3天', '7': '近7天', '14': '近14天', '30': '近30天', '60': '近60天', '90': '近90天', 'all': '全部'};
+            document.getElementById('trendRangeLabel').textContent = labelMap[initialRange] || '';
+            const calLabel = document.getElementById('trendCalLabel');
+            if (calLabel) calLabel.textContent = initialRange === 'all' ? '全部' : initialRange + 'd';
+        }
+
+        // Initialize Chart.js for glucose trend (使用保存的时间范围)
+        // 如果保存的范围超过 90 天，先加载数据再渲染
+        const initDays = initialRange === 'all' ? null : parseFloat(initialRange);
+        if (document.getElementById('glucoseChart')) {
+        if (initDays === null || initDays > 90) {
+            ensureTimelineData(initDays).then(() => initGlucoseChart(initDays));
+        } else {
+            initGlucoseChart(initDays);
+        }
+        }
+
+        // Initialize Blood Pressure Chart
+        if (document.getElementById('bloodPressureChart')) {
+        initBloodPressureChart(30);
+        }
+
+        // Initialize Weight/BMI Chart
+        if (document.getElementById('weightChart')) {
+        initWeightChart(30);
+        }
+
+        // Initialize Bootstrap Tooltips
+        var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+        var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+            return new bootstrap.Tooltip(tooltipTriggerEl);
+        });
+
+        // Initialize Calendar
+        var calendarEl = document.getElementById('calendar');
+        var calendar = new FullCalendar.Calendar(calendarEl, {
+            initialView: 'dayGridMonth',
+            locale: 'zh-cn',
+            headerToolbar: false,
+            height: 'auto',
+            aspectRatio: window.innerWidth <= 480 ? 0.6 : 1.5,
+            dayMaxEvents: window.innerWidth <= 480 ? 3 : true,
+            slotMinTime: '06:00:00',
+            slotMaxTime: '24:00:00',
+            nowIndicator: true,
+            events: generateCalendarEvents(),
+            dateClick: function(info) {
+                console.log('Date clicked:', info.dateStr);
+                // Ensure consistent date format (YYYY-MM-DD only, no time component)
+                const dateStr = info.dateStr.split('T')[0];
+                renderDayDetails(dateStr);
+            },
+            eventClick: function(info) {
+                // If clicked on an event (badge), open the modal for that day
+                // In Day view, show the detail modal
+                console.log('Event clicked:', info.event);
+                info.jsEvent.preventDefault(); // Prevent default action
+                info.jsEvent.stopPropagation(); // Stop event propagation
+                const dateStr = info.event.startStr.split('T')[0];
+                renderDayDetails(dateStr);
+            },
+            // Add stats header for Day view
+            viewDidMount: function(info) {
+                if (info.view.type === 'timeGridDay') {
+                    showDayStats(info.view.currentStart);
+                } else {
+                    hideDayStats();
+                }
+            },
+            datesSet: async function(info) {
+                if (info.view.type === 'timeGridDay') {
+                    showDayStats(info.view.currentStart);
+                } else {
+                    hideDayStats();
+                }
+                // 同步视图切换按钮高亮
+                const viewMap = {
+                    'timeGridDay': 'calViewDay',
+                    'dayGridWeek': 'calViewWeek',
+                    'dayGridMonth': 'calViewMonth'
+                };
+                ['calViewDay', 'calViewWeek', 'calViewMonth'].forEach(id => {
+                    const btn = document.getElementById(id);
+                    if (!btn) return;
+                    btn.classList.toggle('cal-seg-active', viewMap[info.view.type] === id);
+                });
+                // 更新 mini-cal（用 calendar.getDate() 取锚点日期，避免月视图拿到上月末）
+                const viewDate = calendar.getDate();
+                const month = viewDate.getMonth() + 1;
+                const day = viewDate.getDate();
+                const mEl = document.getElementById('reviewMiniCalMonth');
+                const dEl = document.getElementById('reviewMiniCalDay');
+                if (mEl) mEl.textContent = month + '月';
+                if (dEl) dEl.textContent = day;
+                // 日视图：显示 next 按钮（日期不超过今天）；否则隐藏
+                const nextBtn = document.getElementById('calendarNextBtn');
+                if (nextBtn) {
+                    const today = new Date(); today.setHours(0,0,0,0);
+                    const curStart = new Date(info.view.currentStart); curStart.setHours(0,0,0,0);
+                    nextBtn.style.display = curStart < today ? '' : 'none';
+                }
+                // 日历翻到已加载范围之外时，按需加载数据
+                const viewStart = info.startStr.split('T')[0];
+                if (timelineLoaded.minDate && viewStart < timelineLoaded.minDate) {
+                    const daysNeeded = Math.ceil((new Date() - new Date(viewStart)) / 86400000) + 30;
+                    await ensureTimelineData(daysNeeded);
+                    // 用新数据刷新日历事件
+                    calendar.removeAllEvents();
+                    calendar.addEventSource(generateCalendarEvents());
+                }
+            }
+        });
+        calendar.render();
+
+        // 日历外部导航函数
+        window.calendarNav = function(dir) {
+            if (dir === -1) calendar.prev();
+            else calendar.next();
+        };
+        window.calendarToday = function() {
+            calendar.today();
+        };
+        window.calendarSetView = function(viewType) {
+            if (viewType === 'timeGridDay' && window.innerWidth <= 480) {
+                // 手机端“日”视图直接打开当日详情弹窗，避免时间轴太窄
+                const today = localDateString();
+                renderDayDetails(today);
+                ['calViewDay', 'calViewWeek', 'calViewMonth'].forEach(id => {
+                    const btn = document.getElementById(id);
+                    if (btn) btn.classList.toggle('cal-seg-active', id === 'calViewDay');
+                });
+                return;
+            }
+            if (viewType === 'timeGridDay') {
+                calendar.changeView('timeGridDay', new Date());
+            } else {
+                calendar.changeView(viewType);
+            }
+        };
+    });
+
+    // 标准化血糖类型名称（将各种变体统一为标准类型）
+    function normalizeGlucoseType(type, validTypes, timestamp) {
+        // CGM 数据：根据时间归类到对应槽位
+        if (type === 'CGM') {
+            return null;  // CGM 数据不直接归类，由专门的槽位匹配处理
+        }
+        // 优先精确匹配
+        if (validTypes.has(type)) return type;
+        // 智能匹配餐后类型变体
+        if (type.includes('餐后2小时') || type.includes('早餐后2小时') || type.includes('午餐后2小时') || type.includes('晚餐后2小时')) return '餐后2小时';
+        // 智能匹配餐前类型变体（归入空腹）
+        if (type.includes('晚饭前') || type.includes('午饭前') || type.includes('早饭前')) return '空腹';
+        // 通用模糊匹配（兜底）
+        if (type.includes('餐后') && !type.includes('运动')) return '餐后2小时';
+        if (type.includes('餐前') && !type.includes('运动')) return '空腹';
+        return '其他';
+    }
+
+    // 血糖 Y 轴范围：下限 3 起步（保证 3.9 低血糖警戒线与目标带下沿完整可见），
+    // 上限 12 起步按数据抬升 —— 保证不同时间窗比例尺可比，同时避免超限值被裁掉
+    function glucoseYRange(values) {
+        let lo = Infinity, hi = -Infinity;
+        (values || []).forEach(v => {
+            const n = typeof v === 'number' ? v : (v && typeof v.y === 'number' ? v.y : NaN);
+            if (!Number.isFinite(n) || n <= 0) return;
+            if (n < lo) lo = n;
+            if (n > hi) hi = n;
+        });
+        // 上限向上取偶数，且至少比最高值高 1 mmol/L，避免圆点贴边被裁
+        const yMax = Number.isFinite(hi) ? Math.max(12, Math.ceil((hi + 1) / 2) * 2) : 12;
+        // 下限常规 3；跌破 3 时继续下探，最多到 2
+        const yMin = Number.isFinite(lo) && lo < 3 ? Math.max(2, Math.floor(lo) - 1) : 3;
+        return { yMin, yMax };
+    }
+
+    // 异常点判定：超过餐后 1 小时上限 11.1 或低于 3.9 低血糖线
+    function isOutlierGlucose(value) {
+        return typeof value === 'number' && (value > 11.1 || value < 3.9);
+    }
+
+    // Initialize glucose trend chart (支持按天数筛选+日偏移)
+    function initGlucoseChart(days = 14, offset = 0) {
+        // 没开血糖模块时这张卡片整个不渲染，直接跳过
+        if (!document.getElementById('glucoseChart')) return;
+        // 销毁旧图表
+        if (glucoseChart) {
+            glucoseChart.destroy();
+            glucoseChart = null;
+        }
+
+        // 计算日期范围（支持offset偏移）
+        let endDate;
+        let cutoffDate;
+        if (days === 1) {
+            // "近1天"：前半天12h + 当天24h + 后半天12h = 48h
+            // 以当天0:00为锚点，前一天12:00 → 后一天12:00
+            const anchor = new Date();
+            if (offset > 0) anchor.setTime(anchor.getTime() - offset * 24 * 60 * 60 * 1000);
+            anchor.setHours(0, 0, 0, 0);
+            cutoffDate = new Date(anchor.getTime() - 12 * 60 * 60 * 1000); // 前一天12:00
+            endDate = new Date(anchor.getTime() + 36 * 60 * 60 * 1000);   // 后一天12:00
+        } else {
+            // endDate 对齐到当天24:00（次日0点），确保x轴以完整天为单位
+            if (offset > 0) {
+                endDate = new Date(Date.now() - offset * 24 * 60 * 60 * 1000);
+                endDate.setHours(24, 0, 0, 0);
+            } else {
+                endDate = new Date();
+                endDate.setHours(24, 0, 0, 0);
+            }
+            if (days) {
+                // 其他天数范围：对齐到当天0点
+                cutoffDate = new Date(endDate.getTime() - days * 24 * 60 * 60 * 1000);
+            } else {
+                cutoffDate = null;
+            }
+        }
+
+        // 血糖类型集合（提前定义，供 CGM 槽位匹配使用）
+        const validTypes = new Set(['空腹', '餐后2小时', '运动后', '睡前', '其他']);
+
+        // Extract all glucose records from timeline data (按天数筛选)
+        const allRecords = [];
+
+        // CGM 槽位定义：用于从 CGM 数据中提取对应时间点的血糖值
+        const cgmSlots = [
+            { minutes: 7 * 60 + 15, type: '空腹' },         // 07:15
+            { minutes: 8 * 60 + 45, type: '运动后' },       // 08:45
+            { minutes: 11 * 60,     type: '餐后2小时' },     // 11:00 早餐后
+            { minutes: 14 * 60 + 30, type: '餐后2小时' },    // 14:30 午餐后
+            { minutes: 17 * 60 + 30, type: '空腹' },         // 17:30 晚饭前
+            { minutes: 20 * 60,     type: '餐后2小时' },     // 20:00 晚餐后
+            { minutes: 22 * 60,     type: '睡前' }           // 22:00
+        ];
+
+        timelineData.forEach(day => {
+            // 按天数筛选（天级别粗筛）
+            const dayDate = new Date(day.date);
+            if (cutoffDate && dayDate < new Date(cutoffDate.getTime() - 24 * 60 * 60 * 1000)) return;
+            if (endDate && dayDate > endDate) return;
+
+            // 收集当天的 CGM 记录和非 CGM 记录
+            const dayCgmRecords = [];
+            const dayNonCgmRecords = [];
+
+            day.data.entries.forEach(entry => {
+                if (entry.value > 0 && !entry.is_predicted) {
+                    // days<=1的范围需精确到时间戳级别筛选
+                    if (days && days <= 1) {
+                        const entryTime = new Date(entry.timestamp);
+                        if (cutoffDate && entryTime < cutoffDate) return;
+                        if (endDate && entryTime > endDate) return;
+                    }
+                    if (entry.type === 'CGM') {
+                        dayCgmRecords.push(entry);
+                    } else if (isGlucoseEntry(entry)) {
+                        // 与日历/后端均值同口径:只收真血糖,血压(value=收缩压)、
+                        // 运动、饮食、体重等一律不进趋势图,否则 Y 轴会被拉飞
+                        dayNonCgmRecords.push(entry);
+                    }
+                }
+            });
+
+            // 有 CGM 数据的天：仅使用 CGM 槽位提取值（CGM 设备数据最准确）
+            // 无 CGM 数据的天：使用非 CGM 记录
+            if (dayCgmRecords.length > 0) {
+                // CGM 记录：每天每槽位取最近的一条读数
+                for (const slot of cgmSlots) {
+                    let bestEntry = null, bestDiff = Infinity, bestAfter = false;
+                    for (const entry of dayCgmRecords) {
+                        const t = entry.timestamp.split(' ')[1] || '';
+                        const parts = t.split(':');
+                        if (parts.length < 2) continue;
+                        const m = parseInt(parts[0]) * 60 + parseInt(parts[1]);
+                        const diff = Math.abs(m - slot.minutes);
+                        const isAfter = m >= slot.minutes;
+                        if (diff <= 30 && (diff < bestDiff || (diff === bestDiff && isAfter && !bestAfter))) {
+                            bestDiff = diff;
+                            bestEntry = entry;
+                            bestAfter = isAfter;
+                        }
+                    }
+                    if (bestEntry) {
+                        allRecords.push({
+                            timestamp: bestEntry.timestamp,
+                            value: bestEntry.value,
+                            type: slot.type,
+                            unit: bestEntry.unit
+                        });
+                    }
+                }
+            } else {
+                // 无 CGM 数据的天：使用非 CGM 记录
+                dayNonCgmRecords.forEach(entry => {
+                    allRecords.push({
+                        timestamp: entry.timestamp,
+                        value: entry.value,
+                        type: entry.type,
+                        unit: entry.unit
+                    });
+                });
+            }
+        });
+
+        // 计算x轴边界（使用时间戳数值，避免日期解析歧义）
+        let xMin, xMax;
+        if (days) {
+            xMin = cutoffDate.getTime();
+            // 多天视图末端裁到"现在"：endDate 是明天 0 点，直接当轴上限会多画一个
+            // 没有数据的日期刻度（如 10-27）。单天视图保留前后半天留白，不裁。
+            xMax = days > 1 ? Math.min(endDate.getTime(), Date.now()) : endDate.getTime();
+        } else {
+            // "全部"范围：min取timelineData中最早日期对齐到0点，max取今天24点
+            xMax = endDate.getTime();
+            if (timelineData.length > 0) {
+                const allDates = timelineData.map(d => d.date).sort();
+                const earliest = new Date(allDates[0] + 'T00:00:00');
+                xMin = earliest.getTime();
+            } else {
+                xMin = endDate.getTime() - 14 * 24 * 60 * 60 * 1000;
+            }
+        }
+
+        // 计算x轴刻度步长
+        let effectiveDays = days;
+        if (!effectiveDays && xMin) {
+            effectiveDays = Math.ceil((xMax - xMin) / (24 * 60 * 60 * 1000));
+        }
+        const xStepSize = effectiveDays > 60 ? 7 : (effectiveDays > 30 ? 3 : 1);
+
+        setChartEmptyState('glucoseChart', 'glucoseChartEmpty', allRecords.length === 0, '该区间暂无血糖记录，可切换时间范围或返回近期');
+        if (allRecords.length === 0) {
+            // 保留固定画布尺寸，用明确空状态代替容易被误认为有记录的参考线图。
+            const ctx = document.getElementById('glucoseChart').getContext('2d');
+            const now = endDate;
+            const emptyY = glucoseYRange([]);
+            const rangeStart = cutoffDate || new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
+            // 根据时间范围决定x轴单位
+            const hoursRange = days ? days * 24 : 14 * 24;
+            const xUnit = hoursRange <= 24 ? 'hour' : 'day';
+            // xFormat 已移除，统一使用 'MM-dd'
+            glucoseChart = createHealthChart(ctx, {
+                type: 'line',
+                data: { datasets: [] },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        annotation: {
+                            annotations: {
+                                targetZone: { type: 'box', yMin: 3.9, yMax: 7.8, backgroundColor: 'rgba(52, 168, 83, 0.08)', borderWidth: 0 },
+                                optimalZone: { type: 'box', yMin: 4.4, yMax: 6.1, backgroundColor: 'rgba(52, 168, 83, 0.12)', borderWidth: 0 },
+                                warningHigh: { type: 'line', yMin: 7.8, yMax: 7.8, borderColor: 'rgba(251, 188, 4, 0.6)', borderWidth: 1.5, borderDash: [6, 4] },
+                                dangerLow: { type: 'line', yMin: 3.9, yMax: 3.9, borderColor: 'rgba(234, 67, 53, 0.5)', borderWidth: 1.5, borderDash: [6, 4] }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            type: 'time',
+                            min: rangeStart.toISOString(),
+                            max: now.toISOString ? now.toISOString() : new Date(now).toISOString(),
+                            time: { unit: xUnit, displayFormats: { hour: 'HH:mm', day: 'MM-dd' } },
+                            ticks: { maxRotation: 30, autoSkip: true },
+                            title: { display: false },
+                            grid: { color: 'rgba(0,0,0,0.05)' }
+                        },
+                        y: {
+                            beginAtZero: false, min: emptyY.yMin, max: emptyY.yMax,
+                            title: { display: !IS_MOBILE, text: '血糖值 (mmol/L)', font: { size: IS_MOBILE ? 11 : 14, weight: 'bold' } },
+                            ticks: { stepSize: 1, callback: v => Number.isInteger(v) ? v : '', font: { size: IS_MOBILE ? 9 : 12, weight: 'bold' } },
+                            grid: { color: 'rgba(0,0,0,0.05)' }
+                        }
+                    }
+                }
+            });
+            return;
+        }
+
+        // Sort by timestamp
+        allRecords.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+
+        const ctx = document.getElementById('glucoseChart').getContext('2d');
+
+        // Categorize data by type with professional labels (避开绿/黄/红，防止与血糖状态混淆)
+        // Google Fit / Material Design 配色方案
+        const datasets = {
+            '空腹': { label: 'FPG (空腹/餐前)', data: [], borderColor: '#1A73E8', backgroundColor: '#1A73E8' },  // Google Blue
+            '餐后2小时': { label: 'PPG-2h (餐后2小时)', data: [], borderColor: '#F4511E', backgroundColor: '#F4511E' },  // Deep Orange 600
+            '运动后': { label: 'Post-Ex (运动后)', data: [], borderColor: '#0097A7', backgroundColor: '#0097A7', hidden: true },  // Cyan 700：避开目标区间的绿色，防止误读为"达标"
+            '睡前': { label: 'BT (睡前)', data: [], borderColor: '#8E24AA', backgroundColor: '#8E24AA', hidden: true },  // Purple 600
+            '其他': { label: '其他', data: [], borderColor: '#757575', backgroundColor: '#757575' }  // Grey 600
+        };
+
+        // Populate datasets - 真实记录（智能匹配类型变体）
+        allRecords.forEach(record => {
+            const key = normalizeGlucoseType(record.type, validTypes, record.timestamp);
+            if (!key) return;  // CGM 记录已在提取阶段处理
+            datasets[key].data.push({
+                x: new Date(record.timestamp).getTime(),
+                y: record.value
+            });
+        });
+
+        // Build Chart.js datasets array
+        const chartDatasets = [];
+
+        // 跨天断线：相邻两点间隔超过阈值时插入空值，
+        // 避免用一条长直线暗示"几天内缓慢上升"（实际中间根本没有测量）
+        const gapLimitMs = (days && days <= 1 ? 10 : 36) * 60 * 60 * 1000;
+        const breakGaps = (points) => {
+            if (points.length < 2) return points;
+            const out = [points[0]];
+            for (let i = 1; i < points.length; i++) {
+                if (points[i].x - points[i - 1].x > gapLimitMs) {
+                    out.push({ x: points[i - 1].x + gapLimitMs / 2, y: null });
+                }
+                out.push(points[i]);
+            }
+            return out;
+        };
+
+        for (const [key, ds] of Object.entries(datasets)) {
+            if (ds.data.length > 0) {
+                // 异常点（>11.1 或 <3.9）用红色大圆点突出，正常点沿用序列色
+                const isOut = (c) => c.raw && isOutlierGlucose(c.raw.y);
+                const pointR = (c) => (isOut(c) ? 7 : 5);
+                const hoverR = (c) => (isOut(c) ? 10 : 8);
+                const pointFill = (c) => (isOut(c) ? '#EA4335' : ds.backgroundColor);
+                chartDatasets.push({
+                    label: ds.label,
+                    data: breakGaps(ds.data),
+                    borderColor: ds.borderColor,
+                    backgroundColor: ds.backgroundColor,
+                    borderWidth: 3,
+                    tension: 0,  // 折线，让波动更清晰
+                    spanGaps: false,  // 缺测处断线，不连成假趋势
+                    pointRadius: pointR,
+                    pointHoverRadius: hoverR,
+                    pointBackgroundColor: pointFill,
+                    pointBorderColor: '#fff',
+                    pointBorderWidth: 2,
+                    pointHoverBorderWidth: 3,
+                    fill: false,
+                    hidden: ds.hidden || false
+                });
+            }
+        }
+
+        // 计算实际数据的最小值和最大值
+        // Y轴范围：统一比例尺 + 按数据自适应上限（避免 >12 的点被裁掉）
+        const { yMin, yMax } = glucoseYRange(allRecords.map(r => r.value));
+
+        glucoseChart = createHealthChart(ctx, {
+            type: 'line',
+            data: { datasets: chartDatasets },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                layout: {
+                    padding: { bottom: 28 }
+                },
+                interaction: {
+                    mode: 'nearest',
+                    axis: 'x',
+                    intersect: false
+                },
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'top',
+                        labels: {
+                            usePointStyle: true,  // Google Fit 风格：使用圆形图例
+                            pointStyle: 'circle',
+                            padding: 20,
+                            font: { size: 14, family: CHART_FONT_FAMILY, weight: '500' },
+                            boxWidth: 10,  // 圆形图例大小
+                            boxHeight: 10
+                        }
+                    },
+                    tooltip: {
+                        backgroundColor: 'rgba(0,0,0,0.8)',
+                        padding: 12,
+                        titleFont: { size: 14, weight: 'bold' },
+                        bodyFont: { size: 13 },
+                        callbacks: {
+                            label: function(context) {
+                                const value = context.parsed.y.toFixed(1);
+                                const glucoseType = context.dataset.label;
+                                const result = checkGlucoseCompliance(context.parsed.y, glucoseType);
+                                const badge = result.badge;
+                                const targetInfo = `(${result.target.name}: ${result.target.min}-${result.target.max})`;
+                                return `${context.dataset.label}: ${value} mmol/L ${badge.icon} ${badge.name} ${targetInfo}`;
+                            }
+                        }
+                    },
+                    annotation: {
+                        annotations: {
+                            // Google Fit 风格：柔和的目标区域和简洁的边界线
+                            targetZone: {
+                                type: 'box',
+                                yMin: 3.9,
+                                yMax: 7.8,
+                                backgroundColor: 'rgba(52, 168, 83, 0.08)',  // Google Green 淡色
+                                borderWidth: 0
+                            },
+                            optimalZone: {
+                                type: 'box',
+                                yMin: 4.4,
+                                yMax: 6.1,
+                                backgroundColor: 'rgba(52, 168, 83, 0.12)',  // Google Green 稍深
+                                borderWidth: 0
+                            },
+                            warningHigh: {
+                                type: 'line',
+                                yMin: 7.8,
+                                yMax: 7.8,
+                                borderColor: 'rgba(251, 188, 4, 0.6)',  // Google Yellow
+                                borderWidth: 1.5,
+                                borderDash: [6, 4],
+                                label: {
+                                    content: '目标上限 7.8',
+                                    enabled: !IS_MOBILE,
+                                    position: 'end',
+                                    backgroundColor: 'rgba(251, 188, 4, 0.9)',
+                                    color: '#202124',
+                                    font: { size: 11, family: CHART_FONT_FAMILY },
+                                    padding: { top: 2, bottom: 2, left: 6, right: 6 },
+                                    borderRadius: 4
+                                }
+                            },
+                            dangerHigh: {
+                                type: 'line',
+                                yMin: 10.0,
+                                yMax: 10.0,
+                                borderColor: 'rgba(234, 67, 53, 0.5)',  // Google Red
+                                borderWidth: 1.5,
+                                borderDash: [8, 4],
+                                label: {
+                                    content: '危险 10.0',
+                                    enabled: !IS_MOBILE,
+                                    position: 'end',
+                                    backgroundColor: 'rgba(234, 67, 53, 0.9)',
+                                    color: '#fff',
+                                    font: { size: 11, family: CHART_FONT_FAMILY },
+                                    padding: { top: 2, bottom: 2, left: 6, right: 6 },
+                                    borderRadius: 4
+                                }
+                            },
+                            dangerLow: {
+                                type: 'line',
+                                yMin: 3.9,
+                                yMax: 3.9,
+                                borderColor: 'rgba(234, 67, 53, 0.5)',  // Google Red
+                                borderWidth: 1.5,
+                                borderDash: [6, 4],
+                                label: {
+                                    content: '低血糖 3.9',
+                                    enabled: !IS_MOBILE,
+                                    position: 'start',
+                                    backgroundColor: 'rgba(234, 67, 53, 0.9)',
+                                    color: '#fff',
+                                    font: { size: 11, family: CHART_FONT_FAMILY },
+                                    padding: { top: 2, bottom: 2, left: 6, right: 6 },
+                                    borderRadius: 4
+                                }
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        type: 'time',
+                        bounds: 'ticks',
+                        min: xMin,
+                        max: xMax,
+                        afterBuildTicks: function(axis) {
+                            // 确保首尾tick对齐到min/max边界
+                            if (axis.ticks && axis.ticks.length > 0) {
+                                if (axis.ticks[0].value > axis.min) {
+                                    axis.ticks.unshift({ value: axis.min });
+                                }
+                                if (axis.ticks[axis.ticks.length - 1].value < axis.max) {
+                                    axis.ticks.push({ value: axis.max });
+                                }
+                            }
+                        },
+                        time: {
+                            unit: days && days <= 7 ? 'hour' : 'day',
+                            stepSize: xStepSize,
+                            displayFormats: {
+                                hour: 'HH:mm',
+                                day: 'MM-dd'
+                            }
+                        },
+                        ticks: {
+                            autoSkip: (days && days > 1 && days <= 7) ? false : true,
+                            ...( (!days || days > 14) ? { minRotation: 30, maxRotation: 30 } : { maxRotation: (days > 7 ? 30 : 0) } ),
+                            callback: function(value, index, ticks) {
+                                const d = new Date(ticks[index].value);
+                                const h = d.getHours();
+                                const m = d.getMinutes();
+                                const dateStr = String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+
+                                // >7天：按天显示日期（只在 0 点标注，末端补齐的刻度不重复标日期）
+                                if (!days || days > 7) return h === 0 ? dateStr : null;
+                                // ≤1天：显示时间（水平居中）
+                                if (days <= 1) return String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
+                                // ≤3天：每3小时
+                                if (days <= 3) {
+                                    if (h % 3 !== 0) return null;
+                                } else {
+                                    // ≤7天：仅0:00和12:00
+                                    if (h !== 0 && h !== 12) return null;
+                                }
+                                return h + ':00';
+                            },
+                            font: { size: IS_MOBILE ? 9 : 12, family: CHART_FONT_FAMILY }
+                        },
+                        title: { display: false },
+                        afterFit: function(axis) {
+                            axis.height = 50;
+                        },
+                        grid: {
+                            color: (!days || days > 14) ? 'rgba(0,0,0,0.1)' : 'rgba(0,0,0,0.05)'
+                        }
+                    },
+                    y: {
+                        beginAtZero: false,
+                        min: yMin,
+                        max: yMax,
+                        title: {
+                            display: !IS_MOBILE,
+                            text: '血糖值 (mmol/L)',
+                            font: { size: IS_MOBILE ? 11 : 14, weight: 'bold' }
+                        },
+                        ticks: {
+                            stepSize: 1,
+                            callback: function(value) {
+                                return Number.isInteger(value) ? value : '';
+                            },
+                            font: { size: IS_MOBILE ? 9 : 12, weight: 'bold' }
+                        },
+                        grid: {
+                            color: function(context) {
+                                if (context.tick.value === 7.8 || context.tick.value === 10.0 || context.tick.value === 3.9) {
+                                    return 'rgba(220, 53, 69, 0.2)';
+                                }
+                                return 'rgba(0,0,0,0.05)';
+                            },
+                            lineWidth: function(context) {
+                                if (context.tick.value === 7.8 || context.tick.value === 10.0 || context.tick.value === 3.9) {
+                                    return 2;
+                                }
+                                return 1;
+                            }
+                        }
+                    }
+                }
+            },
+            plugins: (days && days > 1 && days <= 7) ? [{
+                id: 'dateLabelPlugin',
+                afterDraw(chart) {
+                    const xScale = chart.scales.x;
+                    const ctx = chart.ctx;
+                    ctx.save();
+                    ctx.font = `600 11px ${CHART_FONT_FAMILY}`;
+                    ctx.fillStyle = '#333';
+                    ctx.textAlign = 'center';
+
+                    // 3-7 天：在时间标签下方水平绘制日期标签（居中于当天12:00）
+                    xScale.ticks.forEach((tick, i) => {
+                        const d = new Date(tick.value);
+                        if (d.getHours() !== 0) return;
+                        // 取当天12:00的像素位置，使日期标签居中于该天
+                        const noon = new Date(d);
+                        noon.setHours(12, 0, 0, 0);
+                        const x = xScale.getPixelForValue(noon.getTime());
+                        const y = chart.chartArea.bottom + 35;
+                        const dateStr = String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+                        ctx.fillText(dateStr, x, y);
+                    });
+
+                    ctx.restore();
+                }
+            }] : []
+        });
+
+        // 检测 timelineData 中是否有 CGM 数据，控制标签页显隐
+        const hasCgm = timelineData.some(day =>
+            day.data.entries.some(e => e.type === 'CGM' && e.value > 0)
+        );
+        const glucoseTabEl = document.getElementById('glucoseTab');
+        if (hasCgm && glucoseTabEl) {
+            glucoseTabEl.classList.remove('d-none');
+            initCgmChart(days, offset);
+        } else if (glucoseTabEl) {
+            glucoseTabEl.classList.add('d-none');
+        }
+    }
+
+    // CGM 24小时连续曲线图表
+    let cgmChartInstance = null;
+
+    function initCgmChart(days = 14, offset = 0) {
+        if (cgmChartInstance) { cgmChartInstance.destroy(); cgmChartInstance = null; }
+
+        // 日期范围计算（复用 initGlucoseChart 的逻辑）
+        let endDate, cutoffDate;
+        if (days === 1) {
+            const anchor = new Date();
+            if (offset > 0) anchor.setTime(anchor.getTime() - offset * 24 * 60 * 60 * 1000);
+            anchor.setHours(0, 0, 0, 0);
+            cutoffDate = new Date(anchor.getTime() - 12 * 60 * 60 * 1000);
+            endDate = new Date(anchor.getTime() + 36 * 60 * 60 * 1000);
+        } else {
+            if (offset > 0) {
+                endDate = new Date(Date.now() - offset * 24 * 60 * 60 * 1000);
+                endDate.setHours(24, 0, 0, 0);
+            } else {
+                endDate = new Date();
+                endDate.setHours(24, 0, 0, 0);
+            }
+            cutoffDate = days ? new Date(endDate.getTime() - days * 24 * 60 * 60 * 1000) : null;
+        }
+
+        // 从 timelineData 提取所有 CGM 记录（不做槽位采样）
+        const cgmRecords = [];
+        const collectCgmRecords = () => {
+            cgmRecords.length = 0;
+            timelineData.forEach(day => {
+                const dayDate = new Date(day.date);
+                if (cutoffDate && dayDate < new Date(cutoffDate.getTime() - 24 * 60 * 60 * 1000)) return;
+                if (endDate && dayDate > endDate) return;
+
+                day.data.entries.forEach(entry => {
+                    if (entry.type === 'CGM' && entry.value > 0) {
+                        const entryTime = new Date(entry.timestamp);
+                        if (days && days <= 1) {
+                            if (cutoffDate && entryTime < cutoffDate) return;
+                            if (endDate && entryTime > endDate) return;
+                        }
+                        cgmRecords.push({ x: entryTime.getTime(), y: entry.value });
+                    }
+                });
+            });
+        };
+        collectCgmRecords();
+
+        // “近 N 天”始终以当前时间为准；空区间保留导航，不静默跳到旧数据。
+        setChartEmptyState('cgmChart', 'cgmChartEmpty', cgmRecords.length === 0, '该区间暂无连续血糖记录，可点击左上角 ← 查看更早数据');
+        if (cgmRecords.length === 0) return;
+        cgmRecords.sort((a, b) => a.x - b.x);
+
+        // X 轴范围
+        let xMin, xMax;
+        if (days) {
+            xMin = cutoffDate.getTime();
+            // 多天视图末端裁到"现在"：endDate 是明天 0 点，直接当轴上限会多画一个
+            // 没有数据的日期刻度（如 10-27）。单天视图保留前后半天留白，不裁。
+            xMax = days > 1 ? Math.min(endDate.getTime(), Date.now()) : endDate.getTime();
+        } else {
+            xMax = endDate.getTime();
+            if (timelineData.length > 0) {
+                const allDates = timelineData.map(d => d.date).sort();
+                xMin = new Date(allDates[0] + 'T00:00:00').getTime();
+            } else {
+                xMin = endDate.getTime() - 14 * 24 * 60 * 60 * 1000;
+            }
+        }
+
+        let effectiveDays = days;
+        if (!effectiveDays && xMin) {
+            effectiveDays = Math.ceil((xMax - xMin) / (24 * 60 * 60 * 1000));
+        }
+        const xStepSize = effectiveDays > 60 ? 7 : (effectiveDays > 30 ? 3 : 1);
+
+        const dataset = {
+            label: 'CGM 血糖',
+            data: cgmRecords,
+            borderColor: '#26C6DA',
+            backgroundColor: 'rgba(38, 198, 218, 0.1)',
+            borderWidth: 2,
+            tension: 0.3,
+            pointRadius: 0,
+            pointHitRadius: 8,
+            fill: true
+        };
+
+        const ctx = document.getElementById('cgmChart').getContext('2d');
+        const cgmY = glucoseYRange(cgmRecords.map(r => r.y));
+        cgmChartInstance = createHealthChart(ctx, {
+            type: 'line',
+            data: { datasets: [dataset] },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                layout: { padding: { bottom: 28 } },
+                interaction: { mode: 'nearest', axis: 'x', intersect: false },
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'top',
+                        labels: {
+                            usePointStyle: true,
+                            pointStyle: 'circle',
+                            padding: 20,
+                            font: { size: 13, family: CHART_FONT_FAMILY, weight: '500' },
+                            boxWidth: 8,
+                            boxHeight: 8
+                        }
+                    },
+                    tooltip: {
+                        backgroundColor: 'rgba(0,0,0,0.8)',
+                        padding: 12,
+                        titleFont: { size: 14, weight: 'bold' },
+                        bodyFont: { size: 13 },
+                        callbacks: {
+                            title: function(items) {
+                                if (!items.length) return '';
+                                const d = new Date(items[0].parsed.x);
+                                const mm = String(d.getMonth() + 1).padStart(2, '0');
+                                const dd = String(d.getDate()).padStart(2, '0');
+                                const hh = String(d.getHours()).padStart(2, '0');
+                                const mi = String(d.getMinutes()).padStart(2, '0');
+                                return `${mm}-${dd} ${hh}:${mi}`;
+                            },
+                            label: function(context) {
+                                return `CGM: ${context.parsed.y.toFixed(1)} mmol/L`;
+                            }
+                        }
+                    },
+                    annotation: {
+                        annotations: {
+                            targetZone: { type: 'box', yMin: 3.9, yMax: 7.8, backgroundColor: 'rgba(52, 168, 83, 0.08)', borderWidth: 0 },
+                            optimalZone: { type: 'box', yMin: 4.4, yMax: 6.1, backgroundColor: 'rgba(52, 168, 83, 0.12)', borderWidth: 0 },
+                            warningHigh: {
+                                type: 'line', yMin: 7.8, yMax: 7.8,
+                                borderColor: 'rgba(251, 188, 4, 0.6)', borderWidth: 1.5, borderDash: [6, 4],
+                                label: { content: '目标上限 7.8', enabled: !IS_MOBILE, position: 'end', backgroundColor: 'rgba(251, 188, 4, 0.9)', color: '#202124', font: { size: 11 }, padding: { top: 2, bottom: 2, left: 6, right: 6 }, borderRadius: 4 }
+                            },
+                            dangerHigh: {
+                                type: 'line', yMin: 10.0, yMax: 10.0,
+                                borderColor: 'rgba(234, 67, 53, 0.5)', borderWidth: 1.5, borderDash: [8, 4],
+                                label: { content: '危险 10.0', enabled: !IS_MOBILE, position: 'end', backgroundColor: 'rgba(234, 67, 53, 0.9)', color: '#fff', font: { size: 11 }, padding: { top: 2, bottom: 2, left: 6, right: 6 }, borderRadius: 4 }
+                            },
+                            dangerLow: {
+                                type: 'line', yMin: 3.9, yMax: 3.9,
+                                borderColor: 'rgba(234, 67, 53, 0.5)', borderWidth: 1.5, borderDash: [6, 4],
+                                label: { content: '低血糖 3.9', enabled: !IS_MOBILE, position: 'start', backgroundColor: 'rgba(234, 67, 53, 0.9)', color: '#fff', font: { size: 11 }, padding: { top: 2, bottom: 2, left: 6, right: 6 }, borderRadius: 4 }
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        type: 'time',
+                        bounds: 'ticks',
+                        min: xMin,
+                        max: xMax,
+                        afterBuildTicks: function(axis) {
+                            if (axis.ticks && axis.ticks.length > 0) {
+                                if (axis.ticks[0].value > axis.min) {
+                                    axis.ticks.unshift({ value: axis.min });
+                                }
+                                if (axis.ticks[axis.ticks.length - 1].value < axis.max) {
+                                    axis.ticks.push({ value: axis.max });
+                                }
+                            }
+                        },
+                        time: {
+                            unit: days && days <= 7 ? 'hour' : 'day',
+                            stepSize: xStepSize,
+                            displayFormats: { hour: 'HH:mm', day: 'MM-dd' }
+                        },
+                        ticks: {
+                            autoSkip: (days && days > 1 && days <= 7) ? false : true,
+                            ...( (!days || days > 14) ? { minRotation: 30, maxRotation: 30 } : { maxRotation: (days > 7 ? 30 : 0) } ),
+                            callback: function(value, index, ticks) {
+                                const d = new Date(ticks[index].value);
+                                const h = d.getHours();
+                                const m = d.getMinutes();
+                                const dateStr = String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+                                if (!days || days > 7) return h === 0 ? dateStr : null;
+                                if (days <= 1) return String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
+                                if (days <= 3) {
+                                    if (h % 3 !== 0) return null;
+                                } else {
+                                    if (h !== 0 && h !== 12) return null;
+                                }
+                                return h + ':00';
+                            },
+                            font: { size: IS_MOBILE ? 9 : 12, family: CHART_FONT_FAMILY }
+                        },
+                        title: { display: false },
+                        afterFit: function(axis) {
+                            axis.height = 50;
+                        },
+                        grid: { color: (!days || days > 14) ? 'rgba(0,0,0,0.1)' : 'rgba(0,0,0,0.05)' }
+                    },
+                    y: {
+                        beginAtZero: false,
+                        min: cgmY.yMin, max: cgmY.yMax,
+                        title: { display: !IS_MOBILE, text: '血糖值 (mmol/L)', font: { size: IS_MOBILE ? 11 : 14, weight: 'bold' } },
+                        ticks: { stepSize: 1, callback: v => Number.isInteger(v) ? v : '', font: { size: IS_MOBILE ? 9 : 12, weight: 'bold' } },
+                        grid: {
+                            color: function(context) {
+                                if (context.tick.value === 7.8 || context.tick.value === 10.0 || context.tick.value === 3.9) return 'rgba(220, 53, 69, 0.2)';
+                                return 'rgba(0,0,0,0.05)';
+                            },
+                            lineWidth: function(context) {
+                                if (context.tick.value === 7.8 || context.tick.value === 10.0 || context.tick.value === 3.9) return 2;
+                                return 1;
+                            }
+                        }
+                    }
+                }
+            },
+            plugins: (days && days > 1 && days <= 7) ? [{
+                id: 'cgmDateLabelPlugin',
+                afterDraw(chart) {
+                    const xScale = chart.scales.x;
+                    const ctx = chart.ctx;
+                    ctx.save();
+                    ctx.font = `600 11px ${CHART_FONT_FAMILY}`;
+                    ctx.fillStyle = '#333';
+                    ctx.textAlign = 'center';
+                    xScale.ticks.forEach((tick, i) => {
+                        const d = new Date(tick.value);
+                        if (d.getHours() !== 0) return;
+                        const noon = new Date(d);
+                        noon.setHours(12, 0, 0, 0);
+                        const x = xScale.getPixelForValue(noon.getTime());
+                        const y = chart.chartArea.bottom + 35;
+                        const dateStr = String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+                        ctx.fillText(dateStr, x, y);
+                    });
+                    ctx.restore();
+                }
+            }] : []
+        });
+    }
+
+    // CGM 标签页激活时再渲染：隐藏状态下 Chart.js 无法正确计算尺寸；
+    // 当前范围没有 CGM 数据时保留空状态，不自动跳到旧数据。
+    document.getElementById('cgm-chart-tab')?.addEventListener('shown.bs.tab', () => {
+        if (cgmChartInstance) {
+            cgmChartInstance.resize();
+        } else {
+            const savedRange = localStorage.getItem('glucoseTimeRange') || '14';
+            const days = savedRange === 'all' ? null : parseFloat(savedRange);
+            initCgmChart(days, trendOffset);
+        }
+    });
+
+    // Initialize blood pressure trend chart
+    let bpChartInstance = null;
+    let pulseChartInstance = null;
+    function initBloodPressureChart(days = 30, offset = 0) {
+        // 没开血压模块时这张卡片整个不渲染，直接跳过
+        if (!document.getElementById('bloodPressureChart')) return;
+        // 销毁旧图表
+        if (bpChartInstance) { bpChartInstance.destroy(); bpChartInstance = null; }
+        if (pulseChartInstance) { pulseChartInstance.destroy(); pulseChartInstance = null; }
+
+        // endDate 对齐到当天24:00（次日0点），确保x轴以完整天为单位
+        const endDate = offset > 0 ? new Date(Date.now() - offset * 24 * 60 * 60 * 1000) : new Date();
+        // 使用本地时间格式，与数据时间戳一致（避免 UTC/本地时区偏移）
+        function toLocalDateStr(d) {
+            return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+        }
+        const endDateStr = toLocalDateStr(endDate);
+        endDate.setHours(24, 0, 0, 0);
+        const cutoffDate = days ? new Date(endDate.getTime() - days * 24 * 60 * 60 * 1000) : null;
+        const cutoffDateStr = cutoffDate ? toLocalDateStr(cutoffDate) : null;
+        const xAxisMin = cutoffDateStr ? cutoffDateStr + ' 00:00:00' : undefined;
+        const xAxisMax = endDateStr + ' 23:59:59';
+
+        // Extract all blood pressure records from timeline data
+        const bpRecords = [];
+
+        timelineData.forEach(day => {
+            if (cutoffDateStr && day.date < cutoffDateStr) return;
+            if (offset > 0 && day.date > endDateStr) return;
+            day.data.entries.forEach(entry => {
+                if (entry.systolic_pressure && entry.diastolic_pressure) {
+                    bpRecords.push({
+                        timestamp: entry.timestamp,
+                        systolic: entry.systolic_pressure,
+                        diastolic: entry.diastolic_pressure,
+                        pulse: entry.pulse_rate || null,
+                        type: entry.type
+                    });
+                }
+            });
+        });
+
+        // 空区间也保留卡片、翻页和时间范围控件，用户始终能返回有数据的区间。
+        document.getElementById('bloodPressureChartCard').style.display = '';
+        setChartEmptyState('bloodPressureChart', 'bloodPressureChartEmpty', bpRecords.length === 0, '该区间暂无血压记录，可往前翻或切换时间范围');
+        if (bpRecords.length === 0) {
+            setChartEmptyState('pulseChart', 'pulseChartEmpty', true, '该区间暂无心率记录，可往前翻或切换时间范围');
+            return;
+        }
+        setChartEmptyState('pulseChart', 'pulseChartEmpty', false);
+
+        // Sort by timestamp
+        bpRecords.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+
+        const ctx = document.getElementById('bloodPressureChart').getContext('2d');
+
+        // Prepare datasets
+        const systolicData = [];
+        const diastolicData = [];
+        const pulseData = [];
+
+        bpRecords.forEach(record => {
+            const dataPoint = { x: record.timestamp, y: record.systolic };
+            systolicData.push(dataPoint);
+
+            diastolicData.push({ x: record.timestamp, y: record.diastolic });
+
+            if (record.pulse) {
+                pulseData.push({ x: record.timestamp, y: record.pulse });
+            }
+        });
+        setChartEmptyState('pulseChart', 'pulseChartEmpty', pulseData.length === 0, '该区间的血压记录未包含心率');
+
+        // 根据血压状态设置点的颜色
+        function getBPPointColor(systolic, diastolic) {
+            // 偏高：收缩压>140 或 舒张压>90
+            if (systolic > 140 || diastolic > 90) return '#dc3545'; // 红色
+            // 警戒：收缩压>130 或 舒张压>85
+            if (systolic > 130 || diastolic > 85) return '#ffc107'; // 黄色
+            // 正常
+            return '#198754'; // 绿色
+        }
+
+        const datasets = [
+            {
+                label: '收缩压（高压）',
+                data: systolicData,
+                borderColor: '#E25B5B',
+                backgroundColor: '#E25B5B',
+                borderWidth: 3,
+                tension: 0.1,
+                pointRadius: systolicData.map((point, idx) => {
+                    const bp = bpRecords[idx];
+                    const color = getBPPointColor(bp.systolic, bp.diastolic);
+                    return color === '#dc3545' ? 7 : 4; // 偏高显示大点
+                }),
+                pointHoverRadius: 9,
+                pointBackgroundColor: systolicData.map((point, idx) => {
+                    const bp = bpRecords[idx];
+                    return getBPPointColor(bp.systolic, bp.diastolic);
+                }),
+                pointBorderColor: '#fff',
+                pointBorderWidth: 2,
+                fill: false
+            },
+            {
+                label: '舒张压（低压）',
+                data: diastolicData,
+                borderColor: '#4A90D9',
+                backgroundColor: '#4A90D9',
+                borderWidth: 3,
+                tension: 0.1,
+                pointRadius: 4,
+                pointHoverRadius: 8,
+                pointBackgroundColor: diastolicData.map((point, idx) => {
+                    const bp = bpRecords[idx];
+                    return getBPPointColor(bp.systolic, bp.diastolic);
+                }),
+                pointBorderColor: '#fff',
+                pointBorderWidth: 2,
+                fill: false
+            }
+        ];
+
+        // 计算Y轴范围
+        const allSystolic = bpRecords.map(r => r.systolic);
+        const allDiastolic = bpRecords.map(r => r.diastolic);
+        const minBP = Math.min(...allSystolic, ...allDiastolic);
+        const maxBP = Math.max(...allSystolic, ...allDiastolic);
+
+        const yMin = Math.max(40, Math.floor((minBP - 10) / 10) * 10);
+        const yMax = Math.min(200, Math.ceil((maxBP + 10) / 10) * 10);
+
+        bpChartInstance = createHealthChart(ctx, {
+            type: 'line',
+            data: { datasets: datasets },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: {
+                    mode: 'nearest',
+                    axis: 'x',
+                    intersect: false
+                },
+                plugins: {
+                    legend: {
+                        display: false
+                    },
+                    tooltip: {
+                        backgroundColor: 'rgba(0,0,0,0.8)',
+                        padding: 12,
+                        titleFont: { size: 14, weight: 'bold' },
+                        bodyFont: { size: 13 },
+                        callbacks: {
+                            label: function(context) {
+                                const idx = context.dataIndex;
+                                const bp = bpRecords[idx];
+
+                                let statusName;
+                                if (bp.systolic > 140 || bp.diastolic > 90) {
+                                    statusName = '偏高';
+                                } else if (bp.systolic > 130 || bp.diastolic > 85) {
+                                    statusName = '警戒';
+                                } else {
+                                    statusName = '理想';
+                                }
+
+                                if (context.dataset.label === '收缩压（高压）') {
+                                    return `血压 ${bp.systolic}/${bp.diastolic} mmHg · ${statusName}`;
+                                }
+                                return `舒张压 ${bp.diastolic} mmHg · ${statusName}`;
+                            }
+                        }
+                    },
+                    annotation: {
+                        annotations: {
+                            dangerHighSys: {
+                                type: 'line',
+                                yMin: 160,
+                                yMax: 160,
+                                borderColor: 'rgba(220, 53, 69, 0.3)',
+                                borderWidth: 2,
+                                borderDash: [10, 5],
+                                label: {
+                                    content: '危险 160mmHg',
+                                    display: !IS_MOBILE,
+                                    position: 'end',
+                                    backgroundColor: 'rgba(220, 53, 69, 0.8)',
+                                    color: '#fff',
+                                    font: { size: 11 }
+                                }
+                            },
+                            warningHighSys: {
+                                type: 'line',
+                                yMin: 140,
+                                yMax: 140,
+                                borderColor: 'rgba(240, 168, 160, 0.7)',
+                                borderWidth: 2,
+                                borderDash: [5, 5],
+                                label: {
+                                    content: '收缩压警戒 140mmHg',
+                                    display: !IS_MOBILE,
+                                    position: 'end',
+                                    backgroundColor: 'rgba(240, 168, 160, 0.85)',
+                                    color: '#5A2A20',
+                                    font: { size: 11 }
+                                }
+                            },
+                            warningHighDia: {
+                                type: 'line',
+                                yMin: 90,
+                                yMax: 90,
+                                borderColor: 'rgba(140, 188, 224, 0.7)',
+                                borderWidth: 1.5,
+                                borderDash: [3, 3],
+                                label: {
+                                    content: '舒张压警戒 90mmHg',
+                                    display: !IS_MOBILE,
+                                    position: 'start',
+                                    backgroundColor: 'rgba(140, 188, 224, 0.85)',
+                                    color: '#1E3A5F',
+                                    font: { size: 11 }
+                                }
+                            },
+                            normalZone: {
+                                type: 'box',
+                                yMin: 90,
+                                yMax: 140,
+                                backgroundColor: 'rgba(25, 135, 84, 0.05)',
+                                borderWidth: 0
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        type: 'time',
+                        bounds: 'ticks',
+                        min: xAxisMin,
+                        max: xAxisMax,
+                        afterBuildTicks: function(axis) {
+                            if (axis.ticks && axis.ticks.length > 0) {
+                                if (axis.ticks[0].value > axis.min) {
+                                    axis.ticks.unshift({ value: axis.min });
+                                }
+                                if (axis.ticks[axis.ticks.length - 1].value < axis.max) {
+                                    axis.ticks.push({ value: axis.max });
+                                }
+                            }
+                        },
+                        time: {
+                            unit: 'day',
+                            displayFormats: { day: 'MM-dd' }
+                        },
+                        ticks: { maxRotation: 30, autoSkip: true },
+                        title: { display: false },
+                        grid: {
+                            color: 'rgba(0,0,0,0.05)'
+                        }
+                    },
+                    y: {
+                        beginAtZero: false,
+                        min: yMin,
+                        max: yMax,
+                        title: {
+                            display: !IS_MOBILE,
+                            text: '血压 (mmHg)',
+                            font: { size: IS_MOBILE ? 11 : 14, weight: 'bold' }
+                        },
+                        ticks: {
+                            stepSize: 10,
+                            font: { size: IS_MOBILE ? 9 : 12, weight: 'bold' }
+                        },
+                        grid: {
+                            color: function(context) {
+                                if (context.tick.value === 140 || context.tick.value === 90 || context.tick.value === 160) {
+                                    return 'rgba(220, 53, 69, 0.15)';
+                                }
+                                return 'rgba(0,0,0,0.05)';
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        // 心率独立图表
+        if (pulseData.length > 0) {
+            let pulseMin = 40, pulseMax = 120;
+            const allPulse = bpRecords.filter(r => r.pulse).map(r => r.pulse);
+            if (allPulse.length > 0) {
+                pulseMin = Math.max(40, Math.floor((Math.min(...allPulse) - 10) / 10) * 10);
+                pulseMax = Math.min(150, Math.ceil((Math.max(...allPulse) + 10) / 10) * 10);
+            }
+
+            const pulseCtx = document.getElementById('pulseChart').getContext('2d');
+            pulseChartInstance = createHealthChart(pulseCtx, {
+                type: 'line',
+                data: {
+                    datasets: [{
+                        label: '脉搏（次/分）',
+                        data: pulseData,
+                        borderColor: '#FF6F00',
+                        backgroundColor: 'rgba(255, 111, 0, 0.1)',
+                        borderWidth: 3,
+                        tension: 0.3,
+                        pointRadius: 5,
+                        pointHoverRadius: 8,
+                        pointBackgroundColor: '#fff',
+                        pointBorderColor: '#FF6F00',
+                        pointBorderWidth: 2,
+                        fill: true
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            backgroundColor: 'rgba(0,0,0,0.8)',
+                            padding: 12,
+                            titleFont: { size: 14, weight: 'bold' },
+                            bodyFont: { size: 13 },
+                            callbacks: {
+                                label: function(context) {
+                                    return '脉搏: ' + context.parsed.y + ' bpm';
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            type: 'time',
+                            bounds: 'ticks',
+                            min: xAxisMin,
+                            max: xAxisMax,
+                            afterBuildTicks: function(axis) {
+                                if (axis.ticks && axis.ticks.length > 0) {
+                                    if (axis.ticks[0].value > axis.min) {
+                                        axis.ticks.unshift({ value: axis.min });
+                                    }
+                                    if (axis.ticks[axis.ticks.length - 1].value < axis.max) {
+                                        axis.ticks.push({ value: axis.max });
+                                    }
+                                }
+                            },
+                            time: { unit: 'day', displayFormats: { day: 'MM-dd' } },
+                            ticks: { maxRotation: 30, autoSkip: true },
+                            title: { display: false },
+                            grid: { color: 'rgba(0,0,0,0.05)' }
+                        },
+                        y: {
+                            beginAtZero: false,
+                            min: pulseMin,
+                            max: pulseMax,
+                            title: { display: !IS_MOBILE, text: '脉搏 (bpm)', font: { size: IS_MOBILE ? 11 : 14, weight: 'bold' }, color: '#FF6F00' },
+                            ticks: { stepSize: 10, font: { size: IS_MOBILE ? 9 : 12, weight: 'bold' }, color: '#FF6F00' },
+                            grid: { color: 'rgba(0,0,0,0.05)' }
+                        }
+                    }
+                }
+            });
+        }
+    }
+
+    // Initialize weight/BMI trend chart
+    let weightChartInstance = null;
+
+    // 图例跟着当前指标走:双线模式两条,单指标模式一条;没有的系列不虚报
+    function updateWeightLegend(metric, hasFat, hasWeight) {
+        const el = document.getElementById('weightChartLegend');
+        if (!el) return;
+        // 没有体成分数据时这张卡就是纯体重图,不显示图例(与合并前一致)
+        if (!document.getElementById('weightMetricTabs')) { el.innerHTML = ''; return; }
+        const line = (color, dashed = false) => `<i class="chart-legend-line${dashed ? ' is-dashed' : ''}" style="--legend-color:${color}" aria-hidden="true"></i>`;
+        if (metric === 'weight_fat') {
+            let html = '';
+            if (hasWeight !== false) html += `<span>${line('#00897B')}体重 kg（左轴）</span>`;
+            if (hasFat) html += `<span>${line('#FF7043', true)}体脂率 %（${hasWeight === false ? '左' : '右'}轴）</span>`;
+            el.innerHTML = html;
+            return;
+        }
+        const meta = BODY_COMP_METRICS[metric];
+        el.innerHTML = meta
+            ? `<span>${line(meta.color)}${meta.label}${meta.unit ? ' (' + meta.unit + ')' : ''}</span>`
+            : '';
+    }
+
+    function initWeightChart(days = 30, offset = 0) {
+        // 没开体重模块时这张卡片整个不渲染，直接跳过
+        if (!document.getElementById('weightChart')) return;
+        if (weightChartInstance) { weightChartInstance.destroy(); weightChartInstance = null; }
+
+        const metric = weightChartMetric;
+        const isWeightFat = metric === 'weight_fat';
+        const meta = isWeightFat ? null : BODY_COMP_METRICS[metric];
+        if (!isWeightFat && !meta) return;
+
+        // endDate 对齐到当天24:00（次日0点），确保x轴以完整天为单位
+        const endDate = offset > 0 ? new Date(Date.now() - offset * 24 * 60 * 60 * 1000) : new Date();
+        // 使用本地时间格式，与数据时间戳一致
+        function toLocalDateStr2(d) {
+            return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+        }
+        const endDateStr = toLocalDateStr2(endDate);
+        endDate.setHours(24, 0, 0, 0);
+        const cutoffDate = days ? new Date(endDate.getTime() - days * 24 * 60 * 60 * 1000) : null;
+        const cutoffDateStr = cutoffDate ? toLocalDateStr2(cutoffDate) : null;
+        const xAxisMin = cutoffDateStr ? cutoffDateStr + ' 00:00:00' : undefined;
+        const xAxisMax = endDateStr + ' 23:59:59';
+
+        // 每行 entry 带全部 records 列:体重与体成分取自同一批行,不需要额外请求
+        const weightRecords = [];
+        const metricRecords = [];
+        timelineData.forEach(day => {
+            if (cutoffDateStr && day.date < cutoffDateStr) return;
+            if (offset > 0 && day.date > endDateStr) return;
+            day.data.entries.forEach(entry => {
+                if (entry.weight && entry.weight > 0) {
+                    weightRecords.push({ timestamp: entry.timestamp, weight: entry.weight });
+                }
+                const field = isWeightFat ? 'body_fat_rate' : metric;
+                const v = entry[field];
+                if (v !== null && v !== undefined && v > 0) {
+                    metricRecords.push({ x: entry.timestamp, y: v });
+                }
+            });
+        });
+
+        const hasWeight = weightRecords.length > 0;
+        const hasMetric = metricRecords.length > 0;
+        const isEmpty = (!hasWeight && !hasMetric) || (!isWeightFat && !hasMetric);
+
+        // 无论是否有体成分页签，都保留范围与翻页控件；只隐藏图形，不隐藏整张卡。
+        document.getElementById('weightChartCard').style.display = '';
+        const nameEl = document.getElementById('weightChartEmptyMetric');
+        if (nameEl) nameEl.textContent = !isWeightFat && meta ? meta.label : '';
+        setChartEmptyState('weightChart', 'weightChartEmpty', isEmpty);
+        if (isEmpty) {
+            updateWeightLegend(metric, false, hasWeight);
+            return;
+        }
+        updateWeightLegend(metric, hasMetric, hasWeight);
+
+        weightRecords.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+        metricRecords.sort((a, b) => new Date(a.x) - new Date(b.x));
+
+        // 只有体脂率、没有体重的记录(API/导入可以写入):退化成单轴体脂图,
+        // 否则左轴标题写着「体重」,范围却按体脂率算
+        const fatOnly = isWeightFat && !hasWeight && hasMetric;
+        const chartMetric = fatOnly ? 'body_fat_rate' : metric;
+        const chartIsWeightFat = isWeightFat && !fatOnly;
+        const chartMeta = chartIsWeightFat ? null : BODY_COMP_METRICS[chartMetric];
+        const chartUnitSuffix = chartMeta && chartMeta.unit ? ` (${chartMeta.unit})` : '';
+
+        const ctx = document.getElementById('weightChart').getContext('2d');
+
+        // BMI → 体重换算（基于用户身高）
+        const userHeight = B.userHeight;  // cm
+        const heightM = userHeight / 100;
+        const bmi24Weight = Math.round(24 * heightM * heightM * 10) / 10;  // 超重线
+        const bmi22Weight = Math.round(22 * heightM * heightM * 10) / 10;  // BMI=22 体重
+        const userTargetWeight = B.userTargetWeight;  // 用户自定义目标体重
+        const targetWeight = userTargetWeight || bmi22Weight;  // 优先用户设置，否则 BMI=22
+
+        const datasets = [];
+        if (chartIsWeightFat) {
+            if (hasWeight) {
+                datasets.push({
+                    label: '体重 (kg)',
+                    data: weightRecords.map(r => ({ x: r.timestamp, y: r.weight })),
+                    borderColor: '#00897B',
+                    backgroundColor: '#00897B',
+                    borderWidth: 3,
+                    tension: 0.3,
+                    pointRadius: 5,
+                    pointHoverRadius: 8,
+                    pointBackgroundColor: '#00897B',
+                    pointBorderColor: '#fff',
+                    pointBorderWidth: 2,
+                    fill: false,
+                    yAxisID: 'y'
+                });
+            }
+            if (hasMetric) {
+                datasets.push({
+                    label: '体脂率 (%)',
+                    data: metricRecords,
+                    borderColor: '#FF7043',
+                    backgroundColor: '#FF7043',
+                    borderWidth: 2.5,
+                    borderDash: [6, 4],
+                    tension: 0.3,
+                    pointRadius: 4,
+                    pointHoverRadius: 7,
+                    pointBackgroundColor: '#FF7043',
+                    pointBorderColor: '#fff',
+                    pointBorderWidth: 2,
+                    fill: false,
+                    yAxisID: 'y1'
+                });
+            }
+        } else {
+            datasets.push({
+                label: chartMeta.label + chartUnitSuffix,
+                data: metricRecords,
+                borderColor: chartMeta.color,
+                backgroundColor: chartMeta.color,
+                borderWidth: 3,
+                tension: 0.3,
+                pointRadius: 5,
+                pointHoverRadius: 8,
+                pointBackgroundColor: chartMeta.color,
+                pointBorderColor: '#fff',
+                pointBorderWidth: 2,
+                fill: false,
+                yAxisID: 'y'
+            });
+        }
+
+        // 左轴范围:双线模式跟体重走(含目标/超重线),单指标跟指标走
+        let yMin;
+        let yMax;
+        if (chartIsWeightFat) {
+            if (hasWeight) {
+                let wMin = Infinity;
+                let wMax = -Infinity;
+                weightRecords.forEach(r => {
+                    if (r.weight < wMin) wMin = r.weight;
+                    if (r.weight > wMax) wMax = r.weight;
+                });
+                yMin = Math.floor(Math.min(wMin, targetWeight) - 2);
+                yMax = Math.ceil(Math.max(wMax, bmi24Weight) + 2);
+            } else {
+                let vMin = Infinity;
+                let vMax = -Infinity;
+                metricRecords.forEach(r => {
+                    if (r.y < vMin) vMin = r.y;
+                    if (r.y > vMax) vMax = r.y;
+                });
+                yMin = Math.floor(vMin - 1);
+                yMax = Math.ceil(vMax + 1);
+            }
+        } else {
+            let vMin = Infinity;
+            let vMax = -Infinity;
+            metricRecords.forEach(r => {
+                if (r.y < vMin) vMin = r.y;
+                if (r.y > vMax) vMax = r.y;
+            });
+            yMin = Math.floor(vMin - 1);
+            yMax = Math.ceil(vMax + 1);
+        }
+
+        // 参考线:数值与方向只来自 BODY_COMP_THRESHOLDS;阈值为 null 时一律不画
+        const thresholds = BODY_COMP_THRESHOLDS || {};
+        const annotations = {};
+        const makeThresholdLine = (key, value, unit, axisID, isMin) => {
+            annotations[key] = {
+                type: 'line',
+                yMin: value,
+                yMax: value,
+                yScaleID: axisID,
+                borderColor: isMin ? 'rgba(66, 165, 245, 0.6)' : 'rgba(239, 83, 80, 0.5)',
+                borderWidth: 1.5,
+                borderDash: [6, 4],
+                label: {
+                    display: !IS_MOBILE,
+                    content: `${isMin ? '参考下限' : '参考上限'} ${value}${unit}`,
+                    position: isMin ? 'start' : 'end',
+                    yAdjust: -12,
+                    backgroundColor: 'transparent',
+                    color: isMin ? '#42A5F5' : '#EF5350',
+                    font: { size: 11 },
+                    padding: 2
+                }
+            };
+        };
+
+        if (chartIsWeightFat) {
+            if (hasWeight) {
+                annotations.overweightLine = {
+                    type: 'line',
+                    yMin: bmi24Weight,
+                    yMax: bmi24Weight,
+                    yScaleID: 'y',
+                    borderColor: 'rgba(239, 83, 80, 0.5)',
+                    borderWidth: 1.5,
+                    borderDash: [6, 4],
+                    label: {
+                        display: !IS_MOBILE,
+                        content: `超重 ${bmi24Weight}kg (BMI=24)`,
+                        position: 'end',
+                        yAdjust: -12,
+                        backgroundColor: 'transparent',
+                        color: '#EF5350',
+                        font: { size: 11 },
+                        padding: 2
+                    }
+                };
+                annotations.healthyLine = {
+                    type: 'line',
+                    yMin: targetWeight,
+                    yMax: targetWeight,
+                    yScaleID: 'y',
+                    borderColor: 'rgba(76, 175, 80, 0.5)',
+                    borderWidth: 1.5,
+                    borderDash: [6, 4],
+                    label: {
+                        display: !IS_MOBILE,
+                        content: userTargetWeight ? `目标 ${targetWeight}kg` : `目标 ${targetWeight}kg (BMI=22)`,
+                        position: 'start',
+                        yAdjust: -12,
+                        backgroundColor: 'transparent',
+                        color: '#4CAF50',
+                        font: { size: 11 },
+                        padding: 2
+                    }
+                };
+            }
+            if (hasMetric && thresholds.body_fat_rate_max !== undefined && thresholds.body_fat_rate_max !== null) {
+                makeThresholdLine('bodyFatMaxLine', thresholds.body_fat_rate_max, '%', 'y1', false);
+            }
+        } else {
+            const thresholdMax = chartMetric === 'body_fat_rate' ? thresholds.body_fat_rate_max
+                : (chartMetric === 'visceral_fat' ? thresholds.visceral_fat_max : null);
+            if (thresholdMax !== undefined && thresholdMax !== null) {
+                yMax = Math.max(yMax, Math.ceil(Number(thresholdMax) + 1));
+                makeThresholdLine(chartMetric + 'MaxLine', thresholdMax, chartMeta.unit, 'y', false);
+            }
+            const thresholdMin = chartMetric === 'muscle_mass' ? thresholds.muscle_mass_min_kg : null;
+            if (thresholdMin !== undefined && thresholdMin !== null) {
+                yMin = Math.min(yMin, Math.floor(Number(thresholdMin) - 1));
+                makeThresholdLine('muscleMinLine', thresholdMin, chartMeta.unit, 'y', true);
+            }
+        }
+
+        // 右轴(体脂率)范围:有参考上限时把上限纳入,避免虚线飘出图外
+        let y1Min;
+        let y1Max;
+        if (chartIsWeightFat && hasMetric) {
+            let fMin = Infinity;
+            let fMax = -Infinity;
+            metricRecords.forEach(r => {
+                if (r.y < fMin) fMin = r.y;
+                if (r.y > fMax) fMax = r.y;
+            });
+            y1Min = Math.floor(fMin - 1);
+            y1Max = Math.ceil(fMax + 1);
+            const fatMax = thresholds.body_fat_rate_max;
+            if (fatMax !== undefined && fatMax !== null) {
+                y1Max = Math.max(y1Max, Math.ceil(Number(fatMax) + 1));
+            }
+        }
+
+        const scales = {
+            x: {
+                type: 'time',
+                bounds: 'ticks',
+                min: xAxisMin,
+                max: xAxisMax,
+                afterBuildTicks: function(axis) {
+                    if (axis.ticks && axis.ticks.length > 0) {
+                        if (axis.ticks[0].value > axis.min) {
+                            axis.ticks.unshift({ value: axis.min });
+                        }
+                        if (axis.ticks[axis.ticks.length - 1].value < axis.max) {
+                            axis.ticks.push({ value: axis.max });
+                        }
+                    }
+                },
+                time: { unit: 'day', displayFormats: { day: 'MM-dd' } },
+                ticks: { maxRotation: 30, autoSkip: true },
+                grid: { color: 'rgba(0,0,0,0.05)' }
+            },
+            y: {
+                position: 'left',
+                beginAtZero: false,
+                min: yMin,
+                max: yMax,
+                title: {
+                    display: !IS_MOBILE,
+                    text: chartIsWeightFat ? '体重 (kg)' : chartMeta.label + chartUnitSuffix,
+                    font: { size: IS_MOBILE ? 9 : 12, weight: 'bold' },
+                    color: chartIsWeightFat ? '#00897B' : chartMeta.color
+                },
+                ticks: {
+                    stepSize: 1,
+                    font: { size: 11 },
+                    color: chartIsWeightFat ? '#00897B' : chartMeta.color
+                },
+                grid: { color: 'rgba(0,0,0,0.05)' }
+            }
+        };
+        if (chartIsWeightFat && hasMetric) {
+            scales.y1 = {
+                position: 'right',
+                beginAtZero: false,
+                min: y1Min,
+                max: y1Max,
+                grid: { drawOnChartArea: false },
+                title: {
+                    display: !IS_MOBILE,
+                    text: '体脂率 (%)',
+                    font: { size: IS_MOBILE ? 9 : 12, weight: 'bold' },
+                    color: '#FF7043'
+                },
+                ticks: {
+                    stepSize: 1,
+                    font: { size: 11 },
+                    color: '#FF7043'
+                }
+            };
+        }
+
+        weightChartInstance = createHealthChart(ctx, {
+            type: 'line',
+            data: { datasets },
+            options: {
+                responsive: true,
+                interaction: {
+                    // 两条线的时间点不一定一一对应,用 nearest 避免 index 串位;
+                    // 单条线(含纯体重用户)沿用旧的 index 行为
+                    mode: datasets.length > 1 ? 'nearest' : 'index',
+                    intersect: false
+                },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            title: (items) => {
+                                if (items[0]) {
+                                    const d = new Date(items[0].raw.x);
+                                    return d.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+                                }
+                                return '';
+                            },
+                            label: (item) => {
+                                if (!chartIsWeightFat) return `${chartMeta.label}: ${item.raw.y}${chartMeta.unit}`;
+                                if (item.dataset.yAxisID === 'y1') return `体脂率: ${item.raw.y}%`;
+                                const w = item.raw.y;
+                                const bmi = (w / (heightM * heightM)).toFixed(1);
+                                return `体重: ${w} kg · BMI: ${bmi}`;
+                            },
+                            afterLabel: (item) => {
+                                if (!chartIsWeightFat || item.dataset.yAxisID === 'y1') return '';
+                                const w = item.raw.y;
+                                const bmi = w / (heightM * heightM);
+                                if (bmi < 18.5) return '偏瘦';
+                                if (w <= targetWeight) return '✓ 达标';
+                                if (bmi < 24) return `距目标 ${(w - targetWeight).toFixed(1)}kg`;
+                                return `需减重 ${(w - bmi24Weight).toFixed(1)}kg`;
+                            }
+                        }
+                    },
+                    annotation: { annotations }
+                },
+                scales
+            }
+        });
+    }
+
+    // Get point border color based on glucose value and type (表示血糖状态)
+    // 使用全局的科学达标标准 + Google Fit 配色
+    function getPointBorderColor(key, value) {
+        const green = '#34A853';  // Google Green - 理想
+        const yellow = '#FBBC04'; // Google Yellow - 达标（警戒）
+        const red = '#EA4335';    // Google Red - 超标
+
+        const result = checkGlucoseCompliance(value, key);
+
+        if (result.level === 'low') return red;      // 低血糖
+        if (result.level === 'optimal') return green; // 理想
+        if (result.level === 'acceptable') return yellow; // 达标但偏高
+        return red;  // 超标
+    }
+
+    // 非血糖记录的类型：这些记录也带 value，但数值不是 mmol/L，
+    // 混进达标率计算会把「血糖 68」这种假数据算出来。
+    // 名单跟 services/timeline_service.py 里统计 avg_glucose 的黑名单保持一致。
+    const NON_GLUCOSE_TYPES = new Set([
+        '跑步', '运动', '走路', '骑行', '游泳', '健身',
+        '早餐', '午餐', '晚餐', '加餐',
+        '体重记录', '体重', '血压', '血压测量'
+    ]);
+
+    function isGlucoseEntry(e) {
+        if (!(e.value > 0) || e.is_predicted || e.systolic_pressure) return false;
+        if (e.type && e.type.includes('血压')) return false;
+        return !NON_GLUCOSE_TYPES.has(e.type);
+    }
+
+    /**
+     * 当天有没有「能量」相关的记录：记了吃的，或者记了运动。
+     *
+     * 两个都没有时不能算净热量——后端恒按 `净热量 = 0 - 基础代谢` 计算，
+     * 结果永远是负的，于是什么也没记的一天也会显示「减糖减脂 1417」，
+     * 像是在说「你今天躺着就减了 1417 大卡」。宁可不显示。
+     */
+    function hasEnergyData(stats) {
+        if (!stats) return false;
+        return (stats.cal_in || 0) > 0 || (stats.cal_out_exercise || 0) > 0;
+    }
+
+    // 用药打卡徽标：有记录日期和无记录日期共用，保证长期用药按月连续可见
+    function pushMedicationBadge(events, dateStr, medPlans) {
+        if (!medPlans || medPlans.length === 0) return;
+        const medOnly = medPlans.filter(p => (p.category || 'long_term') !== 'supplement');
+        const suppOnly = medPlans.filter(p => (p.category || 'long_term') === 'supplement');
+        let medTitle = '';
+        if (medOnly.length > 0 && suppOnly.length > 0) {
+            medTitle = `💊${medOnly.length} 🧬${suppOnly.length}`;
+        } else if (medOnly.length > 0) {
+            medTitle = `💊${medOnly.length}`;
+        } else {
+            medTitle = `🧬${suppOnly.length}`;
+        }
+        const medNames = medPlans.map(p => p.medication_name).join('、');
+
+        events.push({
+            title: medTitle,
+            start: dateStr,
+            backgroundColor: '#e7e8f5',
+            textColor: '#4a5568',
+            borderColor: '#e7e8f5',
+            allDay: true,
+            display: 'auto',
+            classNames: ['summary-event'],
+            extendedProps: {
+                tooltip: medNames
+            }
+        });
+    }
+
+    function generateCalendarEvents() {
+        const events = [];
+
+        timelineData.forEach(day => {
+            const stats = day.data.stats;
+            const entries = day.data.entries;
+
+            // === Summary Events for Month/Week View (allDay) ===
+
+            // 1. 血糖达标率 Badge（使用全局的科学达标标准和徽章奖励系统）
+            if (stats.glucose_count > 0 && stats.avg_glucose > 0) {
+                // 计算达标数量（使用全局函数）
+                let normalCount = 0;
+                let glucoseCount = 0;
+                entries.forEach(e => {
+                    if (isGlucoseEntry(e)) {
+                        glucoseCount++;
+                        const result = checkGlucoseCompliance(e.value, e.type);
+                        if (result.isCompliant) {
+                            normalCount++;
+                        }
+                    }
+                });
+
+                // 计算达标率
+                const percentage = glucoseCount > 0 ? Math.round((normalCount / glucoseCount) * 100) : 0;
+
+                // 根据达标率获取对应的徽章（使用全局函数）
+                const badge = getBadgeForRate(percentage);
+
+                events.push({
+                    title: `${badge.icon} 血糖${stats.avg_glucose} (${percentage}%)`,
+                    start: day.date,
+                    backgroundColor: badge.bg_color,
+                    textColor: badge.text_color,
+                    borderColor: badge.bg_color,
+                    allDay: true,
+                    display: 'auto',
+                    classNames: ['summary-event'],
+                    extendedProps: {
+                        badgeName: badge.name,
+                        badgeDescription: badge.description
+                    }
+                });
+            }
+
+            // 2. 能量状态 Badge（减糖减脂 vs 脂糖累积）
+            // 只有真记了饮食或运动才显示，否则「0 摄入 - 基础代谢」会天天报减脂
+            if (hasEnergyData(stats)) {
+                let energyIcon, energyBg, energyText, displayText;
+                if (stats.is_deficit) {
+                    // 消耗 > 摄入（健康）
+                    energyIcon = '👍';
+                    energyBg = '#d4edda';
+                    energyText = '#155724';
+                    displayText = `${energyIcon} 减糖减脂 ${Math.abs(stats.net_calories)}`;
+                } else {
+                    // 摄入 > 消耗（需注意）
+                    energyIcon = '👎';
+                    energyBg = '#f8d7da';
+                    energyText = '#721c24';
+                    displayText = `${energyIcon} 脂糖累积 ${Math.abs(stats.net_calories)}`;
+                }
+
+                events.push({
+                    title: displayText,
+                    start: day.date,
+                    backgroundColor: energyBg,
+                    textColor: energyText,
+                    borderColor: energyBg,
+                    allDay: true,
+                    display: 'auto',
+                    classNames: ['summary-event']
+                });
+            }
+
+            // 3. 运动标记 Badge
+            const exerciseEntries = entries.filter(e =>
+                e.distance > 0 || e.type === '跑步' || e.type === '运动'
+            );
+            if (exerciseEntries.length > 0) {
+                const totalDistance = exerciseEntries.reduce((sum, e) => sum + (e.distance || 0), 0);
+                const displayText = totalDistance > 0
+                    ? `🏃 ${totalDistance.toFixed(1)}km`
+                    : `🏃 运动`;
+
+                events.push({
+                    title: displayText,
+                    start: day.date,
+                    backgroundColor: '#d4edda',
+                    textColor: '#155724',
+                    borderColor: '#d4edda',
+                    allDay: true,
+                    display: 'auto',
+                    classNames: ['summary-event']
+                });
+            }
+
+            // 4. 用药打卡 Badge
+            pushMedicationBadge(events, day.date, day.data.medication_plans || []);
+
+            // === Detailed Events for Day View (timed) ===
+
+            entries.forEach(entry => {
+                const timestamp = entry.timestamp; // "YYYY-MM-DD HH:MM:SS"
+
+                // Skip AI predictions in calendar
+                if (entry.is_predicted) return;
+
+                let eventTitle = '';
+                let eventColor = '#6c757d';
+                let eventIcon = '';
+
+                // Glucose measurement
+                if (entry.value > 0) {
+                    eventTitle = `${entry.value} ${entry.unit} ${entry.type}`;
+                    eventIcon = '🩸 ';
+                    if (entry.value < 3.9) eventColor = '#dc3545';
+                    else if (entry.value > 7.8) eventColor = '#ffc107';
+                    else eventColor = '#198754';
+                }
+                // Meal
+                else if (entry.type && ['早餐', '午餐', '晚餐', '加餐'].includes(entry.type)) {
+                    eventTitle = `${entry.type}`;
+                    if (entry.notes) eventTitle += `: ${entry.notes.substring(0, 20)}...`;
+                    eventIcon = '🍽️ ';
+                    eventColor = entry.type === '加餐' ? '#e91e8c' : '#fd7e14';
+                }
+                // Exercise
+                else if (entry.distance || entry.type === '跑步' || entry.type === '运动') {
+                    eventTitle = `${entry.type}`;
+                    if (entry.distance) eventTitle += ` ${entry.distance}km`;
+                    eventIcon = '🏃 ';
+                    eventColor = '#7cb889';
+                }
+
+                if (eventTitle) {
+                    events.push({
+                        title: eventIcon + eventTitle,
+                        start: timestamp,
+                        backgroundColor: eventColor,
+                        borderColor: eventColor,
+                        textColor: '#fff',
+                        allDay: false,
+                        classNames: ['detail-event'],
+                        extendedProps: {
+                            entry: entry
+                        }
+                    });
+                }
+            });
+        });
+
+        // 无记录日期也补用药打卡徽标：长期用药不应因为当天没测血糖/没运动而断档
+        const loadedDates = new Set(timelineData.map(d => d.date));
+        if (timelineLoaded.minDate && ACTIVE_MEDICATION_PLANS.length > 0) {
+            const endStr = localDateString();
+            const cursor = new Date(timelineLoaded.minDate + 'T00:00:00');
+            const end = new Date(endStr + 'T00:00:00');
+            while (cursor <= end) {
+                const dateStr = localDateString(cursor);
+                if (!loadedDates.has(dateStr)) {
+                    pushMedicationBadge(events, dateStr, getMedicationPlansForDate(dateStr));
+                }
+                cursor.setDate(cursor.getDate() + 1);
+            }
+        }
+        return events;
+    }
+
+    // Show daily stats header in Day view
+    function showDayStats(date) {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        const dateStr = `${year}-${month}-${day}`;
+        const dayData = getDayDataForDate(dateStr);
+
+        hideDayStats();
+        const calendarCardBody = document.querySelector('#calendar').closest('.card-body');
+        if (calendarCardBody) calendarCardBody.classList.add('timeline-day-view');
+
+        if (!dayData) {
+            document.getElementById('calendar').insertAdjacentHTML('beforebegin', `
+                <div id="dayStatsHeader" class="text-center text-muted py-5">
+                    <i class="bi bi-calendar-x fs-1 d-block mb-3"></i>
+                    <p>当天无记录</p>
+                </div>
+            `);
+            return;
+        }
+
+        const stats = dayData.data.stats;
+        const allEntries = dayData.data.entries;
+        const medPlans = dayData.data.medication_plans || [];
+
+        // 分离 CGM 与普通条目
+        const cgmEntries = allEntries.filter(r => r.type === 'CGM' && !r.is_predicted);
+        const timelineEntries = allEntries.filter(r => r.type !== 'CGM');
+
+        let html = `<div id="dayStatsHeader">`;
+
+        // 空日期也保留用药方案；提示无健康记录，避免看起来像数据丢失
+        if (cgmEntries.length === 0 && timelineEntries.length === 0 && medPlans.length > 0) {
+            html += `<div class="text-center text-muted py-2">当天无健康记录</div>`;
+        }
+
+        // ── 1. 概要统计 Chips ──
+        // 没记饮食也没记运动时整行不显示：那三格全是 0 或基础代谢，
+        // 只有「能量缺口」那一格有数，反而是假的（0 摄入 - 基础代谢）
+        if (hasEnergyData(stats)) {
+            const energyClass = stats.is_deficit ? 'chip-deficit' : 'chip-surplus';
+            const energyLabel = stats.is_deficit ? '⚖️ 能量缺口' : '⚖️ 能量盈余';
+            html += `
+            <div class="day-stats-row">
+                <div class="stat-chip">
+                    <span class="chip-val">${stats.cal_in}</span>
+                    <span class="chip-label">🥗 kcal 摄入</span>
+                </div>
+                <div class="stat-chip">
+                    <span class="chip-val">${stats.cal_out_bmr}</span>
+                    <span class="chip-label">😴 kcal 基础</span>
+                </div>
+                <div class="stat-chip">
+                    <span class="chip-val">${stats.cal_out_exercise}</span>
+                    <span class="chip-label">🏃 kcal 运动</span>
+                </div>
+                <div class="stat-chip ${energyClass}">
+                    <span class="chip-val">${Math.abs(stats.net_calories)}</span>
+                    <span class="chip-label">${energyLabel}</span>
+                </div>
+            </div>
+        `;
+        }
+
+        // ── 2. CGM 汇总卡片 ──
+        if (cgmEntries.length > 0) {
+            const cgmVals = cgmEntries.map(r => r.value).filter(v => v > 0);
+            const cgmAvg = cgmVals.length ? (cgmVals.reduce((a, b) => a + b, 0) / cgmVals.length).toFixed(1) : '—';
+            const cgmMax = cgmVals.length ? Math.max(...cgmVals).toFixed(1) : '—';
+            const cgmMin = cgmVals.length ? Math.min(...cgmVals).toFixed(1) : '—';
+            const cgmOk = cgmEntries.filter(r => r.value > 0 && checkGlucoseCompliance(r.value, r.type).isCompliant).length;
+            const cgmRate = cgmEntries.length ? Math.round(cgmOk / cgmEntries.length * 100) : 0;
+            const rateColor = cgmRate >= 70 ? '#1e8e3e' : cgmRate >= 50 ? '#b06000' : '#c5221f';
+            html += `
+                <div class="cgm-summary-card">
+                    <span>📈 CGM 连续监测</span>
+                    <span class="cgm-stat">${cgmEntries.length} 条</span>
+                    <span class="cgm-stat">均值 ${cgmAvg}</span>
+                    <span class="cgm-stat">峰值 ${cgmMax}</span>
+                    <span class="cgm-stat">谷值 ${cgmMin}</span>
+                    <span class="cgm-stat" style="color:${rateColor};">${cgmRate}% 达标</span>
+                </div>
+            `;
+        }
+
+        // ── 3. 用药方案（药物 / 补剂 Tab）──
+        if (medPlans.length > 0) {
+            const regularMeds = medPlans.filter(p => p.category !== 'supplement');
+            const supplements  = medPlans.filter(p => p.category === 'supplement');
+
+            // 药物 tab：按 med_type 分组
+            const medGroups = {};
+            regularMeds.forEach(plan => {
+                const type = plan.med_type || '其他';
+                if (!medGroups[type]) medGroups[type] = [];
+                medGroups[type].push(plan);
+            });
+            const buildPill = plan => {
+                const dq = plan.dose_quantity || '1';
+                const du = plan.dose_unit || '片';
+                let d = plan.dosage || '';
+                if (d && dq !== '1') d = `${d} ×${dq}${du}`;
+                return `<span class="med-pill">${plan.medication_name}${d ? ' ' + d : ''}</span>`;
+            };
+            const medGroupHtml = Object.entries(medGroups).map(([type, plans], i) => `
+                <div style="margin-bottom:8px;">
+                    <div style="margin-bottom:4px;">
+                        <span style="font-size:0.65rem;color:#1565c0;background:#e3f2fd;padding:1px 6px;border-radius:3px;">${type}</span>
+                    </div>
+                    <div class="med-pills">${plans.map(buildPill).join('')}</div>
+                </div>
+            `).join('');
+            // 补剂 tab：同样按 med_type 分组
+            const suppGroups = {};
+            supplements.forEach(plan => {
+                const type = plan.med_type || '其他';
+                if (!suppGroups[type]) suppGroups[type] = [];
+                suppGroups[type].push(plan);
+            });
+            const suppGroupHtml = Object.entries(suppGroups).map(([type, plans]) => `
+                <div style="margin-bottom:8px;">
+                    <div style="margin-bottom:4px;">
+                        <span style="font-size:0.65rem;color:#1565c0;background:#e3f2fd;padding:1px 6px;border-radius:3px;">${type}</span>
+                    </div>
+                    <div class="med-pills">${plans.map(buildPill).join('')}</div>
+                </div>
+            `).join('');
+
+            html += `
+                <div class="med-section dv-med-section">
+                    <div class="med-section-header" style="cursor:default;margin-bottom:8px;">
+                        <i class="bi bi-capsule text-success"></i>
+                        <span>当日用药（${regularMeds.length} 药 ${supplements.length} 补）</span>
+                    </div>
+                    <div class="med-tab-bar">
+                        <button class="med-tab-pill active" style="font-size:0.78rem;padding:4px 12px;"
+                                onclick="switchDvMedTab(this,'dv-med-list')">💊 药物（${regularMeds.length}）</button>
+                        <button class="med-tab-pill" style="font-size:0.78rem;padding:4px 12px;"
+                                onclick="switchDvMedTab(this,'dv-supp-list')">🧬 补剂（${supplements.length}）</button>
+                    </div>
+                    <div id="dv-med-list" class="dv-tab-panel">${medGroupHtml}</div>
+                    <div id="dv-supp-list" class="dv-tab-panel" style="display:none;">${suppGroupHtml}</div>
+                </div>
+            `;
+        }
+
+        // ── 4. 时间轴（不含 CGM）──
+        timelineEntries.filter(r => !r.is_predicted || !r.is_verified).forEach(r => {
+            // 没开血糖模块：AI 预测出来的血糖条目整条跳过。
+            // 只藏「预测」小标签不够——数值、类型（空腹）、AI 解释仍会显示，
+            // 在「每日详情」里看起来就像用户自己测的（真实 bug）。
+            if (r.is_predicted && !ACTIVE_MODULES.has('glucose')) return;
+            let dotClass = 'dot-food';
+            if (r.weight && r.weight > 0) dotClass = 'dot-weight';
+            else if (r.value > 0) dotClass = 'dot-glucose';
+            else if (r.systolic_pressure && r.diastolic_pressure) dotClass = 'dot-bloodpressure';
+            else if (r.distance) dotClass = 'dot-run';
+            else if (r.type === '加餐') dotClass = 'dot-snack';
+
+            html += `
+            <div class="timeline-item day-view-item">
+                <div class="timeline-dot ${dotClass}"></div>
+                <div class="d-flex w-100 justify-content-between align-items-start">
+                    <div class="me-3 text-muted" style="min-width:45px;font-size:0.8rem;padding-top:3px;">
+                        ${r.timestamp.split(' ')[1].slice(0, 5)}
+                    </div>
+                    <div class="flex-grow-1">
+            `;
+
+            // 体重
+            if (r.weight && r.weight > 0) {
+                let bmiCat = '';
+                if (r.bmi) {
+                    if (r.bmi < 18.5) bmiCat = '偏瘦';
+                    else if (r.bmi < 24) bmiCat = '正常';
+                    else if (r.bmi < 28) bmiCat = '超重';
+                    else bmiCat = '肥胖';
+                }
+                html += `
+                    <div class="d-flex align-items-center gap-2 mb-1">
+                        <span style="font-size:1.3rem;font-weight:700;color:#00897B;">${r.weight}<small style="font-size:0.8rem;font-weight:400;color:#aaa;"> kg</small></span>
+                        <span class="med-pill" style="background:#e0f2f1;color:#00695c;">${r.type}</span>
+                        ${r.bmi ? `<small class="text-muted">BMI ${r.bmi}（${bmiCat}）</small>` : ''}
+                    </div>
+                `;
+            }
+
+            // 血糖（非 CGM）
+            if (r.value > 0) {
+                const comp = checkGlucoseCompliance(r.value, r.type);
+                const valColor = comp.badge.color;
+                let trendHtml = '';
+                if (r.trend_dir === 'up') trendHtml = `<small style="color:#c5221f;"><i class="bi bi-arrow-up-short"></i>${r.trend}</small>`;
+                else if (r.trend_dir === 'down') trendHtml = `<small style="color:#1e8e3e;"><i class="bi bi-arrow-down-short"></i>${r.trend}</small>`;
+                const predBadge = (r.is_predicted && ACTIVE_MODULES.has('glucose'))
+                    ? `<span style="font-size:0.65rem;background:#e2e8f0;color:#64748b;border-radius:4px;padding:1px 6px;">预测</span>` : '';
+                html += `
+                    <div class="d-flex align-items-center gap-2 mb-1">
+                        <span style="font-size:1.3rem;font-weight:700;color:${valColor};">${r.value}<small style="font-size:0.8rem;font-weight:400;color:#aaa;"> ${r.unit}</small></span>
+                        <span style="font-size:0.75rem;background:${comp.badge.bgColor};color:${comp.badge.textColor};border-radius:6px;padding:2px 8px;">${r.type}</span>
+                        ${predBadge}${trendHtml}
+                    </div>
+                `;
+            }
+
+            // 血压
+            if (r.systolic_pressure && r.diastolic_pressure) {
+                let bpColor = '#1e8e3e', bpBg = '#e6f4ea', bpLabel = '正常';
+                if (r.systolic_pressure > 140 || r.diastolic_pressure > 90) { bpColor = '#c5221f'; bpBg = '#fce8e6'; bpLabel = '偏高'; }
+                else if (r.systolic_pressure > 130 || r.diastolic_pressure > 85) { bpColor = '#b06000'; bpBg = '#fef7e0'; bpLabel = '警戒'; }
+                html += `
+                    <div class="d-flex align-items-center gap-2 mb-1 flex-wrap">
+                        <span style="font-size:1.3rem;font-weight:700;color:#9C27B0;">${r.systolic_pressure}/${r.diastolic_pressure}<small style="font-size:0.8rem;font-weight:400;color:#aaa;"> mmHg</small></span>
+                        <span style="font-size:0.75rem;background:${bpBg};color:${bpColor};border-radius:6px;padding:2px 8px;">${r.type} · ${bpLabel}</span>
+                        ${r.pulse_rate ? `<small class="text-muted">脉搏 ${r.pulse_rate} bpm</small>` : ''}
+                        ${r.spo2 ? `<small class="${r.spo2 < 95 ? 'text-danger' : 'text-muted'}">血氧 ${r.spo2}%</small>` : ''}
+                    </div>
+                `;
+            }
+
+            // 运动（排除餐食记录：有碳水/GI/饮食分析的不算运动）
+            const _hasMealTraits1 = r.carbs_grams || r.gi_value || r.diet_analysis;
+            const _isExerciseType1 = ['跑步', '运动'].includes(r.type);
+            const _hasRealExerciseData1 = r.distance || r.heart_rate || r.cadence || r.steps;
+            if (!r.systolic_pressure && !_hasMealTraits1 && (_isExerciseType1 || _hasRealExerciseData1) && (r.distance || r.duration || r.heart_rate)) {
+                html += `
+                    <div class="d-flex align-items-center gap-1 flex-wrap mb-1" style="font-size:0.85rem;">
+                        <span style="color:#388e3c;font-weight:600;"><i class="bi bi-activity me-1"></i>运动打卡</span>
+                        ${r.distance ? `<span class="med-pill" style="background:#e8f5e9;color:#2e7d32;">🏃 ${r.distance}km</span>` : ''}
+                        ${r.duration ? `<span class="med-pill" style="background:#e8f5e9;color:#2e7d32;">⏱️ ${r.duration}</span>` : ''}
+                        ${r.pace ? `<span class="med-pill" style="background:#e8f5e9;color:#2e7d32;">配速 ${r.pace}</span>` : ''}
+                        ${r.heart_rate ? `<span class="med-pill" style="background:#fce4ec;color:#c62828;">❤️ ${r.heart_rate}${r.max_heart_rate ? '/' + r.max_heart_rate : ''} bpm</span>` : ''}
+                        ${r.cadence ? `<span class="med-pill" style="background:#e8f5e9;color:#2e7d32;">👟 ${r.cadence}spm</span>` : ''}
+                        ${r.steps ? `<span class="med-pill" style="background:#e8f5e9;color:#2e7d32;">👣 ${r.steps}步</span>` : ''}
+                        ${r.calories ? `<span class="med-pill" style="background:#fff3e0;color:#e65100;">🔥 ${r.calories}kcal</span>` : ''}
+                    </div>
+                `;
+            }
+
+            // 备注 / 饮食描述（没开血糖模块时不显示 AI 预测生成的说明）
+            const _isAiNote1 = typeof r.notes === 'string' && r.notes.indexOf('AI预测:') === 0;
+            if (r.notes && !(_isAiNote1 && !ACTIVE_MODULES.has('glucose'))) {
+                const icon = (r.value === 0 && !r.distance) ? '<i class="bi bi-cup-hot me-1 text-warning"></i>' : '';
+                html += `<div style="font-size:0.85rem;color:#555;margin-bottom:4px;">${icon}${r.notes}</div>`;
+            }
+
+            // 饮食热量（排除运动）— 关闭餐食模块时不显示
+            if (ACTIVE_MODULES.has('diet') && (r.calories > 0 || r.diet_analysis) && !r.distance && !r.heart_rate) {
+                html += `<div style="font-size:0.8rem;color:#aaa;">
+                    ${r.calories > 0 ? `<span class="me-2">🔥 ${r.calories} kcal</span>` : ''}
+                    ${r.diet_analysis ? `<span>🥗 ${r.diet_analysis}</span>` : ''}
+                </div>`;
+            }
+
+            html += `
+                    </div>
+                    <div class="ms-2 item-actions d-flex gap-1" style="flex-shrink:0;">
+                        <button class="btn btn-sm btn-outline-secondary p-1 px-2" onclick="openEditModal(${r.id})" title="编辑" style="border-radius:6px;border-color:#e2e8f0;">
+                            <i class="bi bi-pencil" style="font-size:0.8rem;"></i>
+                        </button>
+                        <button class="btn btn-sm btn-outline-danger p-1 px-2" onclick="deleteRecord(${r.id})" title="删除" style="border-radius:6px;">
+                            <i class="bi bi-trash" style="font-size:0.8rem;"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>`;
+        });
+
+        html += '</div>';
+        document.getElementById('calendar').insertAdjacentHTML('beforebegin', html);
+    }
+
+    function hideDayStats() {
+        const existing = document.getElementById('dayStatsHeader');
+        if (existing) {
+            existing.remove();
+        }
+
+        // Remove timeline-day-view class
+        const calendarCardBody = document.querySelector('#calendar').closest('.card-body');
+        if (calendarCardBody) {
+            calendarCardBody.classList.remove('timeline-day-view');
+        }
+    }
+
+    let currentDayDateStr = null;
+
+    function renderDayDetails(dateStr, targetContainer = null) {
+        currentDayDateStr = dateStr;
+
+        const modalTitle = document.getElementById('dayModalTitle');
+        const modalBody = document.getElementById('dayModalBody');
+        const container = targetContainer ? document.getElementById(targetContainer) : modalBody;
+
+        if (!targetContainer) {
+            // Ensure dayModal is initialized
+            if (!dayModal) {
+                dayModal = new bootstrap.Modal(document.getElementById('dayDetailsModal'));
+            }
+            modalTitle.textContent = dateStr + ' 详情';
+        }
+        container.innerHTML = '';
+
+        // Find data for this date；无记录但存在当日用药方案时合成空日节点
+        const dayData = getDayDataForDate(dateStr);
+
+        if (!dayData) {
+            container.innerHTML = '<div class="text-center text-muted py-4">当天无记录</div>';
+            if (!targetContainer) dayModal.show();
+            return;
+        }
+
+        if (dayData.isEmptyDay) {
+            container.innerHTML = '<div class="text-center text-muted py-2">当天无健康记录</div>';
+        }
+
+        const stats = dayData.data.stats;
+        const entries = dayData.data.entries;
+
+        // 1. Render Stats Header
+        // 没记饮食也没记运动时整行不显示，理由同 renderDayDetails 的 chips
+        if (hasEnergyData(stats)) {
+            container.innerHTML += `
+            <div class="d-flex gap-2 mb-3 small text-muted justify-content-center bg-light p-2 rounded">
+                ${ACTIVE_MODULES.has('diet') ? `<span>🥗 饮食摄入 ${stats.cal_in}</span>
+                <span class="border-start mx-1"></span>` : ''}
+                <span>😴 基础代谢 ${stats.cal_out_bmr}</span>
+                <span class="border-start mx-1"></span>
+                <span>🏃 运动消耗 ${stats.cal_out_exercise}</span>
+                <span class="border-start mx-1"></span>
+                <span class="${stats.is_deficit ? 'text-success' : 'text-danger'} fw-bold">
+                    ⚖️ ${stats.is_deficit ? '能量缺口' : '能量盈余'} ${Math.abs(stats.net_calories)}
+                </span>
+            </div>
+        `;
+        }
+
+        // 2. Render Timeline Items - 显示真实记录 + 未验证的预测，排除已验证的预测
+        entries.filter(r => !r.is_predicted || !r.is_verified).forEach(r => {
+            // 同上：没开血糖模块时，AI 预测的血糖条目整条不渲染
+            if (r.is_predicted && !ACTIVE_MODULES.has('glucose')) return;
+            let dotClass = 'dot-food';
+            if (r.weight && r.weight > 0) dotClass = 'dot-weight';
+            else if (r.value > 0) dotClass = 'dot-glucose';
+            else if (r.systolic_pressure && r.diastolic_pressure) dotClass = 'dot-bloodpressure';
+            else if (r.distance) dotClass = 'dot-run';
+            else if (r.type === '加餐') dotClass = 'dot-snack';
+
+            let itemHtml = `
+            <div class="timeline-item">
+                <div class="timeline-dot ${dotClass}"></div>
+                <div class="d-flex w-100 justify-content-between align-items-start">
+                    <div class="me-3 text-muted small" style="min-width: 45px;">
+                        ${r.timestamp.split(' ')[1].slice(0, 5)}
+                    </div>
+                    <div class="flex-grow-1">
+            `;
+
+            // Weight
+            if (r.weight && r.weight > 0) {
+                let bmiText = r.bmi ? ` · BMI ${r.bmi}` : '';
+                let bmiCategory = '';
+                if (r.bmi) {
+                    if (r.bmi < 18.5) bmiCategory = ' (偏瘦)';
+                    else if (r.bmi < 24) bmiCategory = ' (正常)';
+                    else if (r.bmi < 28) bmiCategory = ' (超重)';
+                    else bmiCategory = ' (肥胖)';
+                }
+                itemHtml += `
+                    <div class="d-flex align-items-center mb-1">
+                        <h5 class="mb-0 fw-bold me-2" style="color: #00897B;">⚖️ ${r.weight} <small class="text-muted fw-normal fs-6">kg</small></h5>
+                        <span class="badge me-2" style="background: #00897B20; color: #00897B;">${r.type}</span>
+                        ${r.bmi ? `<small class="text-muted">${bmiText}${bmiCategory}</small>` : ''}
+                    </div>
+                `;
+            }
+
+            // Glucose
+            if (r.value > 0) {
+                let trendHtml = '';
+                if (r.trend_dir === 'up') trendHtml = `<small class="text-danger"><i class="bi bi-arrow-up"></i> ${r.trend}</small>`;
+                else if (r.trend_dir === 'down') trendHtml = `<small class="text-success"><i class="bi bi-arrow-down"></i> ${r.trend}</small>`;
+
+                let predictedBadge = (r.is_predicted && ACTIVE_MODULES.has('glucose'))
+                    ? '<span class="badge bg-secondary ms-1" style="font-size: 0.6em;">预测</span>' : '';
+
+                itemHtml += `
+                    <div class="d-flex align-items-center mb-1">
+                        <h5 class="mb-0 text-primary fw-bold me-2">${r.value} <small class="text-muted fw-normal fs-6">${r.unit}</small></h5>
+                        <span class="badge bg-info text-dark me-2">${r.type}</span>
+                        ${predictedBadge}
+                        ${trendHtml}
+                    </div>
+                `;
+            }
+
+            // Blood Pressure
+            if (r.systolic_pressure && r.diastolic_pressure) {
+                let bpStatus = '';
+                let bpColor = 'success';
+                if (r.systolic_pressure > 140 || r.diastolic_pressure > 90) {
+                    bpStatus = ' 偏高⚠️';
+                    bpColor = 'danger';
+                } else if (r.systolic_pressure > 130 || r.diastolic_pressure > 85) {
+                    bpStatus = ' 警戒';
+                    bpColor = 'warning';
+                } else {
+                    bpStatus = ' 正常';
+                }
+
+                itemHtml += `
+                    <div class="d-flex align-items-center mb-1">
+                        <h5 class="mb-0 fw-bold me-2" style="color: #9C27B0;">${r.systolic_pressure}/${r.diastolic_pressure} <small class="text-muted fw-normal fs-6">mmHg</small></h5>
+                        <span class="badge bg-${bpColor} me-2">${r.type}</span>
+                        <small class="text-${bpColor}">${bpStatus}</small>
+                        ${r.pulse_rate ? `<small class="text-muted ms-2">脉搏 ${r.pulse_rate} bpm</small>` : ''}
+                        ${r.spo2 ? `<small class="${r.spo2 < 95 ? 'text-danger' : 'text-muted'} ms-2">血氧 ${r.spo2}%</small>` : ''}
+                    </div>
+                `;
+            }
+
+            // Exercise - 排除血压记录和餐食记录
+            const _hasMealTraits2 = r.carbs_grams || r.gi_value || r.diet_analysis;
+            const _isExerciseType2 = ['跑步', '运动'].includes(r.type);
+            const _hasRealExerciseData2 = r.distance || r.heart_rate || r.cadence || r.steps;
+            if (!r.systolic_pressure && !_hasMealTraits2 && (_isExerciseType2 || _hasRealExerciseData2) && (r.distance || r.duration || r.heart_rate)) {
+                itemHtml += `
+                    <div class="mb-2 p-2 bg-light rounded border small">
+                        <div class="d-flex align-items-center text-success fw-bold mb-1"><i class="bi bi-activity me-2"></i> 运动打卡</div>
+                        <div class="text-nowrap overflow-auto">
+                            ${r.distance ? `<span class="me-2">🏃 <strong>${r.distance}</strong><small>km</small></span>` : ''}
+                            ${r.duration ? `<span class="me-2">⏱️ <strong>${r.duration}</strong></span>` : ''}
+                            ${r.pace ? `<span class="me-2">⏱️ 配速 <strong>${r.pace}</strong></span>` : ''}
+                            ${r.heart_rate ? `<span class="me-2">❤️ <strong>${r.heart_rate}</strong>${r.max_heart_rate ? '/<strong>'+r.max_heart_rate+'</strong>' : ''}<small>bpm</small></span>` : ''}
+                            ${r.cadence ? `<span class="me-2">👟 <strong>${r.cadence}</strong><small>spm</small></span>` : ''}
+                            ${r.steps ? `<span class="me-2">👣 <strong>${r.steps}</strong><small>步</small></span>` : ''}
+                            ${r.calories ? `<span class="me-2">🔥 <strong>${r.calories}</strong><small>kcal</small></span>` : ''}
+                        </div>
+                    </div>
+                `;
+            }
+
+            // Food/Notes（没开血糖模块时不显示 AI 预测生成的说明）
+            const _isAiNote2 = typeof r.notes === 'string' && r.notes.indexOf('AI预测:') === 0;
+            if (r.notes && !(_isAiNote2 && !ACTIVE_MODULES.has('glucose'))) {
+                let icon = (r.value === 0 && !r.distance) ? '<i class="bi bi-cup-hot me-1 text-warning"></i>' : '';
+                itemHtml += `<div class="text-dark mb-1">${icon}${r.notes}</div>`;
+            }
+
+            // Calories（关闭餐食模块时不显示）
+            if (ACTIVE_MODULES.has('diet') && (r.calories > 0 || r.diet_analysis)) {
+                itemHtml += `
+                    <div class="small text-muted">
+                        ${r.calories > 0 ? `<span class="me-2">🔥 ${r.calories} kcal</span>` : ''}
+                        ${r.diet_analysis ? `<span>🥗 ${r.diet_analysis}</span>` : ''}
+                    </div>
+                `;
+            }
+
+            itemHtml += `
+                    </div>
+                    <div class="ms-2 d-flex gap-1">
+                        <button class="btn btn-sm btn-outline-primary p-1 px-2" onclick="openEditModal(${r.id})" title="编辑" style="border-radius: 6px;">
+                            <i class="bi bi-pencil" style="font-size: 0.9rem;"></i>
+                        </button>
+                        <button class="btn btn-sm btn-outline-danger p-1 px-2" onclick="deleteRecord(${r.id})" title="删除" style="border-radius: 6px;">
+                            <i class="bi bi-trash" style="font-size: 0.9rem;"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>`;
+            
+            container.innerHTML += itemHtml;
+        });
+
+        // 显示当天应服用的药物方案
+        if (dayData.data.medication_plans && dayData.data.medication_plans.length > 0) {
+            let medHtml = `
+                <div class="mt-4 pt-3 border-top">
+                    <details class="day-med-details" ${window.innerWidth > 480 ? 'open' : ''}>
+                        <summary class="day-med-summary">
+                            <span class="text-muted">💊 当日用药方案</span>
+                            <i class="bi bi-chevron-down collapse-toggle-icon ms-1"></i>
+                        </summary>
+                        <div class="day-med-content mt-3">
+            `;
+
+            dayData.data.medication_plans.forEach(plan => {
+                const dq = plan.dose_quantity || '1';
+                const du = plan.dose_unit || '片';
+                let dosageStr = plan.dosage || '';
+                if (dosageStr && dq !== '1') dosageStr = `${dosageStr} ×${dq}${du}`;
+                medHtml += `
+                    <div class="card bg-light border-0 mb-2">
+                        <div class="card-body py-2 px-3">
+                            <div class="d-flex align-items-center">
+                                <i class="bi bi-capsule-pill text-success me-2"></i>
+                                <div class="flex-grow-1">
+                                    <strong>${plan.medication_name}</strong>
+                                    ${dosageStr ? `<small class="text-muted ms-1">${dosageStr}</small>` : ''}
+                                    <div class="small text-muted">
+                                        ${plan.times_per_day}次/天
+                                        ${plan.timing_notes ? `· ${plan.timing_notes}` : ''}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+
+            medHtml += `
+                        </div>
+                    </details>
+                </div>`;
+            container.innerHTML += medHtml;
+        }
+
+        if (!targetContainer) dayModal.show();
+    }
+
+    function showMobileDayView(dateStr) {
+        const calendarEl = document.getElementById('calendar');
+        const dayViewEl = document.getElementById('mobileDayView');
+        const titleEl = document.getElementById('mobileDayTitle');
+        if (calendarEl) calendarEl.classList.add('d-none');
+        if (dayViewEl) dayViewEl.classList.remove('d-none');
+        if (titleEl) {
+            const d = new Date(dateStr + 'T00:00:00');
+            titleEl.textContent = d.toLocaleDateString('zh-CN', { month: 'long', day: 'numeric', weekday: 'short' });
+        }
+        renderDayDetails(dateStr, 'mobileDayBody');
+    }
+
+    function showMobileCalendarView() {
+        const calendarEl = document.getElementById('calendar');
+        const dayViewEl = document.getElementById('mobileDayView');
+        if (calendarEl) calendarEl.classList.remove('d-none');
+        if (dayViewEl) dayViewEl.classList.add('d-none');
+    }
+
+    // 手机端默认进入单日视图，并绑定前后翻页
+    if (window.innerWidth <= 480) {
+        const today = localDateString();
+        showMobileDayView(today);
+        const prevBtn = document.getElementById('mobileDayPrev');
+        const nextBtn = document.getElementById('mobileDayNext');
+        if (prevBtn) prevBtn.addEventListener('click', () => mobileDayNav(-1, true));
+        if (nextBtn) nextBtn.addEventListener('click', () => mobileDayNav(1, true));
+    } else {
+        // 桌面端绑定“查看月视图”按钮（仅在调试时可能用到）
+        const showCalendarBtn = document.getElementById('mobileShowCalendarBtn');
+        if (showCalendarBtn) showCalendarBtn.addEventListener('click', showMobileCalendarView);
+    }
+
+    function mobileDayNav(dir, isMobileCard) {
+        if (!currentDayDateStr) return;
+        const d = new Date(currentDayDateStr + 'T00:00:00');
+        d.setDate(d.getDate() + dir);
+        const next = localDateString(d);
+        if (isMobileCard) {
+            showMobileDayView(next);
+        } else {
+            renderDayDetails(next);
+        }
+    }
+
+
+
+    // Set default time for manual input
+    const manualTimestampEl = document.getElementById('manual_timestamp');
+    if (manualTimestampEl) manualTimestampEl.value = localDateTimeInputValue();
+
+    // 切换手动录入字段
+    function toggleRecordFields() {
+        const type = document.getElementById('recordType').value;
+
+        // Hide all fields
+        document.getElementById('glucoseFields').classList.add('d-none');
+        document.getElementById('bloodPressureFields').classList.add('d-none');
+        document.getElementById('mealFields').classList.add('d-none');
+        document.getElementById('exerciseFields').classList.add('d-none');
+        document.getElementById('medicationFields').classList.add('d-none');
+        document.querySelectorAll('#weightFields').forEach(el => el.classList.add('d-none'));
+
+        // Show selected field
+        if (type === 'glucose') {
+            document.getElementById('glucoseFields').classList.remove('d-none');
+        } else if (type === 'bloodpressure') {
+            document.getElementById('bloodPressureFields').classList.remove('d-none');
+        } else if (type === 'weight') {
+            document.querySelectorAll('#weightFields').forEach(el => el.classList.remove('d-none'));
+        } else if (type === 'meal') {
+            document.getElementById('mealFields').classList.remove('d-none');
+        } else if (type === 'exercise') {
+            document.getElementById('exerciseFields').classList.remove('d-none');
+        } else if (type === 'medication') {
+            document.getElementById('medicationFields').classList.remove('d-none');
+            // Set default date
+            const today = localDateString();
+            document.getElementById('med_start_manual').value = today;
+        }
+    }
+
+    // BMI 实时预览计算
+    function calcBMIPreview() {
+        const weightInputs = document.querySelectorAll('#weight_value');
+        const bmiInputs = document.querySelectorAll('#weight_bmi');
+        const userHeight = B.userHeight;
+
+        weightInputs.forEach((input, idx) => {
+            const w = parseFloat(input.value);
+            if (w > 0 && userHeight > 0) {
+                const h = userHeight / 100;
+                const bmi = (w / (h * h)).toFixed(1);
+                let category = '';
+                if (bmi < 18.5) category = ' (偏瘦)';
+                else if (bmi < 24) category = ' (正常)';
+                else if (bmi < 28) category = ' (超重)';
+                else category = ' (肥胖)';
+                if (bmiInputs[idx]) bmiInputs[idx].value = bmi + category;
+            } else {
+                if (bmiInputs[idx]) bmiInputs[idx].value = '';
+            }
+        });
+    }
+
+    // 手动录入表单提交
+    document.getElementById('manualInputForm')?.addEventListener('submit', async function(e) {
+        e.preventDefault();
+
+        const type = document.getElementById('recordType').value;
+        const timestamp = document.getElementById('manual_timestamp').value.replace('T', ' ') + ':00';
+        const notes = document.getElementById('manual_notes').value;
+
+        let recordData = null;
+        let hasGlucoseData = false;
+
+        if (type === 'glucose') {
+            // 构建血糖记录
+            recordData = {
+                value: parseFloat(document.getElementById('glucose_value').value),
+                unit: document.getElementById('glucose_unit').value,
+                type: document.getElementById('glucose_type').value,
+                datetime: timestamp,  // batch_add 使用 datetime 字段
+                notes: notes,
+                is_predicted: false
+            };
+            hasGlucoseData = true;
+
+        } else if (type === 'bloodpressure') {
+            // 构建血压记录
+            const systolic = parseInt(document.getElementById('bp_systolic').value);
+            const diastolic = parseInt(document.getElementById('bp_diastolic').value);
+
+            if (!systolic || !diastolic) {
+                alert('请输入收缩压和舒张压');
+                return;
+            }
+
+            recordData = {
+                value: 0,
+                type: document.getElementById('bp_type').value || '血压测量',
+                datetime: timestamp,
+                notes: notes,
+                systolic_pressure: systolic,
+                diastolic_pressure: diastolic,
+                pulse_rate: parseInt(document.getElementById('bp_pulse').value) || null,
+                spo2: parseInt(document.getElementById('bp_spo2')?.value) || null,
+                is_predicted: false
+            };
+
+        } else if (type === 'weight') {
+            // 构建体重记录
+            const weightVal = parseFloat(document.querySelectorAll('#weight_value')[0]?.value || document.getElementById('weight_value').value);
+
+            if (!weightVal || weightVal <= 0) {
+                alert('请输入有效的体重值');
+                return;
+            }
+
+            // BMI 由后端自动计算
+            recordData = {
+                value: 0,
+                type: '体重记录',
+                datetime: timestamp,
+                notes: notes,
+                weight: weightVal,
+                is_predicted: false
+            };
+
+        } else if (type === 'meal') {
+            // 构建餐食记录
+            recordData = {
+                value: 0,
+                type: document.getElementById('meal_type').value,
+                datetime: timestamp,
+                notes: document.getElementById('meal_notes').value || notes,
+                calories: parseInt(document.getElementById('meal_calories').value) || 0,
+                is_predicted: false
+            };
+
+        } else if (type === 'exercise') {
+            // 构建运动记录
+            recordData = {
+                value: 0,
+                type: document.getElementById('exercise_type').value,
+                datetime: timestamp,
+                notes: notes,
+                distance: parseFloat(document.getElementById('exercise_distance').value) || null,
+                duration: document.getElementById('exercise_duration').value || null,
+                heart_rate: parseInt(document.getElementById('exercise_heart_rate').value) || null,
+                calories: parseInt(document.getElementById('exercise_calories').value) || 0,
+                is_predicted: false
+            };
+
+        } else if (type === 'medication') {
+            // 药物方案使用专门的端点
+            const data = {
+                medication_name: document.getElementById('med_name_manual').value,
+                dosage: document.getElementById('med_dosage_manual').value,
+                times_per_day: parseInt(document.getElementById('med_times_manual').value),
+                timing_notes: document.getElementById('med_timing_manual').value,
+                start_date: document.getElementById('med_start_manual').value,
+                end_date: document.getElementById('med_end_manual').value || null,
+                notes: notes
+            };
+
+            const result = await apiCall('/add_medication_plan', {
+                method: 'POST',
+                body: JSON.stringify(data)
+            }, {
+                showLoading: false,
+                onError: (error) => {
+                    alert('保存失败: ' + error.message);
+                }
+            });
+
+            if (result) {
+                alert('药物方案保存成功！');
+                window.location.reload();
+            }
+            return;
+        }
+
+        // 统一使用 batch_add 端点（包装成数组）
+        if (recordData) {
+            const result = await apiCall('/batch_add', {
+                method: 'POST',
+                body: JSON.stringify({records: [recordData], user_id: currentUserId})
+            }, {
+                showLoading: false,
+                onError: (error) => {
+                    alert('保存失败: ' + error.message);
+                }
+            });
+
+            if (result) {
+                // 关闭手动输入面板
+                toggleManualInput();
+
+                // 如果是血糖记录，询问是否更新预测
+                if (hasGlucoseData) {
+                    showPredictionUpdateDialog();
+                } else {
+                    // 非血糖记录直接刷新（运动记录会自动触发后端预测更新）
+                    window.location.reload();
+                }
+            }
+        }
+    });
+
+    let parsedData = [];
+    let selectedImagesBase64 = []; // 改为数组以支持多张图片
+
+    // 体成分确认与保存提示共用同一份字段清单，单位也必须保持一致。
+    const BODY_COMP_PREVIEW_ITEMS = [
+        ['body_fat_rate', '体脂率', '%'],
+        ['visceral_fat', '内脏脂肪', '级'],
+        ['muscle_mass', '肌肉量', 'kg'],
+        ['body_fat_mass', '体脂量', 'kg'],
+        ['skeletal_muscle_mass', '骨骼肌量', 'kg'],
+        ['protein_mass', '蛋白量', 'kg'],
+        ['basal_metabolism', '基础代谢', 'kcal'],
+    ];
+
+    // 压缩图片：最长边不超过 maxPx，JPEG 质量 quality
+    function compressImage(file, maxPx = 1024, quality = 0.80) {
+        return new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const img = new Image();
+                img.onload = function() {
+                    let w = img.width, h = img.height;
+                    if (w > maxPx || h > maxPx) {
+                        if (w >= h) { h = Math.round(h * maxPx / w); w = maxPx; }
+                        else        { w = Math.round(w * maxPx / h); h = maxPx; }
+                    }
+                    const canvas = document.createElement('canvas');
+                    canvas.width = w;
+                    canvas.height = h;
+                    canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+                    resolve(canvas.toDataURL('image/jpeg', quality));
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        });
+    }
+
+    async function previewImage(input) {
+        if (input.files && input.files.length > 0) {
+            selectedImagesBase64 = []; // 重置数组
+            const previewList = document.getElementById('imagePreviewList');
+            previewList.innerHTML = '';
+
+            // 遍历所有选择的文件
+            // PNG（截图）保留原图以保证数字清晰度；JPEG（相机照片）压缩以减小传输体积
+            const files = Array.from(input.files);
+            for (let index = 0; index < files.length; index++) {
+                const file = files[index];
+                const isPng = file.type === 'image/png';
+                const imgData = isPng ? await new Promise(resolve => {
+                    const reader = new FileReader();
+                    reader.onload = e => resolve(e.target.result);
+                    reader.readAsDataURL(file);
+                }) : await compressImage(file);
+                selectedImagesBase64.push(imgData);
+
+                // 创建预览元素
+                const previewWrapper = document.createElement('div');
+                previewWrapper.className = 'position-relative d-inline-block';
+                previewWrapper.innerHTML = `
+                    <img src="${imgData}" class="img-thumbnail rounded-3" style="max-height: 120px;">
+                    <button type="button" class="btn-close position-absolute top-0 end-0 bg-white m-1 shadow-sm" onclick="removeImage(${index})"></button>
+                    <div class="position-absolute bottom-0 start-0 bg-primary text-white px-2 py-1 m-1 rounded" style="font-size: 0.75rem;">
+                        ${index + 1}/${files.length}
+                    </div>
+                `;
+                previewList.appendChild(previewWrapper);
+            }
+
+            document.getElementById('imagePreviewContainer').classList.remove('d-none');
+        }
+    }
+
+    function removeImage(index) {
+        selectedImagesBase64.splice(index, 1);
+
+        if (selectedImagesBase64.length === 0) {
+            clearImage();
+        } else {
+            // 重新渲染预览列表
+            const previewList = document.getElementById('imagePreviewList');
+            previewList.innerHTML = '';
+
+            selectedImagesBase64.forEach((imgData, idx) => {
+                const previewWrapper = document.createElement('div');
+                previewWrapper.className = 'position-relative d-inline-block';
+                previewWrapper.innerHTML = `
+                    <img src="${imgData}" class="img-thumbnail rounded-3" style="max-height: 120px;">
+                    <button type="button" class="btn-close position-absolute top-0 end-0 bg-white m-1 shadow-sm" onclick="removeImage(${idx})"></button>
+                    <div class="position-absolute bottom-0 start-0 bg-primary text-white px-2 py-1 m-1 rounded" style="font-size: 0.75rem;">
+                        ${idx + 1}/${selectedImagesBase64.length}
+                    </div>
+                `;
+                previewList.appendChild(previewWrapper);
+            });
+        }
+    }
+
+    function clearImage() {
+        selectedImagesBase64 = [];
+        document.getElementById('imageUpload').value = '';
+        document.getElementById('imagePreviewContainer').classList.add('d-none');
+        document.getElementById('imagePreviewList').innerHTML = '';
+    }
+
+    let _isAnalyzing = false;
+    async function analyzeText() {
+        if (_isAnalyzing) return;
+        const text = document.getElementById('aiInput').value.trim();
+        if (!text && selectedImagesBase64.length === 0) {
+            showToast('请输入健康数据或上传图片', 'warning');
+            return;
+        }
+
+        _isAnalyzing = true;
+        toggleLoading(true);
+
+        try {
+            const response = await fetch('/parse_ai', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    text: text,
+                    images: selectedImagesBase64 // 发送图片数组
+                })
+            });
+
+            if (!response.ok) {
+                const errData = await response.json().catch(() => ({}));
+                showToast(errData.message || errData.error || '服务器错误，请稍后再试', 'danger');
+                return;
+            }
+
+            parsedData = await response.json();
+
+            if (Array.isArray(parsedData) && parsedData.length > 0) {
+                renderPreview();
+            } else {
+                showToast('未能识别出有效数据，请检查输入或图片', 'warning');
+            }
+        } catch (e) {
+            const errMsg = String(e);
+            if (errMsg.includes('429') || errMsg.includes('RESOURCE_EXHAUSTED')) {
+                showToast('AI 服务配额暂时用尽，请稍后再试', 'warning');
+            } else {
+                showToast('识别出错，请重试', 'danger');
+            }
+            console.error('AI parse error:', e);
+        } finally {
+            toggleLoading(false);
+            _isAnalyzing = false;
+        }
+    }
+
+    function renderPreview() {
+        const container = document.getElementById('previewList');
+        container.innerHTML = '';
+
+        const glucoseRecords = [];
+        const bloodPressureRecords = [];
+        const weightRecords = [];
+        const mealRecords = [];
+        const exerciseRecords = [];
+        const medicationRecords = [];
+
+        const mealTypes = ['早餐', '午餐', '晚餐', '加餐'];
+        const exerciseTypes = ['跑步', '运动'];
+
+        parsedData.forEach(item => {
+            // 判断是否有餐食特征（碳水/GI/饮食分析）
+            const hasMealTraits = item.carbs_grams || item.gi_value || item.diet_analysis;
+            // 判断是否有实质运动数据（排除零值）
+            const hasRealExerciseData = item.distance || item.heart_rate || item.cadence || item.steps;
+
+            if (item.medication_name) {
+                medicationRecords.push(item);
+            } else if (item.systolic_pressure && item.diastolic_pressure) {
+                bloodPressureRecords.push(item);
+            } else if (item.weight && item.weight > 0) {
+                weightRecords.push(item);
+            } else if (mealTypes.includes(item.type) || (hasMealTraits && !hasRealExerciseData)) {
+                mealRecords.push(item);
+            } else if (exerciseTypes.includes(item.type) || item.distance) {
+                exerciseRecords.push(item);
+            } else if (item.value == 0 && item.calories > 0) {
+                mealRecords.push(item);
+            } else {
+                glucoseRecords.push(item);
+            }
+        });
+
+        // 渲染血糖记录
+        if (glucoseRecords.length > 0) {
+            container.innerHTML += `<div class="fw-bold text-warning mb-2"><i class="bi bi-droplet-fill"></i> 血糖记录</div>`;
+            glucoseRecords.forEach(item => {
+                const borderClass = item.is_predicted ? 'border-warning border-dashed' : 'border-warning';
+                
+                let displayHtml = '';
+                if (item.is_predicted) {
+                    // 场景：纯 AI 预测（用户没输数值）
+                    displayHtml = `
+                        <div class="d-flex flex-column">
+                            <span class="text-warning fw-bold">AI 预测值: ${item.value} ${item.unit}</span>
+                        </div>
+                    `;
+                } else {
+                    // 场景：用户输入了真实值，同时显示 AI 预测值进行对比
+                    let predPart = item.predicted_value ? `<span class="text-muted ms-3 small">AI 预测值: ${item.predicted_value} ${item.unit}</span>` : '';
+                    displayHtml = `
+                        <div class="d-flex align-items-center flex-wrap">
+                            <span class="text-warning fw-bold">测量值: ${item.value} ${item.unit}</span>
+                            ${predPart}
+                        </div>
+                    `;
+                }
+
+                container.innerHTML += `
+                    <div class="list-group-item ${borderClass} mb-1">
+                        <div class="d-flex justify-content-between align-items-start">
+                            ${getUserBadge(item)}${displayHtml}
+                            <span class="badge bg-warning text-dark ms-2">${item.type}</span>
+                        </div>
+                        <div class="mt-1">
+                            <small class="text-muted">${item.datetime}</small>
+                            ${item.notes ? `<p class="mb-0 small text-secondary">${item.notes}</p>` : ''}
+                        </div>
+                    </div>
+                `;
+            });
+        }
+
+        // 渲染血压记录
+        if (bloodPressureRecords.length > 0) {
+            container.innerHTML += `<div class="fw-bold mb-2 mt-3" style="color: #9C27B0;"><i class="bi bi-heart-pulse-fill"></i> 血压记录</div>`;
+            bloodPressureRecords.forEach(item => {
+                let bpStatus = '';
+                let bpColor = 'success';
+                if (item.systolic_pressure > 140 || item.diastolic_pressure > 90) {
+                    bpStatus = '偏高⚠️';
+                    bpColor = 'danger';
+                } else if (item.systolic_pressure > 130 || item.diastolic_pressure > 85) {
+                    bpStatus = '警戒';
+                    bpColor = 'warning';
+                } else {
+                    bpStatus = '正常';
+                }
+
+                container.innerHTML += `
+                    <div class="list-group-item mb-1" style="border-left: 3px solid #9C27B0;">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                ${getUserBadge(item)}<strong style="color: #9C27B0; font-size: 1.2rem;">${item.systolic_pressure}/${item.diastolic_pressure} mmHg</strong>
+                                <span class="badge bg-${bpColor} ms-2">${bpStatus}</span>
+                            </div>
+                            <small class="text-muted">${item.datetime}</small>
+                        </div>
+                        <div class="mt-1">
+                            <span class="badge" style="background: #9C27B0;">${item.type}</span>
+                            ${item.pulse_rate ? `<span class="ms-2 small text-muted">脉搏: ${item.pulse_rate} bpm</span>` : ''}
+                            ${item.spo2 ? `<span class="ms-2 small ${item.spo2 < 95 ? 'text-danger' : 'text-muted'}">血氧: ${item.spo2}%</span>` : ''}
+                        </div>
+                        ${item.notes ? `<p class="mb-0 small text-secondary mt-1">${item.notes}</p>` : ''}
+                    </div>
+                `;
+            });
+        }
+
+        // 渲染体重记录
+        if (weightRecords.length > 0) {
+            const hasBodyCompData = weightRecords.some(item => BODY_COMP_PREVIEW_ITEMS.some(([field]) => {
+                const raw = item[field];
+                return raw !== undefined && raw !== null && raw !== '' && Number.isFinite(Number(raw));
+            }));
+            const sectionTitle = hasBodyCompData ? '体重与体成分记录' : '体重记录';
+            container.innerHTML += `<div class="fw-bold mb-2 mt-3" style="color: #00897B;"><i class="bi bi-speedometer"></i> ${sectionTitle}</div>`;
+            weightRecords.forEach(item => {
+                const bodyCompValues = BODY_COMP_PREVIEW_ITEMS.map(([field, label, unit]) => {
+                    const raw = item[field];
+                    if (raw === undefined || raw === null || raw === '') return '';
+                    const value = Number(raw);
+                    if (!Number.isFinite(value)) return '';
+                    return `<span class="badge rounded-pill small" style="background: #e0f2f1; color: #00695c; border: 1px solid #b2dfdb;">${escapeHtml(label)} <strong>${escapeHtml(value)}${escapeHtml(unit)}</strong></span>`;
+                }).filter(Boolean);
+                const bodyCompCount = bodyCompValues.length;
+                container.innerHTML += `
+                    <div class="list-group-item mb-1" style="border-left: 3px solid #00897B;">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                ${getUserBadge(item)}<strong style="color: #00897B; font-size: 1.2rem;">⚖️ ${item.weight} kg</strong>
+                            </div>
+                            <small class="text-muted">${item.datetime}</small>
+                        </div>
+                        ${bodyCompCount > 0 ? `
+                            <div class="d-flex flex-wrap gap-1 mt-2">${bodyCompValues.join('')}</div>
+                            <div class="small text-muted mt-1">
+                                <i class="bi bi-check2-circle me-1"></i>已识别体成分 ${bodyCompCount} 项，将与本条体重记录一起保存
+                            </div>
+                        ` : ''}
+                        ${item.notes ? `<p class="mb-0 small text-secondary mt-1">${item.notes}</p>` : ''}
+                    </div>
+                `;
+            });
+        }
+
+        if (ACTIVE_MODULES.has('diet') && mealRecords.length > 0) {
+            container.innerHTML += `<div class="fw-bold mb-2 mt-3" style="color: #e91e8c;"><i class="bi bi-cup-hot-fill"></i> 餐食记录</div>`;
+            mealRecords.forEach(item => {
+                const borderColor = item.type === '加餐' ? 'border-pink' : 'border-orange';
+                container.innerHTML += `
+                    <div class="list-group-item mb-1" style="border-left: 3px solid ${item.type === '加餐' ? '#e91e8c' : '#fd7e14'};">
+                        <div class="d-flex justify-content-between align-items-center">
+                            ${getUserBadge(item)}<span class="badge" style="background: ${item.type === '加餐' ? '#e91e8c' : '#fd7e14'};">${escapeHtml(item.type)}</span>
+                            <small class="text-muted">${escapeHtml(item.datetime)}</small>
+                        </div>
+                        <p class="mb-1">${escapeHtml(item.notes) || '未识别食物'}</p>
+                        <div class="small text-muted">
+                            ${item.calories ? `<span>🔥 ${escapeHtml(item.calories)} kcal</span>` : ''}
+                            ${item.diet_analysis ? `<span class="ms-2">🥗 ${escapeHtml(item.diet_analysis)}</span>` : ''}
+                        </div>
+                    </div>
+                `;
+            });
+        }
+
+        if (exerciseRecords.length > 0) {
+            container.innerHTML += `<div class="fw-bold mb-2 mt-3" style="color: #7cb889;"><i class="bi bi-bicycle"></i> 运动记录</div>`;
+            exerciseRecords.forEach(item => {
+                container.innerHTML += `
+                    <div class="list-group-item mb-1" style="border-left: 3px solid #7cb889;">
+                        <div class="d-flex justify-content-between align-items-center">
+                            ${getUserBadge(item)}<span class="badge" style="background: #7cb889;">${item.type}</span>
+                            <small class="text-muted">${item.datetime}</small>
+                        </div>
+                        <div class="mt-1">
+                            🏃 <strong>${item.distance || 0} km</strong>
+                            | ⏱️ ${item.duration || '--'}
+                            ${item.pace ? `| ⏱️ 配速 ${item.pace}` : ''}
+                            | ❤️ ${item.heart_rate || '--'}${item.max_heart_rate ? '/' + item.max_heart_rate : ''} bpm
+                            ${item.cadence ? `| 👟 步频 ${item.cadence}` : ''}
+                            ${item.steps ? `| 👣 ${item.steps}步` : ''}
+                            ${item.calories ? `| 🔥 ${item.calories} kcal` : ''}
+                            ${item.vo2max ? `| 🫁 VO₂max ${item.vo2max}` : ''}
+                        </div>
+                        ${item.notes ? `<p class="mb-0 small text-secondary">${item.notes}</p>` : ''}
+                    </div>
+                `;
+            });
+        }
+
+        // 渲染药物记录
+        if (medicationRecords.length > 0) {
+            container.innerHTML += `<div class="fw-bold mb-2 mt-3" style="color: #6610f2;">💊 药物记录</div>`;
+            medicationRecords.forEach((item, index) => {
+                const medAction = item.medication_action || 'take';
+                const isNewPlan = item.medication_is_new_plan;
+
+                let actionHtml = '';
+                let borderColor = '#6610f2';
+                let iconHtml = '';
+
+                if (medAction === 'stop') {
+                    // 停药记录
+                    borderColor = '#dc3545';
+                    iconHtml = '<i class="bi bi-pause-circle-fill text-danger me-1"></i>';
+                    actionHtml = `<span class="badge bg-danger"><i class="bi bi-x-circle me-1"></i>将停用该药物方案</span>`;
+                } else if (medAction === 'resume') {
+                    // 恢复用药记录
+                    borderColor = '#198754';
+                    iconHtml = '<i class="bi bi-play-circle-fill text-success me-1"></i>';
+                    actionHtml = `<span class="badge bg-success"><i class="bi bi-arrow-repeat me-1"></i>将恢复该药物方案</span>`;
+                } else if (isNewPlan) {
+                    actionHtml = `<div class="mt-2">
+                        <button class="btn btn-sm btn-success" onclick="createMedicationPlan(${index})">
+                            <i class="bi bi-plus-circle me-1"></i>创建长期方案
+                        </button>
+                        <small class="text-muted ms-2">AI检测到这是长期用药</small>
+                       </div>`;
+                } else {
+                    actionHtml = `<small class="text-muted">临时用药记录</small>`;
+                }
+
+                container.innerHTML += `
+                    <div class="list-group-item mb-1" style="border-left: 3px solid ${borderColor};">
+                        <div class="d-flex justify-content-between align-items-center">
+                            ${getUserBadge(item)}<strong>${iconHtml}${escapeHtml(item.medication_name)}</strong>
+                            ${item.medication_dosage ? `<span class="badge bg-secondary">${escapeHtml(item.medication_dosage)}</span>` : ''}
+                        </div>
+                        <div class="small text-muted mt-1">
+                            ${item.medication_timing ? `服用时机: ${escapeHtml(item.medication_timing)}` : ''}
+                            · ${escapeHtml(item.datetime)}
+                        </div>
+                        ${item.notes ? `<p class="mb-0 small text-secondary mt-1">${escapeHtml(item.notes)}</p>` : ''}
+                        ${actionHtml}
+                    </div>
+                `;
+            });
+        }
+
+        document.getElementById('aiPreview').classList.remove('d-none');
+    }
+
+    // 从AI识别结果创建药物方案
+    async function createMedicationPlan(index) {
+        const med = parsedData[index];
+        if (!med || !med.medication_name) return;
+
+        // 推断每天次数
+        let timesPerDay = 1;
+        if (med.medication_timing) {
+            const timing = med.medication_timing.toLowerCase();
+            if (timing.includes('三餐') || timing.includes('每日三次')) timesPerDay = 3;
+            else if (timing.includes('早晚') || timing.includes('每日两次') || timing.includes('每日2次')) timesPerDay = 2;
+        }
+
+        const data = {
+            medication_name: med.medication_name,
+            dosage: med.medication_dosage || '',
+            times_per_day: timesPerDay,
+            timing_notes: med.medication_timing || '',
+            start_date: localDateString(),
+            end_date: null,
+            notes: med.notes || 'AI自动识别创建'
+        };
+
+        try {
+            const res = await fetch('/add_medication_plan', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(data)
+            });
+            const result = await res.json();
+            if (result.status === 'success') {
+                alert(`已创建药物方案：${med.medication_name}`);
+                // 从parsedData中移除这个药物记录，避免重复保存
+                parsedData.splice(index, 1);
+                renderPreview();
+            } else {
+                alert('创建失败: ' + result.message);
+            }
+        } catch (e) {
+            alert('创建失败: ' + e);
+        }
+    }
+
+    let _isSaving = false;
+    async function confirmBatchAdd(conflictResolution = 'ask') {
+        if (_isSaving) return;
+        _isSaving = true;
+
+        // 禁用所有确认保存按钮
+        document.querySelectorAll('[onclick*="confirmBatchAdd"]').forEach(btn => {
+            btn.disabled = true;
+            btn.dataset.origText = btn.innerHTML;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>保存中...';
+        });
+
+        try {
+            const response = await fetch('/batch_add', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    records: parsedData,
+                    conflict_resolution: conflictResolution,
+                    user_id: currentUserId
+                })
+            });
+
+            const result = await response.json();
+
+            // 处理冲突情况
+            if (result.status === 'conflict') {
+                showConflictDialog(result.conflicts, result.total_records);
+                return;
+            }
+
+            if (result.status === 'error') {
+                alert('保存失败: ' + result.message);
+                return;
+            }
+
+            // 保存成功
+            if (result.status === 'success') {
+                // 显示药物方案变更提示
+                if (result.data && result.data.deactivated_plans && result.data.deactivated_plans.length > 0) {
+                    const names = result.data.deactivated_plans.map(p => p.name).join('、');
+                    showToast(`已停用药物方案: ${names}`, 'info');
+                }
+                if (result.data && result.data.reactivated_plans && result.data.reactivated_plans.length > 0) {
+                    const names = result.data.reactivated_plans.map(p => p.name).join('、');
+                    showToast(`已恢复药物方案: ${names}`, 'success');
+                }
+
+                // 体成分和体重在同一条记录里保存，成功提示必须明确说明二者都已保存。
+                const savedBodyCompCount = parsedData.reduce((total, record) => {
+                    return total + BODY_COMP_PREVIEW_ITEMS.filter(([field]) => {
+                        const raw = record[field];
+                        return raw !== undefined && raw !== null && raw !== '' && Number.isFinite(Number(raw));
+                    }).length;
+                }, 0);
+                if (savedBodyCompCount > 0) {
+                    showToast(`已保存体重与体成分数据（${savedBodyCompCount} 项）`, 'success');
+                }
+
+                // 检查是否有血糖数据录入（非餐食、非运动、非药物）
+                const hasGlucoseData = parsedData.some(r =>
+                    r.value > 0 && !r.medication_name && !r.distance
+                );
+
+                if (hasGlucoseData) {
+                    showPredictionUpdateDialog();
+                } else {
+                    // 延迟 reload 让 toast 显示
+                    const hasMedAction = result.data && (result.data.deactivated_plans?.length || result.data.reactivated_plans?.length);
+                    const shouldDelayReload = Boolean(hasMedAction) || savedBodyCompCount > 0;
+                    setTimeout(() => window.location.reload(), shouldDelayReload ? 1500 : 0);
+                }
+            }
+        } finally {
+            _isSaving = false;
+            document.querySelectorAll('[onclick*="confirmBatchAdd"]').forEach(btn => {
+                btn.disabled = false;
+                if (btn.dataset.origText) btn.innerHTML = btn.dataset.origText;
+            });
+        }
+    }
+
+    // 显示冲突确认对话框
+    function showConflictDialog(conflicts, totalRecords) {
+        // 构建冲突列表HTML
+        let conflictListHtml = '';
+        conflicts.forEach((conflict, idx) => {
+            const existing = conflict.existing_record;
+            const newRec = conflict.new_record;
+
+            // 根据记录类型显示不同格式
+            function fmtRecord(rec) {
+                if (rec.systolic_pressure) return `${rec.systolic_pressure}/${rec.diastolic_pressure} mmHg`;
+                if (rec.weight) return `${rec.weight} kg`;
+                return `${rec.value} mmol/L`;
+            }
+
+            conflictListHtml += `
+                <div class="border rounded p-3 mb-2" style="background: #fff8e6;">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <span class="badge bg-warning text-dark mb-1">${newRec.type}</span>
+                            <div class="small text-muted">${newRec.datetime}</div>
+                        </div>
+                    </div>
+                    <div class="mt-2 d-flex gap-3">
+                        <div class="flex-fill p-2 rounded" style="background: #ffebee;">
+                            <div class="small text-muted">已有记录</div>
+                            <div class="fw-bold text-danger">${fmtRecord(existing)}</div>
+                            ${existing.notes ? `<div class="small text-muted text-truncate" style="max-width: 150px;">${existing.notes}</div>` : ''}
+                        </div>
+                        <div class="d-flex align-items-center">
+                            <i class="bi bi-arrow-right text-muted"></i>
+                        </div>
+                        <div class="flex-fill p-2 rounded" style="background: #e8f5e9;">
+                            <div class="small text-muted">新记录</div>
+                            <div class="fw-bold text-success">${fmtRecord(newRec)}</div>
+                            ${newRec.notes ? `<div class="small text-muted text-truncate" style="max-width: 150px;">${newRec.notes}</div>` : ''}
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+
+        const dialogHtml = `
+            <div class="modal fade" id="conflictModal" tabindex="-1" data-bs-backdrop="static">
+                <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+                    <div class="modal-content">
+                        <div class="modal-header bg-warning">
+                            <h5 class="modal-title">
+                                <i class="bi bi-exclamation-triangle me-2"></i>发现重复数据
+                            </h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                        </div>
+                        <div class="modal-body">
+                            <p class="mb-3">
+                                共 <strong>${totalRecords}</strong> 条数据中，有 <strong class="text-warning">${conflicts.length}</strong> 条与已有记录时间冲突：
+                            </p>
+                            <div style="max-height: 300px; overflow-y: auto;">
+                                ${conflictListHtml}
+                            </div>
+                        </div>
+                        <div class="modal-footer flex-column gap-2">
+                            <div class="d-flex gap-2 w-100">
+                                <button type="button" class="btn btn-outline-secondary flex-fill" onclick="resolveConflict('skip')">
+                                    <i class="bi bi-skip-forward me-1"></i>跳过冲突
+                                    <div class="small">保留已有数据</div>
+                                </button>
+                                <button type="button" class="btn btn-warning flex-fill" onclick="resolveConflict('overwrite')">
+                                    <i class="bi bi-arrow-repeat me-1"></i>覆盖更新
+                                    <div class="small">用新数据替换</div>
+                                </button>
+                            </div>
+                            <button type="button" class="btn btn-outline-danger btn-sm" data-bs-dismiss="modal">
+                                <i class="bi bi-x-lg me-1"></i>取消保存
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        // 移除已存在的对话框
+        const existingModal = document.getElementById('conflictModal');
+        if (existingModal) existingModal.remove();
+
+        // 插入新对话框
+        document.body.insertAdjacentHTML('beforeend', dialogHtml);
+        const modal = new bootstrap.Modal(document.getElementById('conflictModal'));
+        modal.show();
+    }
+
+    // 处理冲突选择
+    function resolveConflict(resolution) {
+        // 关闭冲突对话框
+        const modal = bootstrap.Modal.getInstance(document.getElementById('conflictModal'));
+        if (modal) modal.hide();
+
+        // 重新提交，带上冲突处理方式
+        confirmBatchAdd(resolution);
+    }
+
+    // 显示预测更新确认弹窗
+    function showPredictionUpdateDialog() {
+        // 创建弹窗HTML
+        const dialogHtml = `
+            <div class="modal fade" id="predictionUpdateModal" tabindex="-1" data-bs-backdrop="static">
+                <div class="modal-dialog modal-dialog-centered">
+                    <div class="modal-content">
+                        <div class="modal-header bg-primary text-white">
+                            <h5 class="modal-title">
+                                <i class="bi bi-lightning-charge me-2"></i>更新预测
+                            </h5>
+                        </div>
+                        <div class="modal-body text-center py-4">
+                            <i class="bi bi-cpu text-primary" style="font-size: 3rem;"></i>
+                            <p class="mt-3 mb-0">
+                                数据已保存成功！<br>
+                                是否基于新数据<strong>重新预测</strong>剩余时间点的血糖？
+                            </p>
+                            <small class="text-muted">这将调用AI模型更新今日预测值</small>
+                        </div>
+                        <div class="modal-footer justify-content-center">
+                            <button type="button" class="btn btn-outline-secondary" onclick="skipPredictionUpdate()">
+                                <i class="bi bi-x-lg me-1"></i>保持原预测
+                            </button>
+                            <button type="button" class="btn btn-primary" onclick="triggerPredictionUpdate()">
+                                <i class="bi bi-arrow-repeat me-1"></i>重新预测
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        // 移除可能存在的旧弹窗
+        const existingModal = document.getElementById('predictionUpdateModal');
+        if (existingModal) {
+            existingModal.remove();
+        }
+
+        // 添加弹窗到页面
+        document.body.insertAdjacentHTML('beforeend', dialogHtml);
+
+        // 显示弹窗
+        const modal = new bootstrap.Modal(document.getElementById('predictionUpdateModal'));
+        modal.show();
+    }
+
+    // 跳过预测更新
+    function skipPredictionUpdate() {
+        const modal = bootstrap.Modal.getInstance(document.getElementById('predictionUpdateModal'));
+        modal.hide();
+        window.location.reload();
+    }
+
+    // 触发预测更新
+    async function triggerPredictionUpdate() {
+        const modal = bootstrap.Modal.getInstance(document.getElementById('predictionUpdateModal'));
+        const modalBody = document.querySelector('#predictionUpdateModal .modal-body');
+        const modalFooter = document.querySelector('#predictionUpdateModal .modal-footer');
+
+        // 显示加载状态
+        modalBody.innerHTML = `
+            <div class="spinner-border text-primary" role="status" style="width: 3rem; height: 3rem;">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <p class="mt-3 mb-0">正在调用AI模型更新预测...</p>
+            <small class="text-muted">请稍候</small>
+        `;
+        modalFooter.innerHTML = '';
+
+        const result = await apiCall('/trigger_prediction', {
+            method: 'POST',
+            body: JSON.stringify({
+                type: 'remaining',
+                force_update: true
+            })
+        }, {
+            showLoading: false,
+            onError: (error) => {
+                // 显示错误状态
+                modalBody.innerHTML = `
+                    <i class="bi bi-exclamation-triangle text-warning" style="font-size: 3rem;"></i>
+                    <p class="mt-3 mb-0">预测更新失败</p>
+                    <small class="text-muted">${escapeHtml(error.message) || '请稍后重试'}</small>
+                `;
+                modalFooter.innerHTML = `
+                    <button type="button" class="btn btn-outline-secondary" onclick="window.location.reload()">
+                        <i class="bi bi-x-lg me-1"></i>关闭
+                    </button>
+                `;
+            }
+        });
+
+        if (result) {
+            // 显示成功状态
+            const updatedCount = result.data?.results?.filter(r => r.status === 'updated' || r.status === 'success').length || 0;
+            modalBody.innerHTML = `
+                <i class="bi bi-check-circle text-success" style="font-size: 3rem;"></i>
+                <p class="mt-3 mb-0">预测更新完成！</p>
+                <small class="text-muted">已更新 ${updatedCount} 个时间点</small>
+            `;
+            modalFooter.innerHTML = `
+                <button type="button" class="btn btn-success" onclick="window.location.reload()">
+                    <i class="bi bi-check-lg me-1"></i>完成
+                </button>
+            `;
+        }
+    }
+
+    function cancelPreview() {
+        document.getElementById('aiPreview').classList.add('d-none');
+        parsedData = [];
+    }
+
+    // Toggle Manual Input Panel
+    function toggleManualInput() {
+        const panel = document.getElementById('manualInputPanel');
+        panel.classList.toggle('d-none');
+    }
+
+    // Auto-resize textarea based on content
+    function autoResizeTextarea(textarea) {
+        textarea.style.height = 'auto';
+        textarea.style.height = Math.min(textarea.scrollHeight, 150) + 'px';
+    }
+
+    function toggleLoading(isLoading) {
+        const btn = document.getElementById('analyzeBtn');
+        const icon = document.getElementById('btnIcon');
+        const spinner = document.getElementById('btnSpinner');
+
+        if (isLoading) {
+            btn.disabled = true;
+            icon.classList.add('d-none');
+            spinner.classList.remove('d-none');
+        } else {
+            btn.disabled = false;
+            icon.classList.remove('d-none');
+            spinner.classList.add('d-none');
+        }
+    }
+
+    let recognition;
+    let isRecognizing = false; 
+    const speechBtn = document.getElementById('speechBtn');
+    const aiInput = document.getElementById('aiInput');
+
+    function toggleSpeechRecognition() {
+        if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+            alert('抱歉，您的浏览器不支持语音识别功能。请尝试使用 Chrome 桌面版或 Safari 移动版。');
+            return;
+        }
+
+        if (isRecognizing) {
+            recognition.stop();
+            return;
+        }
+
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        recognition = new SpeechRecognition();
+        
+        recognition.continuous = true; 
+        recognition.interimResults = true; 
+        recognition.lang = 'zh-CN'; 
+
+        recognition.onstart = function() {
+            isRecognizing = true;
+            speechBtn.classList.add('active', 'beat-animation');
+            speechBtn.innerHTML = '<i class="bi bi-stop-circle-fill"></i>';
+        };
+
+        recognition.onresult = function(event) {
+            let finalTranscript = '';
+            for (let i = event.resultIndex; i < event.results.length; ++i) {
+                if (event.results[i].isFinal) {
+                    finalTranscript += event.results[i][0].transcript;
+                }
+            }
+            
+            if (finalTranscript) {
+                if (aiInput.value && !aiInput.value.endsWith(' ')) {
+                    aiInput.value += ' ';
+                }
+                aiInput.value += finalTranscript;
+            }
+        };
+
+        recognition.onerror = function(event) {
+            console.error('语音识别错误:', event.error);
+            if (event.error === 'not-allowed') {
+                alert('请授权浏览器访问麦克风。');
+            }
+        };
+
+        recognition.onend = function() {
+            isRecognizing = false;
+            speechBtn.classList.remove('active', 'beat-animation');
+            speechBtn.innerHTML = '<i class="bi bi-mic-fill"></i>';
+        };
+
+        recognition.start();
+    }
+    
+    document.getElementById('speechBtn').onclick = toggleSpeechRecognition;
+    // 不支持语音识别时隐藏按钮
+    if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+        document.getElementById('speechBtn').classList.add('d-none');
+    }
+
+    // ========== 编辑功能 ========== 
+    let editModal;
+    document.addEventListener('DOMContentLoaded', function() {
+        editModal = new bootstrap.Modal(document.getElementById('editModal'));
+    });
+
+    async function openEditModal(id) {
+        const data = await apiCall(`/record/${id}`, {}, {showLoading: false});
+        if (!data) return;
+
+        document.getElementById('editId').value = data.id;
+        document.getElementById('editValue').value = data.value || 0;
+        document.getElementById('editUnit').value = data.unit || 'mmol/L';
+        document.getElementById('editType').value = data.type || '';
+        document.getElementById('editNotes').value = data.notes || '';
+        document.getElementById('editCalories').value = data.calories || '';
+        document.getElementById('editDistance').value = data.distance || '';
+        document.getElementById('editDuration').value = data.duration || '';
+        document.getElementById('editPace').value = data.pace || '';
+        document.getElementById('editMaxPace').value = data.max_pace || '';
+        document.getElementById('editHeartRate').value = data.heart_rate || '';
+        document.getElementById('editVo2max').value = data.vo2max || '';
+        document.getElementById('editMaxHeartRate').value = data.max_heart_rate || '';
+        document.getElementById('editSteps').value = data.steps || '';
+
+        if (data.timestamp) {
+            const ts = data.timestamp.replace(' ', 'T').slice(0, 16);
+            document.getElementById('editTimestamp').value = ts;
+        }
+
+        editModal.show();
+    }
+
+    async function saveEdit() {
+        const id = document.getElementById('editId').value;
+        let timestamp = document.getElementById('editTimestamp').value;
+        if (timestamp) {
+            timestamp = timestamp.replace('T', ' ') + ':00';
+        }
+
+        const data = {
+            value: parseFloat(document.getElementById('editValue').value) || 0,
+            unit: document.getElementById('editUnit').value,
+            type: document.getElementById('editType').value,
+            notes: document.getElementById('editNotes').value,
+            timestamp: timestamp,
+            calories: parseInt(document.getElementById('editCalories').value) || 0,
+            distance: parseFloat(document.getElementById('editDistance').value) || null,
+            duration: document.getElementById('editDuration').value || null,
+            pace: document.getElementById('editPace').value || null,
+            max_pace: document.getElementById('editMaxPace').value || null,
+            heart_rate: parseInt(document.getElementById('editHeartRate').value) || null,
+            vo2max: parseFloat(document.getElementById('editVo2max').value) || null,
+            max_heart_rate: parseInt(document.getElementById('editMaxHeartRate').value) || null,
+            steps: parseInt(document.getElementById('editSteps').value) || null,
+            cadence: null
+        };
+
+        const result = await apiCall(`/update/${id}`, {
+            method: 'POST',
+            body: JSON.stringify(data)
+        }, {showLoading: false});
+
+        if (result) {
+            editModal.hide();
+            window.location.reload();
+        }
+    }
+
+    async function deleteRecord(id) {
+        if (!confirm('确定删除这条记录？')) return;
+
+        const result = await apiCall(`/delete/${id}`, {
+            method: 'POST'
+        }, {
+            showLoading: false,
+            onError: (error) => {
+                alert('删除失败: ' + error.message);
+            }
+        });
+
+        if (result) {
+            window.location.reload();
+        }
+    }
+
+    async function importCSV(input) {
+        if (!input.files || !input.files[0]) return;
+
+        const file = input.files[0];
+
+        // 显示导入配置对话框
+        showImportConfigDialog(file);
+        input.value = '';
+    }
+
+    // 显示导入配置对话框
+    function showImportConfigDialog(file) {
+        // 创建或获取模态框
+        let modal = document.getElementById('importConfigModal');
+        if (!modal) {
+            const modalHtml = `
+                <div class="modal fade" id="importConfigModal" tabindex="-1" data-bs-backdrop="static">
+                    <div class="modal-dialog modal-lg modal-dialog-centered">
+                        <div class="modal-content">
+                            <div class="modal-header bg-primary text-white">
+                                <h5 class="modal-title">
+                                    <i class="bi bi-file-earmark-spreadsheet me-2"></i>数据导入配置
+                                </h5>
+                                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                            </div>
+                            <div class="modal-body">
+                                <div class="mb-3">
+                                    <span class="badge bg-secondary" id="importFileName"></span>
+                                </div>
+
+                                <!-- 导入模式选择 -->
+                                <div class="row mb-3">
+                                    <div class="col-md-6">
+                                        <label class="form-label fw-bold">导入模式</label>
+                                        <select class="form-select" id="importMode">
+                                            <option value="normal">普通模式 (手动测量数据)</option>
+                                            <option value="cgm">CGM 模式 (动态血糖仪数据)</option>
+                                        </select>
+                                        <small class="text-muted">CGM模式会将数据标记为"CGM"类型，支持三诺爱看等 CGM 设备导出的 xlsx/csv 文件</small>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label fw-bold">数据单位</label>
+                                        <select class="form-select" id="importUnit">
+                                            <option value="mmol/L">mmol/L (国内常用)</option>
+                                            <option value="mg/dL">mg/dL (需转换)</option>
+                                        </select>
+                                        <small class="text-muted">mg/dL 数据将自动转换为 mmol/L</small>
+                                    </div>
+                                </div>
+
+                                <!-- 数据预览 -->
+                                <div class="mb-3">
+                                    <label class="form-label fw-bold">数据预览</label>
+                                    <div id="importPreview" class="border rounded p-2" style="max-height: 300px; overflow-y: auto;">
+                                        <div class="text-center text-muted py-3">
+                                            <div class="spinner-border spinner-border-sm me-2"></div>
+                                            正在加载预览...
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- 列名检测提示 -->
+                                <div id="importColumnTips" class="alert alert-info mb-0 d-none">
+                                    <i class="bi bi-info-circle me-2"></i>
+                                    <span id="importColumnTipsText"></span>
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
+                                    <i class="bi bi-x-lg me-1"></i>取消
+                                </button>
+                                <button type="button" class="btn btn-primary" id="confirmImportBtn" onclick="confirmImport()">
+                                    <i class="bi bi-upload me-1"></i>开始导入
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            document.body.insertAdjacentHTML('beforeend', modalHtml);
+            modal = document.getElementById('importConfigModal');
+        }
+
+        // 存储文件引用
+        window.importFile = file;
+        document.getElementById('importFileName').textContent = file.name;
+
+        // 显示模态框
+        const bsModal = new bootstrap.Modal(modal);
+        bsModal.show();
+
+        // 加载预览
+        loadImportPreview(file);
+    }
+
+    // 加载导入预览
+    async function loadImportPreview(file) {
+        const previewDiv = document.getElementById('importPreview');
+        const tipDiv = document.getElementById('importColumnTips');
+        const tipText = document.getElementById('importColumnTipsText');
+
+        try {
+            const formData = new FormData();
+            formData.append('file', file);
+
+            const res = await fetch('/preview_import', {
+                method: 'POST',
+                body: formData
+            });
+            const result = await res.json();
+
+            if (result.status === 'success') {
+                // 显示列名检测提示
+                const data = result.data || result;
+                const columns = data.columns;
+                const hasTimestamp = columns.some(c => ['timestamp', '时间', '血糖时间', '测量时间', 'datetime', '日期时间', 'Date Time', 'Time'].includes(c));
+                const hasValue = columns.some(c => ['value', '血糖值', '血糖值 mmol/L', '数值', '血糖', 'Glucose', 'CGM值', 'mg/dL', 'mmol/L'].includes(c));
+
+                if (hasTimestamp && hasValue) {
+                    tipDiv.classList.remove('d-none');
+                    tipDiv.className = 'alert alert-success mb-0';
+                    tipText.textContent = `检测到 ${columns.length} 列数据，已识别时间列和血糖值列，可以导入`;
+                } else {
+                    tipDiv.classList.remove('d-none');
+                    tipDiv.className = 'alert alert-warning mb-0';
+                    tipText.textContent = `检测到列: ${columns.join(', ')}。请确保包含时间列和血糖值列`;
+                }
+
+                // 构建表格预览
+                let tableHtml = '<table class="table table-sm table-striped mb-0" style="font-size: 0.85rem;">';
+                tableHtml += '<thead><tr>';
+                columns.forEach(col => {
+                    tableHtml += `<th class="text-nowrap">${escapeHtml(col)}</th>`;
+                });
+                tableHtml += '</tr></thead><tbody>';
+
+                data.rows.forEach(row => {
+                    tableHtml += '<tr>';
+                    columns.forEach(col => {
+                        const val = row[col];
+                        tableHtml += `<td class="text-nowrap">${val !== null && val !== undefined ? escapeHtml(val) : ''}</td>`;
+                    });
+                    tableHtml += '</tr>';
+                });
+                tableHtml += '</tbody></table>';
+
+                previewDiv.innerHTML = tableHtml;
+            } else {
+                previewDiv.innerHTML = `<div class="text-danger">${escapeHtml(result.message)}</div>`;
+            }
+        } catch (e) {
+            previewDiv.innerHTML = `<div class="text-danger">预览加载失败: ${escapeHtml(e.message || e)}</div>`;
+        }
+    }
+
+    // 确认导入
+    async function confirmImport() {
+        const file = window.importFile;
+        if (!file) {
+            alert('请先选择文件');
+            return;
+        }
+
+        const mode = document.getElementById('importMode').value;
+        const unit = document.getElementById('importUnit').value;
+        const btn = document.getElementById('confirmImportBtn');
+
+        // 显示加载状态
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>导入中...';
+
+        try {
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('mode', mode);
+            formData.append('unit', unit);
+
+            const res = await fetch('/import', {
+                method: 'POST',
+                body: formData
+            });
+            const result = await res.json();
+
+            if (result.status === 'success') {
+                // 关闭导入配置模态框
+                const modal = bootstrap.Modal.getInstance(document.getElementById('importConfigModal'));
+                modal.hide();
+
+                // 提取数据（兼容 result.data.xxx 和 result.xxx）
+                const d = result.data || result;
+                const imported = d.imported || 0;
+                const skipped = d.skipped || 0;
+                const deletedManual = d.deleted_manual || 0;
+
+                // 显示导入报告模态框
+                showImportReport(file.name, mode, imported, skipped, deletedManual);
+            } else {
+                alert('导入失败: ' + result.message);
+                btn.disabled = false;
+                btn.innerHTML = '<i class="bi bi-upload me-1"></i>开始导入';
+            }
+        } catch (e) {
+            alert('导入失败: ' + e);
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-upload me-1"></i>开始导入';
+        }
+
+        window.importFile = null;
+    }
+
+    // 显示导入报告
+    function showImportReport(fileName, mode, imported, skipped, deletedManual) {
+        let reportModal = document.getElementById('importReportModal');
+        if (reportModal) reportModal.remove();
+
+        const isCgm = mode === 'cgm';
+        const total = imported + skipped;
+        const successRate = total > 0 ? Math.round(imported / total * 100) : 0;
+
+        let reportItems = `
+            <div class="d-flex justify-content-between align-items-center py-2 border-bottom">
+                <span class="text-muted">文件</span>
+                <span class="fw-bold">${fileName}</span>
+            </div>
+            <div class="d-flex justify-content-between align-items-center py-2 border-bottom">
+                <span class="text-muted">导入模式</span>
+                <span class="badge ${isCgm ? 'bg-info' : 'bg-secondary'}">${isCgm ? 'CGM 动态血糖' : '普通模式'}</span>
+            </div>
+            <div class="d-flex justify-content-between align-items-center py-2 border-bottom">
+                <span class="text-muted">成功导入</span>
+                <span class="text-success fw-bold fs-5">${imported} 条</span>
+            </div>`;
+
+        if (skipped > 0) {
+            reportItems += `
+            <div class="d-flex justify-content-between align-items-center py-2 border-bottom">
+                <span class="text-muted">跳过（重复）</span>
+                <span class="text-warning fw-bold">${skipped} 条</span>
+            </div>`;
+        }
+
+        if (deletedManual > 0) {
+            reportItems += `
+            <div class="d-flex justify-content-between align-items-center py-2 border-bottom">
+                <span class="text-muted">覆盖手动记录</span>
+                <span class="text-danger fw-bold">${deletedManual} 条</span>
+            </div>`;
+        }
+
+        reportItems += `
+            <div class="d-flex justify-content-between align-items-center py-2">
+                <span class="text-muted">导入率</span>
+                <span class="fw-bold">${successRate}%</span>
+            </div>`;
+
+        const modalHtml = `
+            <div class="modal fade" id="importReportModal" tabindex="-1">
+                <div class="modal-dialog modal-dialog-centered">
+                    <div class="modal-content">
+                        <div class="modal-header bg-success text-white">
+                            <h5 class="modal-title">
+                                <i class="bi bi-check-circle me-2"></i>导入完成
+                            </h5>
+                            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                        </div>
+                        <div class="modal-body">
+                            ${reportItems}
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-success" onclick="
+                                bootstrap.Modal.getInstance(document.getElementById('importReportModal')).hide();
+                                window.location.reload();
+                            ">
+                                <i class="bi bi-check-lg me-1"></i>确定
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>`;
+
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+        reportModal = document.getElementById('importReportModal');
+        const bsModal = new bootstrap.Modal(reportModal);
+        bsModal.show();
+
+        // 模态框关闭时刷新页面
+        reportModal.addEventListener('hidden.bs.modal', () => {
+            reportModal.remove();
+            window.location.reload();
+        }, { once: true });
+    }
+
+    // ========== 用户设置功能 ==========
+
+    // Garmin 同步天数档位（与后端 garmin_service.SYNC_DAY_OPTIONS 保持一致）
+    const SYNC_DAYS_OPTS = [30, 60, 90, 180, 210, 240];
+
+    function updateSyncDaysLabel() {
+        const el = document.getElementById('set_garmin_days_slider');
+        const lb = document.getElementById('set_garmin_days_label');
+        if (!el || !lb) return;
+        const days = SYNC_DAYS_OPTS[Number(el.value)];
+        if (days) lb.textContent = days + ' 天';
+    }
+
+    async function saveUserSettings() {
+        try {
+            const birthDate = document.getElementById('set_birth_date').value;
+            const birthParts = birthDate ? birthDate.split('-').map(Number) : [];
+
+            const data = {
+                name: document.getElementById('set_name').value,
+                birth_year: birthParts[0],
+                birth_month: birthParts[1],
+                birth_day: birthParts[2],
+                height: parseInt(document.getElementById('set_height').value),
+                weight: parseFloat(document.getElementById('set_weight').value),
+                gender: document.getElementById('set_gender').value,
+                target_weight: parseFloat(document.getElementById('set_target_weight').value) || null,
+                garmin_sync_days: SYNC_DAYS_OPTS[Number(document.getElementById('set_garmin_days_slider').value)] || 30
+            };
+
+            // 验证数据
+            if (!data.name || !data.birth_year || !data.height || !data.weight) {
+                alert('请填写完整的个人信息');
+                return;
+            }
+
+            if (data.height < 100 || data.height > 250) {
+                alert('请输入有效的身高 (100-250cm)');
+                return;
+            }
+
+            if (data.weight < 30 || data.weight > 300) {
+                alert('请输入有效的体重 (30-300kg)');
+                return;
+            }
+
+            const result = await apiCall('/settings', {
+                method: 'POST',
+                body: JSON.stringify(data)
+            }, {
+                showLoading: false,
+                onError: (error) => {
+                    alert('保存失败: ' + error.message);
+                }
+            });
+
+            if (result) {
+                alert('个人信息更新成功！');
+                // 关闭模态框
+                bootstrap.Modal.getInstance(document.getElementById('userSettingsModal')).hide();
+                // 刷新页面以显示新数据
+                window.location.reload();
+            }
+        } catch (e) {
+            alert('保存失败: ' + e);
+        }
+    }
+
+    // ========== 适老化模式 ==========
+
+    function applyElderlyMode(enabled) {
+        if (enabled) {
+            document.body.classList.add('elderly-mode');
+        } else {
+            document.body.classList.remove('elderly-mode');
+        }
+        const sw = document.getElementById('elderlyModeSwitch');
+        if (sw) sw.checked = enabled;
+    }
+
+    function toggleElderlyMode(enabled) {
+        applyElderlyMode(enabled);
+        try {
+            localStorage.setItem('sugar_bee_elderly_mode', enabled ? '1' : '0');
+        } catch (e) {
+            console.warn('localStorage unavailable', e);
+        }
+    }
+
+    function initElderlyMode() {
+        let enabled = false;
+        try {
+            enabled = localStorage.getItem('sugar_bee_elderly_mode') === '1';
+        } catch (e) {
+            enabled = false;
+        }
+        applyElderlyMode(enabled);
+    }
+
+    // ========== 目标体重弹窗 ==========
+
+    function showTargetWeightPopup() {
+        document.getElementById('targetWeightPopup').style.display = '';
+    }
+
+    function hideTargetWeightPopup() {
+        document.getElementById('targetWeightPopup').style.display = 'none';
+    }
+
+    async function saveTargetWeight() {
+        const val = parseFloat(document.getElementById('popup_target_weight').value) || null;
+        // 读取当前配置，合并 target_weight 后保存
+        try {
+            const res = await fetch('/settings');
+            const config = await res.json();
+            config.target_weight = val;
+            const result = await apiCall('/settings', {
+                method: 'POST',
+                body: JSON.stringify(config)
+            }, { showLoading: false });
+            if (result) {
+                window.location.reload();
+            }
+        } catch (e) {
+            alert('保存失败: ' + e);
+        }
+    }
+
+    // ========== 头像上传功能 ==========
+
+    let cropper = null;
+    let avatarModal = null;
+    let selectedDefaultAvatar = null;
+
+    function openAvatarModal() {
+        if (!avatarModal) {
+            avatarModal = new bootstrap.Modal(document.getElementById('avatarModal'));
+        }
+        avatarModal.show();
+    }
+
+    function selectDefaultAvatar(filename, button) {
+        selectedDefaultAvatar = filename;
+        document.querySelectorAll('.avatar-choice').forEach(el => {
+            const selected = el === button;
+            el.classList.toggle('is-selected', selected);
+            el.setAttribute('aria-pressed', selected ? 'true' : 'false');
+        });
+        // 与上传照片互斥：选了现成头像就弃用已选照片
+        if (cropper) {
+            cropper.destroy();
+            cropper = null;
+        }
+        document.getElementById('avatarInput').value = '';
+        document.getElementById('cropImage').src = '';
+        document.getElementById('cropArea').classList.add('d-none');
+        document.getElementById('saveAvatarBtn').disabled = false;
+    }
+
+    async function saveDefaultAvatar() {
+        if (!selectedDefaultAvatar) return;
+        const button = document.getElementById('saveAvatarBtn');
+        button.disabled = true;
+        try {
+            const res = await fetch('/select_avatar', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({avatar: selectedDefaultAvatar})
+            });
+            const result = await res.json();
+            if (!res.ok || result.status !== 'success') {
+                throw new Error(result.message || '保存失败');
+            }
+            avatarModal.hide();
+            window.location.reload();
+        } catch (e) {
+            alert('头像保存失败: ' + e.message);
+            button.disabled = false;
+        }
+    }
+
+    function loadAvatarImage(input) {
+        if (input.files && input.files[0]) {
+            const file = input.files[0];
+
+            // 验证文件类型
+            if (!file.type.match('image/(png|jpeg|jpg)')) {
+                alert('请上传 PNG 或 JPEG 格式的图片');
+                return;
+            }
+
+            // 验证文件大小（最大5MB）
+            if (file.size > 5 * 1024 * 1024) {
+                alert('图片大小不能超过5MB');
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const image = document.getElementById('cropImage');
+                image.src = e.target.result;
+
+                // 与现成头像互斥：选了照片就取消已选头像
+                selectedDefaultAvatar = null;
+                document.querySelectorAll('.avatar-choice').forEach(el => {
+                    el.classList.remove('is-selected');
+                    el.setAttribute('aria-pressed', 'false');
+                });
+
+                // 显示裁剪区域
+                document.getElementById('cropArea').classList.remove('d-none');
+                document.getElementById('saveAvatarBtn').disabled = false;
+
+                // 销毁旧的cropper实例
+                if (cropper) {
+                    cropper.destroy();
+                }
+
+                // 初始化Cropper
+                cropper = new Cropper(image, {
+                    aspectRatio: 1,
+                    viewMode: 1,
+                    preview: '#avatarPreview',
+                    autoCropArea: 0.8,
+                    restore: false,
+                    guides: true,
+                    center: true,
+                    highlight: false,
+                    cropBoxMovable: true,
+                    cropBoxResizable: true,
+                    toggleDragModeOnDblclick: false
+                });
+            };
+            reader.readAsDataURL(file);
+        }
+    }
+
+    function resetAvatarModal() {
+        if (cropper) {
+            cropper.destroy();
+            cropper = null;
+        }
+        document.getElementById('avatarInput').value = '';
+        document.getElementById('cropImage').src = '';
+        document.getElementById('cropArea').classList.add('d-none');
+        document.getElementById('saveAvatarBtn').disabled = true;
+        selectedDefaultAvatar = null;
+        document.querySelectorAll('.avatar-choice').forEach(el => {
+            el.classList.remove('is-selected');
+            el.setAttribute('aria-pressed', 'false');
+        });
+    }
+
+    // 统一保存入口：优先保存已上传照片的裁剪结果，否则保存选中的现成头像
+    function saveAvatar() {
+        if (cropper) {
+            cropAndUploadAvatar();
+        } else if (selectedDefaultAvatar) {
+            saveDefaultAvatar();
+        }
+    }
+
+    async function cropAndUploadAvatar() {
+        if (!cropper) {
+            alert('请先选择图片');
+            return;
+        }
+
+        try {
+            // 获取裁剪后的canvas
+            const canvas = cropper.getCroppedCanvas({
+                width: 200,
+                height: 200,
+                imageSmoothingQuality: 'high'
+            });
+
+            // 转换为blob
+            canvas.toBlob(async function(blob) {
+                const formData = new FormData();
+                formData.append('avatar', blob, 'avatar.png');
+
+                const res = await fetch('/upload_avatar', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await res.json();
+                if (result.status === 'success') {
+                    alert('头像更新成功！');
+                    resetAvatarModal();
+                    avatarModal.hide();
+                    window.location.reload();
+                } else {
+                    alert('上传失败: ' + result.message);
+                }
+            }, 'image/png');
+        } catch (e) {
+            alert('上传失败: ' + e);
+        }
+    }
+
+    // ========== 药物方案功能 ==========
+
+    // 药物数据库（按治疗领域分类）
+    const medDatabase = {
+        '降糖药': {
+            '二甲双胍': ['250mg', '500mg', '850mg', '1000mg'],
+            '阿卡波糖': ['50mg', '100mg'],
+            '格列齐特': ['30mg', '60mg', '80mg'],
+            '西格列汀': ['25mg', '50mg', '100mg'],
+            '恩格列净': ['10mg', '25mg'],
+            '达格列净': ['5mg', '10mg'],
+            '卡格列净': ['100mg', '300mg'],
+            '格列美脲': ['1mg', '2mg', '4mg'],
+            '吡格列酮': ['15mg', '30mg', '45mg'],
+            '瑞格列奈': ['0.5mg', '1mg', '2mg'],
+        },
+        '胰岛素': {
+            '门冬胰岛素': ['4U', '6U', '8U', '10U', '12U'],
+            '甘精胰岛素': ['10U', '12U', '16U', '18U', '20U', '24U'],
+            '德谷胰岛素': ['10U', '14U', '18U', '20U'],
+            '赖脯胰岛素': ['4U', '6U', '8U', '10U'],
+        },
+        'GLP-1 受体激动剂': {
+            '司美格鲁肽': ['0.25mg', '0.5mg', '1mg', '1.7mg', '2.4mg'],
+            '利拉鲁肽': ['0.6mg', '1.2mg', '1.8mg'],
+            '度拉糖肽': ['0.75mg', '1.5mg', '3mg', '4.5mg'],
+            '艾塞那肽': ['5μg', '10μg'],
+        },
+        '降压药': {
+            '缬沙坦': ['80mg', '160mg'],
+            '厄贝沙坦': ['75mg', '150mg', '300mg'],
+            '氯沙坦': ['50mg', '100mg'],
+            '培哚普利': ['4mg', '8mg'],
+            '雷米普利': ['2.5mg', '5mg', '10mg'],
+            '氨氯地平': ['2.5mg', '5mg', '10mg'],
+            '硝苯地平控释片': ['30mg', '60mg'],
+            '琥珀酸美托洛尔缓释片': ['23.75mg', '47.5mg', '95mg'],
+            '比索洛尔': ['2.5mg', '5mg', '10mg'],
+            '螺内酯': ['20mg', '40mg'],
+            '氢氯噻嗪': ['12.5mg', '25mg'],
+            '倍博特': ['80mg/5mg', '160mg/5mg'],
+        },
+        '心脑血管药': {
+            '阿司匹林肠溶片': ['100mg', '300mg'],
+            '氯吡格雷': ['75mg'],
+            '阿托伐他汀': ['10mg', '20mg', '40mg'],
+            '瑞舒伐他汀': ['5mg', '10mg', '20mg'],
+        },
+        '骨质疏松药': {
+            '阿仑膦酸钠': ['70mg'],
+            '碳酸钙D3': ['600mg'],
+            '骨化三醇': ['0.25μg', '0.5μg'],
+        },
+        '甲状腺药': {
+            '左甲状腺素钠': ['25μg', '50μg', '75μg', '100μg'],
+            '甲巯咪唑': ['5mg', '10mg'],
+            '丙硫氧嘧啶': ['50mg', '100mg'],
+        },
+        '痛风/关节药': {
+            '别嘌醇': ['100mg', '300mg'],
+            '非布司他': ['20mg', '40mg', '80mg'],
+            '秋水仙碱': ['0.5mg'],
+            '苯溴马隆': ['50mg'],
+        },
+        '安眠/神经类药': {
+            '唑吡坦': ['5mg', '10mg'],
+            '艾司唑仑': ['1mg', '2mg'],
+            '右佐匹克隆': ['1mg', '2mg', '3mg'],
+        },
+        '抗感染药': {
+            '阿莫西林': ['250mg', '500mg'],
+            '头孢克洛': ['250mg', '500mg'],
+            '头孢呋辛': ['250mg', '500mg'],
+            '阿奇霉素': ['250mg', '500mg'],
+            '左氧氟沙星': ['250mg', '500mg'],
+            '甲硝唑': ['200mg', '400mg'],
+        },
+        '抗病毒药': {
+            '奥司他韦': ['30mg', '45mg', '75mg'],
+            '玛巴洛沙韦': ['20mg', '40mg'],
+            '阿昔洛韦': ['200mg', '400mg', '800mg'],
+            '利巴韦林': ['100mg', '150mg'],
+        },
+        '感冒及呼吸道用药': {
+            '对乙酰氨基酚': ['325mg', '500mg'],
+            '布洛芬': ['200mg', '400mg'],
+            '复方氨酚烷胺': [],
+            '连花清瘟胶囊': ['0.35g'],
+            '氯雷他定': ['10mg'],
+            '西替利嗪': ['10mg'],
+            '右美沙芬': ['15mg', '30mg'],
+            '氨溴索': ['30mg'],
+        },
+        '消化系统用药': {
+            '奥美拉唑': ['10mg', '20mg'],
+            '兰索拉唑': ['15mg', '30mg'],
+            '雷贝拉唑': ['10mg', '20mg'],
+            '多潘立酮': ['10mg'],
+            '蒙脱石散': ['3g'],
+            '双歧杆菌': [],
+        },
+        '外用药': {
+            '红霉素软膏': [],
+            '莫匹罗星软膏': [],
+            '酮康唑乳膏': [],
+            '氢化可的松乳膏': [],
+            '碘伏': [],
+            '云南白药气雾剂': [],
+        },
+        '维生素及营养补充': {
+            '维生素D': ['400IU', '1000IU', '2000IU'],
+            '维生素B族': [],
+            '维生素C': ['100mg', '500mg', '1000mg'],
+            '钙片': ['500mg', '600mg'],
+            '铁剂': ['150mg', '300mg'],
+            '鱼油': ['1000mg'],
+        },
+        '其他': {},
+    };
+
+    // 所有药物类型列表（用于下拉）
+    const medTypeList = Object.keys(medDatabase);
+
+    // 马蒂斯野兽派配色 — 手工调色，取自《舞蹈》《红色的和谐》《生活的欢乐》等代表作
+    // 16色对应 medTypeList 顺序，每色 [bg, border]
+    const matissePalettes = [
+        // 1: 《舞蹈》— 钴蓝/朱砂/赭石/翠绿
+        [
+            ['rgba(0,82,155,0.10)',   'rgba(0,82,155,0.45)'],    // 降糖药 — 钴蓝
+            ['rgba(210,60,40,0.10)',  'rgba(210,60,40,0.45)'],   // 胰岛素 — 朱砂红
+            ['rgba(15,130,95,0.10)', 'rgba(15,130,95,0.45)'],    // GLP-1 — 翡翠绿
+            ['rgba(220,170,50,0.10)','rgba(220,170,50,0.45)'],   // 降压药 — 那不勒斯黄
+            ['rgba(160,55,120,0.10)','rgba(160,55,120,0.45)'],   // 心脑血管 — 品红
+            ['rgba(45,140,180,0.10)','rgba(45,140,180,0.45)'],   // 骨质疏松 — 天蓝
+            ['rgba(190,100,30,0.10)','rgba(190,100,30,0.45)'],   // 甲状腺 — 赭石
+            ['rgba(100,45,145,0.10)','rgba(100,45,145,0.45)'],   // 痛风/关节 — 紫罗兰
+            ['rgba(200,130,70,0.10)','rgba(200,130,70,0.45)'],   // 安眠/神经 — 琥珀
+            ['rgba(180,35,60,0.10)', 'rgba(180,35,60,0.45)'],    // 抗感染 — 深红
+            ['rgba(60,155,70,0.10)', 'rgba(60,155,70,0.45)'],    // 抗病毒 — 草绿
+            ['rgba(30,65,130,0.10)', 'rgba(30,65,130,0.45)'],    // 感冒呼吸 — 群青
+            ['rgba(230,135,60,0.10)','rgba(230,135,60,0.45)'],   // 消化系统 — 橘黄
+            ['rgba(80,160,150,0.10)','rgba(80,160,150,0.45)'],   // 外用药 — 青瓷
+            ['rgba(175,120,170,0.10)','rgba(175,120,170,0.45)'], // 维生素 — 丁香紫
+            ['rgba(130,125,115,0.10)','rgba(130,125,115,0.45)'], // 其他 — 暖灰
+        ],
+        // 2: 《红色的和谐》— 热烈鲜艳
+        [
+            ['rgba(195,35,35,0.10)', 'rgba(195,35,35,0.45)'],    // 降糖药 — 镉红
+            ['rgba(25,90,165,0.10)', 'rgba(25,90,165,0.45)'],    // 胰岛素 — 矢车菊蓝
+            ['rgba(240,185,45,0.10)','rgba(240,185,45,0.45)'],   // GLP-1 — 镉黄
+            ['rgba(35,145,80,0.10)', 'rgba(35,145,80,0.45)'],    // 降压药 — 维罗纳绿
+            ['rgba(210,90,140,0.10)','rgba(210,90,140,0.45)'],   // 心脑血管 — 玫瑰粉
+            ['rgba(65,50,130,0.10)', 'rgba(65,50,130,0.45)'],    // 骨质疏松 — 靛蓝
+            ['rgba(225,140,35,0.10)','rgba(225,140,35,0.45)'],   // 甲状腺 — 橙黄
+            ['rgba(10,120,140,0.10)','rgba(10,120,140,0.45)'],   // 痛风/关节 — 凫蓝
+            ['rgba(155,70,45,0.10)', 'rgba(155,70,45,0.45)'],    // 安眠/神经 — 铁锈红
+            ['rgba(120,170,50,0.10)','rgba(120,170,50,0.45)'],   // 抗感染 — 黄绿
+            ['rgba(170,50,95,0.10)', 'rgba(170,50,95,0.45)'],    // 抗病毒 — 酒红
+            ['rgba(55,135,175,0.10)','rgba(55,135,175,0.45)'],   // 感冒呼吸 — 湖蓝
+            ['rgba(200,175,60,0.10)','rgba(200,175,60,0.45)'],   // 消化系统 — 芥黄
+            ['rgba(140,60,150,0.10)','rgba(140,60,150,0.45)'],   // 外用药 — 紫红
+            ['rgba(75,165,130,0.10)','rgba(75,165,130,0.45)'],   // 维生素 — 松石绿
+            ['rgba(145,135,125,0.10)','rgba(145,135,125,0.45)'], // 其他 — 暖灰
+        ],
+        // 3: 《生活的欢乐》— 地中海阳光
+        [
+            ['rgba(40,115,175,0.10)','rgba(40,115,175,0.45)'],   // 降糖药 — 地中海蓝
+            ['rgba(230,120,50,0.10)','rgba(230,120,50,0.45)'],   // 胰岛素 — 暖橘
+            ['rgba(50,150,60,0.10)', 'rgba(50,150,60,0.45)'],    // GLP-1 — 橄榄绿
+            ['rgba(195,55,80,0.10)', 'rgba(195,55,80,0.45)'],    // 降压药 — 洋红
+            ['rgba(250,195,55,0.10)','rgba(250,195,55,0.45)'],   // 心脑血管 — 向日葵黄
+            ['rgba(90,60,145,0.10)', 'rgba(90,60,145,0.45)'],    // 骨质疏松 — 薰衣草紫
+            ['rgba(25,160,155,0.10)','rgba(25,160,155,0.45)'],   // 甲状腺 — 蒂芙尼蓝
+            ['rgba(175,80,45,0.10)', 'rgba(175,80,45,0.45)'],    // 痛风/关节 — 赤陶
+            ['rgba(145,45,110,0.10)','rgba(145,45,110,0.45)'],   // 安眠/神经 — 洋李紫
+            ['rgba(70,140,50,0.10)', 'rgba(70,140,50,0.45)'],    // 抗感染 — 苔绿
+            ['rgba(215,50,45,0.10)', 'rgba(215,50,45,0.45)'],    // 抗病毒 — 珊瑚红
+            ['rgba(55,95,160,0.10)', 'rgba(55,95,160,0.45)'],    // 感冒呼吸 — 釉蓝
+            ['rgba(205,160,45,0.10)','rgba(205,160,45,0.45)'],   // 消化系统 — 赭黄
+            ['rgba(115,175,140,0.10)','rgba(115,175,140,0.45)'], // 外用药 — 灰绿
+            ['rgba(210,100,120,0.10)','rgba(210,100,120,0.45)'], // 维生素 — 蔷薇
+            ['rgba(120,115,110,0.10)','rgba(120,115,110,0.45)'], // 其他 — 暖灰
+        ],
+    ];
+
+    const medColorSchemes = {
+        none: null,
+        matisse: null,
+    };
+    let medColorScheme = localStorage.getItem('medColorScheme') || 'matisse';
+    if (!(medColorScheme in medColorSchemes)) medColorScheme = 'matisse';
+    let medPaletteIndex = parseInt(localStorage.getItem('medPaletteIndex') || '0') % matissePalettes.length;
+
+    function getMedTypeColor(medType) {
+        let scheme;
+        if (medColorScheme === 'matisse') {
+            scheme = matissePalettes[medPaletteIndex];
+        } else {
+            scheme = medColorSchemes[medColorScheme];
+        }
+        if (!scheme) return null;
+        let idx = medTypeList.indexOf(medType);
+        if (idx === -1 && medType) {
+            let hash = 0;
+            for (let i = 0; i < medType.length; i++)
+                hash = ((hash << 5) - hash) + medType.charCodeAt(i);
+            idx = Math.abs(hash) % scheme.length;
+        }
+        if (idx === -1) idx = scheme.length - 1;
+        return scheme[idx];
+    }
+
+    // 构建扁平的 药物名→剂量 映射 + 药物名→类型 映射
+    const medDosageMap = {};
+    const medTypeMap = {};
+    for (const [type, drugs] of Object.entries(medDatabase)) {
+        for (const [name, dosages] of Object.entries(drugs)) {
+            medDosageMap[name] = dosages;
+            medTypeMap[name] = type;
+        }
+    }
+
+    // 初始化药物名称和类型 datalist
+    function initMedOptions() {
+        const datalist = document.getElementById('medOptions');
+        if (!datalist) return;
+        let html = '';
+        for (const [type, drugs] of Object.entries(medDatabase)) {
+            for (const name of Object.keys(drugs)) {
+                html += `<option value="${name}" label="${type}">`;
+            }
+        }
+        datalist.innerHTML = html;
+
+        // 对症类型 datalist
+        const typeDatalist = document.getElementById('medTypeOptions');
+        if (typeDatalist) {
+            typeDatalist.innerHTML = medTypeList.map(t => `<option value="${t}">`).join('');
+        }
+    }
+    initMedOptions();
+
+    // 根据药物名称更新剂量 datalist
+    function updateDosageOptions(medName) {
+        const datalist = document.getElementById('dosageOptions');
+        if (!datalist) return;
+        const options = medDosageMap[medName];
+        datalist.innerHTML = options ? options.map(d => `<option value="${d}">`).join('') : '';
+    }
+
+    // 监听药物名称输入，联动剂量下拉和对症类型
+    document.getElementById('plan_name')?.addEventListener('input', function() {
+        const name = this.value.trim();
+        updateDosageOptions(name);
+        // 自动识别对症类型
+        const typeInput = document.getElementById('plan_med_type');
+        if (typeInput && medTypeMap[name]) {
+            typeInput.value = medTypeMap[name];
+            // 自动识别补剂类型：维生素及营养补充 → category 设为 supplement
+            if (medTypeMap[name] === '维生素及营养补充') {
+                document.getElementById('plan_category').value = 'supplement';
+                updateCategoryDefaults();
+            }
+        }
+    });
+
+    // 页面加载时设置开始日期默认值
+    document.addEventListener('DOMContentLoaded', function() {
+        const planStart = document.getElementById('plan_start');
+        if (planStart) {
+            const today = localDateString();
+            planStart.value = today;
+        }
+
+        // 监听药物管理modal打开事件
+        const medModal = document.getElementById('medicationPlanModal');
+        if (medModal) {
+            medModal.addEventListener('show.bs.modal', function() {
+                // 初始化配色圆点 active 状态
+                document.querySelectorAll('.med-color-dot').forEach(dot => {
+                    dot.classList.toggle('active', dot.dataset.scheme === medColorScheme);
+                });
+                // 重置 tab 按钮文字（与当前 medTab 同步）
+                const addBtn = document.getElementById('medAddBtn');
+                if (addBtn) {
+                    addBtn.innerHTML = medTab === 'supplement'
+                        ? '<i class="bi bi-plus-circle me-1"></i>添加补剂'
+                        : '<i class="bi bi-plus-circle me-1"></i>添加药物';
+                }
+                loadMedicationPlans();
+            });
+        }
+    });
+
+    // 控制分类选择的联动
+    function updateCategoryDefaults() {
+        const category = document.getElementById('plan_category').value;
+        const freqContainer = document.getElementById('frequency_container');
+        if (category === 'temporary') {
+            freqContainer.style.display = 'none';
+            document.getElementById('plan_frequency').value = 'daily';
+            updateFrequencyDetail();
+        } else {
+            freqContainer.style.display = '';
+            updateFrequencyDetail();
+        }
+    }
+
+    // ========== 今日概览 药物/补剂 Tab 切换 ==========
+    function switchOverviewMedTab(btn, showId) {
+        const bar = btn.parentElement;
+        bar.querySelectorAll('.med-tab-pill').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        // 隐藏同级所有 tab 内容（紧跟 tab-bar 的 div），再显示目标
+        let sibling = bar.nextElementSibling;
+        while (sibling) {
+            if (sibling.id && (sibling.id.startsWith('card-') || sibling.id.startsWith('overview-'))) {
+                sibling.style.display = 'none';
+            }
+            sibling = sibling.nextElementSibling;
+        }
+        const shown = document.getElementById(showId);
+        shown.style.display = '';
+        // 重置折叠状态
+        const collapse = shown.querySelector('.med-list-collapse');
+        if (collapse) {
+            collapse.classList.remove('expanded');
+            const fade = collapse.querySelector('.med-list-fade');
+            if (fade) fade.style.display = '';
+        }
+        checkMedListOverflow(showId);
+    }
+
+    // ========== 每日复盘 药物/补剂 Tab 切换 ==========
+    function switchDvMedTab(btn, targetId) {
+        const section = btn.closest('.dv-med-section');
+        section.querySelectorAll('.med-tab-pill').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        section.querySelectorAll('.dv-tab-panel').forEach(p => p.style.display = 'none');
+        document.getElementById(targetId).style.display = '';
+    }
+
+    // ========== 用药列表折叠 ==========
+    function toggleMedListCollapse(innerId, fadeId) {
+        const inner = document.getElementById(innerId);
+        const fade = document.getElementById(fadeId);
+        inner.classList.toggle('expanded');
+        if (fade) fade.style.display = inner.classList.contains('expanded') ? 'none' : '';
+    }
+
+    function checkMedListOverflow(containerId) {
+        const container = document.getElementById(containerId);
+        if (!container) return;
+        const inner = container.querySelector('.med-list-collapse');
+        if (!inner) return;
+        const fade = inner.querySelector('.med-list-fade');
+        const btn = container.querySelector('.med-list-expand-btn');
+        if (inner.scrollHeight <= inner.clientHeight) {
+            if (fade) fade.style.display = 'none';
+            if (btn) btn.style.display = 'none';
+        } else {
+            if (fade) fade.style.display = '';
+            if (btn) btn.style.display = '';
+        }
+    }
+
+    // ========== 药物/补剂 Tab 切换 ==========
+    let medTab = 'medicine';
+
+    function setMedTab(tab) {
+        medTab = tab;
+        document.getElementById('medTabMedicine').classList.toggle('active', tab === 'medicine');
+        document.getElementById('medTabSupplement').classList.toggle('active', tab === 'supplement');
+        // 更新"添加"按钮文字
+        const addBtn = document.getElementById('medAddBtn');
+        if (addBtn) {
+            addBtn.innerHTML = tab === 'supplement'
+                ? '<i class="bi bi-plus-circle me-1"></i>添加补剂'
+                : '<i class="bi bi-plus-circle me-1"></i>添加药物';
+        }
+        loadMedicationPlans();
+    }
+
+    // ========== 药物排序标签控制 ==========
+    let medSortMode = 'category_desc';
+    let medSortDir = { category: 'desc', med_type: 'desc', name: 'asc', time: 'desc' };
+
+    function setMedSort(mode) {
+        const baseMode = medSortMode.replace(/_(?:asc|desc)$/, '');
+        if (baseMode === mode) {
+            // 点击当前激活的按钮 → 切换方向
+            medSortDir[mode] = medSortDir[mode] === 'desc' ? 'asc' : 'desc';
+        }
+        medSortMode = mode + '_' + medSortDir[mode];
+
+        // 更新排序图标
+        const iconMap = {
+            category: 'medCategorySortIcon',
+            med_type: 'medMedTypeSortIcon',
+            name: 'medNameSortIcon',
+            time: 'medTimeSortIcon'
+        };
+        for (const [key, id] of Object.entries(iconMap)) {
+            const icon = document.getElementById(id);
+            if (!icon) continue;
+            const dir = medSortDir[key];
+            if (key === 'name') {
+                icon.className = dir === 'asc' ? 'bi bi-sort-alpha-down med-sort-icon' : 'bi bi-sort-alpha-up med-sort-icon';
+            } else {
+                icon.className = dir === 'desc' ? 'bi bi-sort-down med-sort-icon' : 'bi bi-sort-up med-sort-icon';
+            }
+        }
+
+        document.querySelectorAll('.med-sort-pill').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.sort === mode);
+        });
+        loadMedicationPlans();
+    }
+
+    function setMedColorScheme(scheme) {
+        if (scheme === 'matisse' && medColorScheme === 'matisse') {
+            medPaletteIndex = (medPaletteIndex + 1) % matissePalettes.length;
+            localStorage.setItem('medPaletteIndex', medPaletteIndex);
+        }
+        medColorScheme = scheme;
+        localStorage.setItem('medColorScheme', scheme);
+        document.querySelectorAll('.med-color-dot').forEach(dot => {
+            dot.classList.toggle('active', dot.dataset.scheme === scheme);
+        });
+        loadMedicationPlans();
+    }
+
+    // 控制频率详情字段的显示
+    function updateFrequencyDetail() {
+        const frequency = document.getElementById('plan_frequency').value;
+        const container = document.getElementById('frequency_detail_container');
+        const weeklySelect = document.getElementById('plan_frequency_detail_weekly');
+        const monthlyInput = document.getElementById('plan_frequency_detail_monthly');
+        const ndaysInput = document.getElementById('plan_frequency_detail_ndays');
+        const timesLabel = document.getElementById('plan_times_label');
+
+        // 动态更新标签
+        if (frequency === 'daily' || frequency === 'every_n_days') {
+            timesLabel.innerHTML = '日服次数 <span class="text-danger">*</span>';
+        } else {
+            timesLabel.innerHTML = '每次用量（次） <span class="text-danger">*</span>';
+        }
+
+        // 重置所有详情字段
+        weeklySelect.style.display = 'none';
+        monthlyInput.style.display = 'none';
+        ndaysInput.style.display = 'none';
+
+        if (frequency === 'daily') {
+            container.style.display = 'none';
+        } else if (frequency === 'every_n_days') {
+            container.style.display = 'block';
+            ndaysInput.style.display = 'block';
+        } else if (frequency === 'weekly' || frequency === 'biweekly') {
+            container.style.display = 'block';
+            weeklySelect.style.display = 'block';
+        } else if (frequency === 'monthly') {
+            container.style.display = 'block';
+            monthlyInput.style.display = 'block';
+        }
+    }
+
+    // 单次用量：自定义选项显隐
+    document.getElementById('plan_dose_quantity')?.addEventListener('change', function() {
+        const customInput = document.getElementById('plan_dose_quantity_custom');
+        customInput.style.display = this.value === 'custom' ? 'block' : 'none';
+        if (this.value !== 'custom') customInput.value = '';
+    });
+
+    // 加载药物方案列表
+    async function loadMedicationPlans() {
+        try {
+            const res = await fetch('/medication_plans');
+            const plans = await res.json();
+
+            const container = document.getElementById('medicationPlansList');
+            if (!plans || plans.length === 0) {
+                // 更新 tab 计数
+                document.getElementById('medTabMedicineCount').textContent = '(0)';
+                document.getElementById('medTabSupplementCount').textContent = '(0)';
+                container.innerHTML = '<div class="alert alert-info mb-0"><i class="bi bi-info-circle me-2"></i>暂无药物方案</div>';
+                return;
+            }
+
+            const showPaused = document.getElementById('medShowPaused')?.checked !== false;
+            const afterPaused = showPaused ? plans : plans.filter(p => p.is_active);
+
+            // 统计两个 tab 的数量（基于 showPaused 过滤后）
+            const medicineCount = afterPaused.filter(p => p.category !== 'supplement').length;
+            const supplementCount = afterPaused.filter(p => p.category === 'supplement').length;
+            document.getElementById('medTabMedicineCount').textContent = `(${medicineCount})`;
+            document.getElementById('medTabSupplementCount').textContent = `(${supplementCount})`;
+
+            // 按当前 tab 二次过滤
+            const filtered = medTab === 'supplement'
+                ? afterPaused.filter(p => p.category === 'supplement')
+                : afterPaused.filter(p => p.category !== 'supplement');
+
+            if (filtered.length === 0) {
+                const label = medTab === 'supplement' ? '补剂' : '药物';
+                container.innerHTML = `<div class="alert alert-info mb-0"><i class="bi bi-info-circle me-2"></i>当前无${label}方案</div>`;
+                return;
+            }
+
+            const sortMode = medSortMode;
+            const weekdayMap = {Monday:'周一',Tuesday:'周二',Wednesday:'周三',Thursday:'周四',Friday:'周五',Saturday:'周六',Sunday:'周日'};
+
+            // 渲染单个药物卡片
+            function renderPlanCard(plan) {
+                const isActive = plan.is_active;
+                const endDateText = plan.end_date || '长期服用';
+                const statusBadge = isActive
+                    ? '<span class="badge bg-success">服药中</span>'
+                    : '<span class="badge bg-secondary">已停用</span>';
+                const medTypeBadge = plan.med_type
+                    ? `<span class="badge bg-info bg-opacity-75">${plan.med_type}</span>` : '';
+                const catBadge = (!sortMode.startsWith('category'))
+                    ? (plan.category === 'temporary' ? '<span class="badge bg-warning text-dark">临时</span>'
+                       : plan.category === 'supplement' ? '<span class="badge bg-info">补剂</span>' : '')
+                    : '';
+
+                const freq = plan.frequency || 'daily';
+                const fd = plan.frequency_detail || '';
+                let freqText = '';
+                if (freq === 'daily') freqText = `${plan.times_per_day}次/天`;
+                else if (freq === 'every_n_days') freqText = `每${fd}天一次 · ${plan.times_per_day}次`;
+                else if (freq === 'weekly') freqText = `每周${weekdayMap[fd] || fd}`;
+                else if (freq === 'biweekly') freqText = `每两周·${weekdayMap[fd] || fd}`;
+                else if (freq === 'monthly') freqText = `每月${fd}号`;
+                if (freq !== 'daily' && freq !== 'every_n_days' && plan.times_per_day > 1) freqText += ` · ${plan.times_per_day}次`;
+
+                const dq = plan.dose_quantity || '1';
+                const du = plan.dose_unit || '片';
+                let dosageDisplay = '';
+                if (plan.dosage) {
+                    dosageDisplay = dq !== '1' ? `${plan.dosage} ×${dq}${du}` : plan.dosage;
+                }
+
+                const typeColor = getMedTypeColor(plan.med_type);
+                const cardStyle = typeColor
+                    ? `background:${typeColor[0]};border-left:3px solid ${typeColor[1]}`
+                    : '';
+
+                const cardEmoji = plan.category === 'supplement' ? '🧬' : '💊';
+
+                return `
+                    <div class="card mb-2 ${!isActive ? 'opacity-50' : ''}" style="${cardStyle}">
+                        <div class="card-body py-2 px-3">
+                            <div class="d-flex justify-content-between align-items-end">
+                                <div class="flex-grow-1">
+                                    <h6 class="mb-1">
+                                        ${cardEmoji} ${plan.medication_name}
+                                        ${dosageDisplay ? `<small class="text-muted">${dosageDisplay}</small>` : ''}
+                                        ${catBadge} ${medTypeBadge} ${statusBadge}
+                                    </h6>
+                                    <small class="text-muted d-block">
+                                        ${freqText}
+                                        ${plan.timing_notes ? `· ${plan.timing_notes}` : ''}
+                                    </small>
+                                    <small class="text-muted d-block">
+                                        ${plan.start_date} 至 ${endDateText}
+                                        ${plan.notes ? `· ${plan.notes}` : ''}
+                                    </small>
+                                    ${plan.dosage_history && plan.dosage_history.length > 0 ? `
+                                    <small class="d-block mt-1">
+                                        <a href="javascript:void(0)" class="text-muted text-decoration-none" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none'">
+                                            📋 剂量调整 (${plan.dosage_history.length})
+                                        </a>
+                                        <div style="display:none" class="ms-2 mt-1">
+                                            ${plan.dosage_history.map(h => `<div class="text-muted" style="font-size:0.8em">${h.changed_at.substring(0,10)}&ensp;${h.old_dosage || '(空)'} → ${h.new_dosage || '(空)'}</div>`).join('')}
+                                        </div>
+                                    </small>
+                                    ` : ''}
+                                </div>
+                                <div class="d-flex flex-column align-items-end gap-1">
+                                    <button class="med-action-btn act-edit"
+                                            onclick="editMedicationPlan(${plan.id})"
+                                            title="编辑">
+                                        <i class="bi bi-pencil"></i> 编辑
+                                    </button>
+                                    <button class="med-action-btn ${isActive ? 'act-pause' : 'act-resume'}"
+                                            onclick="toggleMedicationPlan(${plan.id})"
+                                            title="${isActive ? '暂停' : '恢复'}">
+                                        <i class="bi bi-${isActive ? 'pause-fill' : 'play-fill'}"></i> ${isActive ? '暂停' : '恢复'}
+                                    </button>
+                                    <button class="med-action-btn act-delete"
+                                            onclick="deleteMedicationPlan(${plan.id})"
+                                            title="删除">
+                                        <i class="bi bi-trash3"></i> 删除
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>`;
+            }
+
+            let html = '';
+
+            if (sortMode.startsWith('category')) {
+                const isAsc = sortMode.endsWith('_asc');
+                const groupOrder = isAsc ? ['long_term', 'temporary', 'supplement'] : ['supplement', 'temporary', 'long_term'];
+                const groups = { temporary: [], long_term: [], supplement: [] };
+                filtered.forEach(p => { (groups[p.category || 'long_term'] ||= []).push(p); });
+                const labels = { temporary: '⏱️ 临时用药', long_term: '📋 长期用药', supplement: '🧬 营养补剂' };
+                for (const cat of groupOrder) {
+                    const list = groups[cat];
+                    if (!list || !list.length) continue;
+                    html += `<h6 class="text-muted mb-2 mt-3">${labels[cat] || cat}（${list.length}）</h6>`;
+                    list.forEach(p => { html += renderPlanCard(p); });
+                }
+            } else if (sortMode.startsWith('med_type')) {
+                const isAsc = sortMode.endsWith('_asc');
+                const groups = {};
+                filtered.forEach(p => { const t = p.med_type || '未分类'; (groups[t] ||= []).push(p); });
+                const keys = Object.keys(groups).sort((a, b) => isAsc ? a.localeCompare(b) : b.localeCompare(a));
+                for (const type of keys) {
+                    const list = groups[type];
+                    html += `<h6 class="text-muted mb-2 mt-3">🏷️ ${type}（${list.length}）</h6>`;
+                    list.forEach(p => { html += renderPlanCard(p); });
+                }
+            } else if (sortMode.startsWith('name')) {
+                const isAsc = sortMode.endsWith('_asc');
+                filtered.sort((a, b) => {
+                    const cmp = (a.medication_name || '').localeCompare(b.medication_name || '');
+                    return isAsc ? cmp : -cmp;
+                });
+                filtered.forEach(p => { html += renderPlanCard(p); });
+            } else if (sortMode === 'time_desc') {
+                filtered.sort((a, b) => (b.id || 0) - (a.id || 0));
+                filtered.forEach(p => { html += renderPlanCard(p); });
+            } else if (sortMode === 'time_asc') {
+                filtered.sort((a, b) => (a.id || 0) - (b.id || 0));
+                filtered.forEach(p => { html += renderPlanCard(p); });
+            }
+
+            container.innerHTML = html;
+        } catch (e) {
+            console.error('加载药物方案失败:', e);
+        }
+    }
+
+    // 药物方案表单提交（新增 / 编辑）
+    document.getElementById('medicationPlanForm')?.addEventListener('submit', async function(e) {
+        e.preventDefault();
+
+        // 获取频率详情
+        const frequency = document.getElementById('plan_frequency').value;
+        let frequency_detail = null;
+        if (frequency === 'every_n_days') {
+            frequency_detail = document.getElementById('plan_frequency_detail_ndays').value;
+        } else if (frequency === 'weekly' || frequency === 'biweekly') {
+            frequency_detail = document.getElementById('plan_frequency_detail_weekly').value;
+        } else if (frequency === 'monthly') {
+            frequency_detail = document.getElementById('plan_frequency_detail_monthly').value;
+        }
+
+        const editId = document.getElementById('plan_edit_id').value;
+        const isEdit = !!editId;
+
+        const data = {
+            medication_name: document.getElementById('plan_name').value,
+            dosage: document.getElementById('plan_dosage').value,
+            dose_quantity: document.getElementById('plan_dose_quantity').value === 'custom'
+                ? document.getElementById('plan_dose_quantity_custom').value
+                : document.getElementById('plan_dose_quantity').value,
+            dose_unit: document.getElementById('plan_dose_unit').value,
+            times_per_day: parseInt(document.getElementById('plan_times').value),
+            timing_notes: document.getElementById('plan_timing').value,
+            start_date: document.getElementById('plan_start').value,
+            end_date: document.getElementById('plan_end').value || null,
+            notes: document.getElementById('plan_notes').value,
+            frequency: frequency,
+            frequency_detail: frequency_detail,
+            category: document.getElementById('plan_category').value,
+            med_type: document.getElementById('plan_med_type').value.trim()
+        };
+
+        // 编辑模式需要带上 is_active
+        if (isEdit) {
+            data.is_active = document.getElementById('plan_edit_active') ? parseInt(document.getElementById('plan_edit_active').value) : 1;
+        }
+
+        try {
+            const url = isEdit ? `/update_medication_plan/${editId}` : '/add_medication_plan';
+            const res = await fetch(url, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(data)
+            });
+            const result = await res.json();
+            if (result.status === 'success') {
+                showToast(isEdit ? '药物方案修改成功！' : '药物方案保存成功！', 'success');
+                const medFormModalEl = document.getElementById('medFormModal');
+                bootstrap.Modal.getInstance(medFormModalEl)?.hide();
+                loadMedicationPlans();
+            } else {
+                alert('保存失败: ' + result.message);
+            }
+        } catch (e) {
+            alert('保存失败: ' + e);
+        }
+    });
+
+    // 编辑药物方案 - 加载数据到表单
+    async function editMedicationPlan(planId) {
+        try {
+            const res = await fetch(`/medication_plan/${planId}`);
+            const result = await res.json();
+            const plan = result.data || result;
+
+            // 填充表单
+            document.getElementById('plan_edit_id').value = planId;
+            document.getElementById('plan_name').value = plan.medication_name || '';
+            updateDosageOptions(plan.medication_name || '');
+            document.getElementById('plan_dosage').value = plan.dosage || '';
+            // 回填单次用量
+            const dq = plan.dose_quantity || '1';
+            const dqSel = document.getElementById('plan_dose_quantity');
+            const dqCustom = document.getElementById('plan_dose_quantity_custom');
+            const presetValues = ['1/4', '1/3', '1/2', '1', '2', '3'];
+            if (presetValues.includes(dq)) {
+                dqSel.value = dq;
+                dqCustom.style.display = 'none';
+            } else {
+                dqSel.value = 'custom';
+                dqCustom.value = dq;
+                dqCustom.style.display = 'block';
+            }
+            document.getElementById('plan_dose_unit').value = plan.dose_unit || '片';
+            document.getElementById('plan_times').value = plan.times_per_day || 1;
+            document.getElementById('plan_timing').value = plan.timing_notes || '';
+            document.getElementById('plan_start').value = plan.start_date || '';
+            document.getElementById('plan_end').value = plan.end_date || '';
+            document.getElementById('plan_notes').value = plan.notes || '';
+            document.getElementById('plan_frequency').value = plan.frequency || 'daily';
+            document.getElementById('plan_category').value = plan.category || 'long_term';
+            document.getElementById('plan_med_type').value = plan.med_type || '';
+
+            // 保存 is_active 状态（编辑不改变启停状态）
+            let hiddenActive = document.getElementById('plan_edit_active');
+            if (!hiddenActive) {
+                hiddenActive = document.createElement('input');
+                hiddenActive.type = 'hidden';
+                hiddenActive.id = 'plan_edit_active';
+                document.getElementById('medicationPlanForm').appendChild(hiddenActive);
+            }
+            hiddenActive.value = plan.is_active ? '1' : '0';
+
+            // 更新分类联动（含频率详情）
+            updateCategoryDefaults();
+            if (plan.frequency === 'every_n_days' && plan.frequency_detail) {
+                document.getElementById('plan_frequency_detail_ndays').value = plan.frequency_detail;
+            } else if ((plan.frequency === 'weekly' || plan.frequency === 'biweekly') && plan.frequency_detail) {
+                document.getElementById('plan_frequency_detail_weekly').value = plan.frequency_detail;
+            } else if (plan.frequency === 'monthly' && plan.frequency_detail) {
+                document.getElementById('plan_frequency_detail_monthly').value = plan.frequency_detail;
+            }
+
+            // 切换为编辑模式 UI
+            document.getElementById('medFormTitle').innerHTML = '<i class="bi bi-pencil me-2"></i>编辑药物方案';
+            document.getElementById('medFormSubmitBtn').innerHTML = '<i class="bi bi-check-lg me-2"></i>保存修改';
+
+            // 打开表单弹窗
+            new bootstrap.Modal(document.getElementById('medFormModal')).show();
+        } catch (e) {
+            alert('加载方案数据失败: ' + e);
+        }
+    }
+
+    // 重置表单为新增模式
+    function resetMedForm() {
+        document.getElementById('plan_edit_id').value = '';
+        document.getElementById('medicationPlanForm').reset();
+        document.getElementById('plan_dose_quantity').value = '1';
+        document.getElementById('plan_dose_unit').value = '片';
+        document.getElementById('plan_dose_quantity_custom').style.display = 'none';
+        document.getElementById('plan_dose_quantity_custom').value = '';
+        const today = localDateString();
+        document.getElementById('plan_start').value = today;
+        const isSupplement = medTab === 'supplement';
+        document.getElementById('medFormTitle').innerHTML = isSupplement
+            ? '<i class="bi bi-plus-circle me-2"></i>添加新补剂方案'
+            : '<i class="bi bi-plus-circle me-2"></i>添加新药物方案';
+        document.getElementById('medFormSubmitBtn').innerHTML = isSupplement
+            ? '🧬 保存补剂方案'
+            : '💊 保存药物方案';
+        const hiddenActive = document.getElementById('plan_edit_active');
+        if (hiddenActive) hiddenActive.remove();
+        document.getElementById('plan_category').value = isSupplement ? 'supplement' : 'long_term';
+        document.getElementById('plan_med_type').value = '';
+        updateCategoryDefaults();
+    }
+
+    // 打开新增药物表单弹窗
+    function openMedForm() {
+        resetMedForm();
+        new bootstrap.Modal(document.getElementById('medFormModal')).show();
+    }
+
+    // 启用/停用药物方案
+    async function toggleMedicationPlan(planId) {
+        try {
+            const res = await fetch(`/toggle_medication_plan/${planId}`, {
+                method: 'POST'
+            });
+            const result = await res.json();
+            if (result.status === 'success') {
+                loadMedicationPlans();
+            }
+        } catch (e) {
+            alert('操作失败: ' + e);
+        }
+    }
+
+    // 删除药物方案
+    async function deleteMedicationPlan(planId) {
+        if (!confirm('删除后该药物方案及其剂量调整历史将永久移除，无法恢复。\n\n如只是暂时停药，建议使用「暂停」功能。\n\n确定要删除吗？')) return;
+
+        try {
+            const res = await fetch(`/delete_medication_plan/${planId}`, {
+                method: 'POST'
+            });
+            const result = await res.json();
+            if (result.status === 'success') {
+                loadMedicationPlans();
+                showToast('删除成功', 'success');
+            }
+        } catch (e) {
+            alert('删除失败: ' + e);
+        }
+    }
+
+    // ========== Health Analysis Functions ==========
+
+    let _analysisLoading = false;
+
+    function getScoreLabel(score) {
+        if (score >= 90) return '优秀';
+        if (score >= 80) return '良好';
+        if (score >= 60) return '一般';
+        if (score >= 40) return '需改善';
+        return '需关注';
+    }
+
+    function setAnalysisButtonsDisabled(disabled) {
+        _analysisLoading = disabled;
+        document.querySelectorAll('.analysis-generate-btn').forEach(btn => {
+            btn.disabled = disabled;
+        });
+    }
+
+    function showAnalysisLoadingModal(days) {
+        const existing = document.getElementById('analysisLoadingModal');
+        if (existing) existing.remove();
+
+        const modal = document.createElement('div');
+        modal.className = 'modal fade';
+        modal.id = 'analysisLoadingModal';
+        modal.setAttribute('data-bs-backdrop', 'static');
+        modal.setAttribute('data-bs-keyboard', 'false');
+        modal.innerHTML = `
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content border-0 shadow" style="border-radius: 20px;">
+                    <div class="modal-body text-center p-5">
+                        <div class="spinner-border text-primary mb-3" role="status" style="width: 3rem; height: 3rem;">
+                            <span class="visually-hidden">加载中...</span>
+                        </div>
+                        <h5 class="mb-2">正在生成综合健康报告</h5>
+                        <p class="text-muted mb-0">基于近 ${days} 天数据，正在查询、分析和保存结果<br>预计需要 10–30 秒，请稍候</p>
+                    </div>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+        const bsModal = new bootstrap.Modal(modal);
+        bsModal.show();
+    }
+
+    function hideAnalysisLoadingModal() {
+        const modal = document.getElementById('analysisLoadingModal');
+        if (!modal) return;
+        const bsModal = bootstrap.Modal.getInstance(modal);
+        if (bsModal) {
+            bsModal.hide();
+            modal.addEventListener('hidden.bs.modal', () => modal.remove(), { once: true });
+        } else {
+            modal.remove();
+        }
+    }
+
+    function renderHealthAnalysisCard(analysis) {
+        const score = analysis.health_score || 0;
+        const scoreLabel = getScoreLabel(score);
+        const days = analysis.days || 7;
+        const daysLabel = `近${days}天`;
+        const generatedAt = analysis.created_at || analysis.analysis_date || '';
+        const glucoseSummary = analysis.glucose_summary || '';
+        const bpSummary = analysis.blood_pressure_summary || '';
+        const exSummary = analysis.exercise_summary || '';
+        const medSummary = analysis.medication_summary || '';
+        let recs = analysis.recommendations || [];
+        if (typeof recs === 'string') {
+            try { recs = JSON.parse(recs); } catch (e) { recs = []; }
+        }
+        const recHtml = Array.isArray(recs) && recs.length
+            ? recs.map(r => `<li class="mb-1">${escapeHtml(String(r))}</li>`).join('')
+            : '<li class="mb-1 text-white-50">暂无具体建议</li>';
+
+        return `
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card" style="background: linear-gradient(135deg, #6366F1 0%, #4F46E5 100%); color: white;">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div class="d-flex align-items-center gap-2">
+                                <div class="text-center" style="min-width: 56px;">
+                                    <div class="fs-1 fw-bold lh-1">${score}</div>
+                                    <small style="opacity: 0.8; font-size: 0.7rem;">${scoreLabel}</small>
+                                </div>
+                                <div class="ms-1">
+                                    <div class="d-flex align-items-center gap-2">
+                                        <h6 class="mb-0">综合健康分析</h6>
+                                        <span class="badge rounded-pill" style="background: rgba(255,255,255,0.2); font-size: 0.75rem;">${daysLabel}</span>
+                                    </div>
+                                    <small style="opacity: 0.75; font-size: 0.75rem;">${generatedAt} 生成</small>
+                                    <div class="small mt-1" style="opacity: 0.95; line-height: 1.4;">${escapeHtml(glucoseSummary)}</div>
+                                </div>
+                            </div>
+                            <button class="btn btn-link text-white p-0 ms-2 flex-shrink-0"
+                                    type="button"
+                                    data-bs-toggle="collapse"
+                                    data-bs-target="#healthAnalysisDetails"
+                                    aria-expanded="false"
+                                    title="展开/收起详情">
+                                <i class="bi bi-chevron-down collapse-toggle-icon" id="healthAnalysisIcon"></i>
+                            </button>
+                        </div>
+
+                        <div class="collapse" id="healthAnalysisDetails">
+                            <div class="row g-3 mb-3 mt-2 align-items-stretch">
+                                <div class="col-md-4 col-6 d-flex">
+                                    <div class="p-3 rounded flex-fill" style="background: rgba(255,255,255,0.15);">
+                                        <small class="d-block mb-1" style="opacity: 0.9;"><i class="bi bi-heart me-1"></i>血压状况</small>
+                                        <div class="small">${escapeHtml(bpSummary)}</div>
+                                    </div>
+                                </div>
+                                <div class="col-md-4 col-6 d-flex">
+                                    <div class="p-3 rounded flex-fill" style="background: rgba(255,255,255,0.15);">
+                                        <small class="d-block mb-1" style="opacity: 0.9;"><i class="bi bi-bicycle me-1"></i>运动情况</small>
+                                        <div class="small">${escapeHtml(exSummary)}</div>
+                                    </div>
+                                </div>
+                                <div class="col-md-4 col-6 d-flex">
+                                    <div class="p-3 rounded flex-fill" style="background: rgba(255,255,255,0.15);">
+                                        <small class="d-block mb-1" style="opacity: 0.9;"><i class="bi bi-capsule me-1"></i>用药评估</small>
+                                        <div class="small">${escapeHtml(medSummary)}</div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="mb-3">
+                                <strong class="d-block mb-2"><i class="bi bi-lightbulb me-1"></i>健康建议</strong>
+                                <ul class="mb-0" style="padding-left: 1.2rem;">
+                                    ${recHtml}
+                                </ul>
+                            </div>
+
+                            <div class="d-flex gap-2 flex-wrap">
+                                <button class="btn btn-light btn-sm" onclick="showFullAnalysis()">
+                                    <i class="bi bi-file-text me-1"></i>查看完整报告
+                                </button>
+                                <button class="btn btn-outline-light btn-sm analysis-generate-btn" data-bs-toggle="modal" data-bs-target="#analysisOptionsModal">
+                                    <i class="bi bi-arrow-clockwise me-1"></i>重新生成
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>`;
+    }
+
+    async function refreshHealthAnalysisSection() {
+        try {
+            const data = await apiCall('/get_latest_analysis', { method: 'GET' }, { showLoading: false });
+            if (!data || data.status === 'error' || data.message) {
+                location.reload();
+                return;
+            }
+            const container = document.getElementById('healthAnalysisSection');
+            if (container) {
+                container.innerHTML = renderHealthAnalysisCard(data);
+            }
+        } catch (e) {
+            console.error('刷新报告卡片失败', e);
+            location.reload();
+        }
+    }
+
+    /**
+     * 选择分析选项并触发分析
+     */
+    async function selectAnalysisOption(days) {
+        const modalEl = document.getElementById('analysisOptionsModal');
+        const modal = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
+        modal.hide();
+        await triggerManualAnalysis(days);
+    }
+
+    /**
+     * 手动触发健康分析
+     */
+    async function triggerManualAnalysis(days = 7) {
+        if (_analysisLoading) return;
+        setAnalysisButtonsDisabled(true);
+        showAnalysisLoadingModal(days);
+
+        const result = await apiCall('/analyze_health', {
+            method: 'POST',
+            body: JSON.stringify({ days: days })
+        }, {
+            showLoading: false,
+            onError: (error) => {
+                hideAnalysisLoadingModal();
+                setAnalysisButtonsDisabled(false);
+                if (error.errorType === 'quota_exceeded') {
+                    const retryAfter = error.details?.retry_after || error.retryAfter || 60;
+                    showQuotaExhaustedModal(retryAfter, days);
+                } else if (error.errorType === 'ai_unavailable') {
+                    showToast('⚠️ AI 服务未配置，请联系管理员', 'warning');
+                } else if (error.errorType === 'analysis_failed') {
+                    showToast('❌ 生成报告失败: ' + error.message, 'error');
+                } else {
+                    showToast('❌ 生成失败: ' + error.message, 'error');
+                }
+            }
+        });
+
+        if (result) {
+            showToast(`✅ 基于近${days}天的健康分析生成成功！`, 'success');
+            await refreshHealthAnalysisSection();
+            hideAnalysisLoadingModal();
+            setAnalysisButtonsDisabled(false);
+        }
+    }
+
+    /**
+     * 显示配额耗尽模态框，带倒计时重试功能
+     */
+    function showQuotaExhaustedModal(retryAfter, days) {
+        showQuotaModal({
+            modalId: 'quotaExhaustedModal',
+            title: 'AI 服务繁忙',
+            message: 'AI 服务配额暂时用尽',
+            retryAfter,
+            onRetry: () => triggerManualAnalysis(days),
+            autoRetry: true
+        });
+    }
+
+    /**
+     * 显示完整健康分析报告（模态框）
+     */
+    // 缓存最新完整报告数据，供 showFullAnalysis / exportToPDF 使用
+    let _latestFullAnalysis = null;
+    async function showFullAnalysis() {
+        let analysis;
+        try {
+            const resp = await fetch('/get_latest_analysis');
+            if (!resp.ok) throw new Error('无报告数据');
+            analysis = await resp.json();
+            _latestFullAnalysis = analysis; // 缓存供 exportToPDF 使用
+        } catch (e) {
+            alert('暂无完整报告');
+            return;
+        }
+
+        if (!analysis || !analysis.full_analysis) {
+            alert('暂无完整报告');
+            return;
+        }
+
+        // 创建模态框
+        const modal = document.createElement('div');
+        modal.className = 'modal fade';
+        modal.id = 'healthAnalysisModal';
+        modal.innerHTML = `
+            <div class="modal-dialog modal-xl modal-dialog-scrollable">
+                <div class="modal-content">
+                    <div class="modal-header bg-primary text-white">
+                        <h5 class="modal-title">
+                            <i class="bi bi-file-earmark-medical me-2"></i>完整健康分析报告
+                        </h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body" id="reportContent">
+                        <div class="row mb-4">
+                            <div class="col-md-4 text-center">
+                                <div class="display-3 fw-bold text-primary">${analysis.health_score}</div>
+                                <div class="text-muted">健康评分</div>
+                            </div>
+                            <div class="col-md-8">
+                                <div class="mb-3">
+                                    <strong>生成时间：</strong>${analysis.created_at || analysis.analysis_date}
+                                </div>
+                                <div class="mb-3">
+                                    <strong>生成方式：</strong>
+                                    <span class="badge ${analysis.is_auto_generated ? 'bg-success' : 'bg-info'}">
+                                        ${analysis.is_auto_generated ? '自动生成' : '手动生成'}
+                                    </span>
+                                </div>
+                                <div>
+                                    <strong>用户：</strong>${B.userName} · ${B.userGenderLabel} · ${B.userAge}岁
+                                </div>
+                            </div>
+                        </div>
+                        <hr>
+                        <div id="fullAnalysisContent" class="markdown-content"></div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-primary" onclick="exportToPDF()">
+                            <i class="bi bi-file-earmark-pdf me-2"></i>导出 PDF
+                        </button>
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(modal);
+        const bsModal = new bootstrap.Modal(modal);
+
+        // 使用 marked.js 渲染 Markdown
+        const contentDiv = modal.querySelector('#fullAnalysisContent');
+        let mdText = analysis.full_analysis;
+        // 去除 AI 返回的 ```markdown ... ``` 包裹
+        mdText = mdText.replace(/^```(?:markdown|md)?\s*\n?/i, '').replace(/\n?```\s*$/, '');
+        if (typeof marked !== 'undefined') {
+            contentDiv.innerHTML = marked.parse(mdText);
+        } else {
+            // 简单的换行处理
+            contentDiv.innerHTML = mdText.replace(/\n/g, '<br>');
+        }
+
+        // 清理：模态框关闭后移除
+        modal.addEventListener('hidden.bs.modal', () => {
+            bsModal.dispose();
+            modal.remove();
+        });
+
+        bsModal.show();
+    }
+
+    /**
+     * 导出报告为 PDF
+     */
+    async function exportToPDF() {
+        const button = event.target;
+        const originalHTML = button.innerHTML;
+        button.disabled = true;
+        button.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>生成中...';
+
+        try {
+            const { jsPDF } = window.jspdf;
+            const reportContent = document.getElementById('reportContent');
+
+            // 使用 html2canvas 将 HTML 转换为图片
+            const canvas = await html2canvas(reportContent, {
+                scale: 2,
+                useCORS: true,
+                logging: false,
+                backgroundColor: '#ffffff'
+            });
+
+            // 创建 PDF
+            const imgWidth = 210; // A4 宽度（mm）
+            const pageHeight = 297; // A4 高度（mm）
+            const imgHeight = (canvas.height * imgWidth) / canvas.width;
+            let heightLeft = imgHeight;
+            let position = 0;
+
+            const pdf = new jsPDF('p', 'mm', 'a4');
+            const imgData = canvas.toDataURL('image/png');
+
+            // 添加第一页
+            pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+            heightLeft -= pageHeight;
+
+            // 如果内容超过一页，添加更多页
+            while (heightLeft > 0) {
+                position = heightLeft - imgHeight;
+                pdf.addPage();
+                pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+                heightLeft -= pageHeight;
+            }
+
+            // 生成文件名
+            const _date = _latestFullAnalysis ? _latestFullAnalysis.analysis_date.replace(/-/g, '') : localDateString().replace(/-/g, '');
+            const fileName = `健康分析报告_${_date}.pdf`;
+
+            // 保存 PDF
+            pdf.save(fileName);
+
+            alert('PDF 导出成功！');
+        } catch (e) {
+            console.error('PDF export error:', e);
+            alert('PDF 导出失败: ' + e.message);
+        } finally {
+            button.disabled = false;
+            button.innerHTML = originalHTML;
+        }
+    }
+
+    // ========== Duplicate Data Management Functions ==========
+
+    /**
+     * 删除重复数据
+     */
+    async function deleteDuplicates() {
+        try {
+            const res = await fetch('/delete_duplicates', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+
+            const result = await res.json();
+
+            if (result.status === 'success') {
+                alert(`${result.message}\n页面即将刷新。`);
+                location.reload();
+            } else {
+                alert('删除失败: ' + result.message);
+            }
+        } catch (e) {
+            console.error('Delete duplicates error:', e);
+            alert('删除失败: ' + e.message);
+        }
+    }
+
+    // ========== Database Backup & Restore ==========
+
+    function backupDatabase() {
+        showToast('正在下载数据库备份...', 'info');
+        window.location = '/backup_database';
+    }
+
+    function restoreDatabase() {
+        const fileInput = document.getElementById('restoreFileInput');
+        fileInput.value = '';
+        fileInput.onchange = async function() {
+            if (!this.files || !this.files[0]) return;
+            const file = this.files[0];
+            if (!confirm(`确定要使用 "${file.name}" 恢复数据库吗？\n\n⚠️ 恢复将覆盖当前所有数据！`)) return;
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            try {
+                const res = await fetch('/restore_database', {
+                    method: 'POST',
+                    body: formData
+                });
+                const result = await res.json();
+                if (result.status === 'success') {
+                    alert(result.message);
+                    location.reload();
+                } else {
+                    alert('恢复失败: ' + result.message);
+                }
+            } catch (e) {
+                console.error('Restore error:', e);
+                alert('恢复失败: ' + e.message);
+            }
+        };
+        fileInput.click();
+    }
+
+    // ========== Apple Health 同步 ==========
+
+    async function bindIOSDevice() {
+        try {
+            const resp = await fetch('/api/v1/health-sync/bind', {method: 'POST'});
+            const data = await resp.json();
+            if (data.status === 'success') {
+                document.getElementById('bind-code').textContent = data.data.bind_code;
+                document.getElementById('bind-code-display').classList.remove('d-none');
+            } else {
+                alert('生成绑定码失败：' + (data.message || '未知错误'));
+            }
+        } catch (e) {
+            alert('网络错误：' + e.message);
+        }
+    }
+
+    function copyBindCode() {
+        const code = document.getElementById('bind-code').textContent;
+        navigator.clipboard.writeText(code).then(function () {
+            const btn = event.currentTarget;
+            const orig = btn.innerHTML;
+            btn.innerHTML = '<i class="bi bi-check"></i> 已复制';
+            setTimeout(function () { btn.innerHTML = orig; }, 2000);
+        }).catch(function () {
+            const el = document.getElementById('bind-code');
+            const range = document.createRange();
+            range.selectNodeContents(el);
+            const sel = window.getSelection();
+            sel.removeAllRanges();
+            sel.addRange(range);
+        });
+    }
+
+    async function checkIOSBinding() {
+        try {
+            const resp = await fetch('/api/v1/health-sync/confirm_binding');
+            const data = await resp.json();
+            if (data.status === 'success' && data.data && data.data.device_id) {
+                document.getElementById('ios-device-unbound-card').classList.add('d-none');
+                document.getElementById('ios-device-bound-card').classList.remove('d-none');
+                document.getElementById('bound-device-name').textContent = data.data.device_name || 'iOS 设备';
+                if (data.data.bound_at) {
+                    document.getElementById('bound-device-time').textContent = '绑定时间：' + data.data.bound_at;
+                }
+            }
+        } catch (e) {
+            console.error('检查绑定状态失败：', e);
+        }
+    }
+
+    async function resetIOSBinding() {
+        if (!confirm('确定要解除 iOS 设备绑定？')) return;
+        try {
+            const resp = await fetch('/api/v1/health-sync/unbind', {method: 'POST'});
+            const data = await resp.json();
+            if (data.status === 'success') {
+                document.getElementById('ios-device-unbound-card').classList.remove('d-none');
+                document.getElementById('ios-device-bound-card').classList.add('d-none');
+                document.getElementById('bind-code-display').classList.add('d-none');
+            } else {
+                alert('解除绑定失败：' + (data.message || '未知错误'));
+            }
+        } catch (e) {
+            alert('网络错误：' + e.message);
+        }
+    }
+
+    // 页面加载时检查绑定状态
+    document.addEventListener('DOMContentLoaded', checkIOSBinding);
+
+    function showShortcutGuide() {
+        const el = document.getElementById('shortcutGuideModal');
+        (bootstrap.Modal.getInstance(el) || new bootstrap.Modal(el)).show();
+    }
+
+    // ========== 去重功能 ==========
+
+    // ========== 用户管理（设置页 Tab） ==========
+
+    async function loadSettingsUserList() {
+        try {
+            const res = await fetch('/get_users');
+            const users = await res.json();
+            const container = document.getElementById('settingsUserList');
+            if (!container) return;
+
+            let html = '';
+            users.forEach(user => {
+                const isCurrent = user.id === currentUserId;
+                html += `
+                    <div class="card mb-2 ${isCurrent ? 'border-primary' : ''}">
+                        <div class="card-body py-2 px-3 d-flex justify-content-between align-items-center">
+                            <div>
+                                <span class="fw-bold">${user.display_name || user.username}</span>
+                                <small class="text-muted ms-2">@${user.username}</small>
+                                ${isCurrent ? '<span class="badge bg-primary ms-2">当前</span>' : ''}
+                            </div>
+                            <div class="d-flex gap-2">
+                                ${!isCurrent && IS_ADMIN ? `
+                                <button class="btn btn-sm btn-outline-primary" onclick="switchUser(${user.id})" title="切换">
+                                    <i class="bi bi-box-arrow-in-right"></i> 切换
+                                </button>
+                                ` : ''}
+                                ${!isCurrent ? `
+                                <button class="btn btn-sm btn-outline-danger" onclick="deleteUser(${user.id}, '${user.display_name || user.username}')" title="删除">
+                                    <i class="bi bi-trash3"></i>
+                                </button>
+                                ` : ''}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+            container.innerHTML = html;
+            const countEl = document.getElementById('settingsUserCount');
+            if (countEl) countEl.textContent = users.length;
+        } catch (e) {
+            console.error('Load settings user list error:', e);
+        }
+    }
+
+    async function createNewUser() {
+        const username = document.getElementById('newUserUsername').value.trim();
+        const displayName = document.getElementById('newUserDisplayName').value.trim();
+        const password = document.getElementById('newUserPassword').value;
+        if (!username || !displayName) {
+            showToast('请填写用户名和显示名称', 'warning');
+            return;
+        }
+        if (!password || password.length < 4) {
+            showToast('密码至少需要4个字符', 'warning');
+            return;
+        }
+        try {
+            const res = await fetch('/create_user', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ username, display_name: displayName, password })
+            });
+            const result = await res.json();
+            if (result.status === 'success') {
+                showToast('用户创建成功', 'success');
+                document.getElementById('newUserUsername').value = '';
+                document.getElementById('newUserDisplayName').value = '';
+                document.getElementById('newUserPassword').value = '';
+                loadSettingsUserList();
+            } else {
+                showToast('创建失败: ' + result.message, 'danger');
+            }
+        } catch (e) {
+            showToast('创建失败: ' + e, 'danger');
+        }
+    }
+
+    async function deleteUser(userId, userName) {
+        if (!confirm(`确定要删除用户「${userName}」吗？\n\n删除后该用户的数据仍保留在数据库中，但无法再登录。`)) return;
+        try {
+            const res = await fetch(`/delete_user/${userId}`, { method: 'POST' });
+            const result = await res.json();
+            if (result.status === 'success') {
+                showToast('用户已删除', 'success');
+                loadSettingsUserList();
+            } else {
+                showToast('删除失败: ' + result.message, 'danger');
+            }
+        } catch (e) {
+            showToast('删除失败: ' + e, 'danger');
+        }
+    }
+
+    async function changePassword() {
+        const oldPwd = document.getElementById('oldPassword').value;
+        const newPwd = document.getElementById('newPassword').value;
+        if (!newPwd || newPwd.length < 4) {
+            showToast('新密码至少需要4个字符', 'warning');
+            return;
+        }
+        try {
+            const res = await fetch('/change_password', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ old_password: oldPwd, new_password: newPwd })
+            });
+            const result = await res.json();
+            if (result.status === 'success') {
+                showToast('密码修改成功', 'success');
+                document.getElementById('oldPassword').value = '';
+                document.getElementById('newPassword').value = '';
+            } else {
+                showToast(result.message || '修改失败', 'danger');
+            }
+        } catch (e) {
+            showToast('修改失败: ' + e, 'danger');
+        }
+    }
+
+    async function changeUsername() {
+        const newName = document.getElementById('newUsername').value.trim();
+        if (!newName) {
+            showToast('请输入新用户名', 'warning');
+            return;
+        }
+        try {
+            const res = await fetch('/change_username', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ new_username: newName })
+            });
+            const result = await res.json();
+            if (result.status === 'success') {
+                showToast('用户名修改成功', 'success');
+                document.getElementById('newUsername').value = '';
+                loadSettingsUserList();
+            } else {
+                showToast(result.message || '修改失败', 'danger');
+            }
+        } catch (e) {
+            showToast('修改失败: ' + e, 'danger');
+        }
+    }
+
+    // ========== 账号绑定 ==========
+    async function loadAccountBindings() {
+        try {
+            const res = await fetch('/get_user_providers');
+            const result = await res.json();
+            const providers = result.data || [];
+            const phoneProvider = providers.find(p => p.provider === 'phone');
+            const emailProvider = providers.find(p => p.provider === 'email');
+
+            if (phoneProvider) {
+                const ph = phoneProvider.provider_uid;
+                document.getElementById('phoneMasked').textContent = ph.slice(0, 3) + '****' + ph.slice(-4);
+                document.getElementById('phoneBound').style.display = '';
+                document.getElementById('phoneUnbound').style.display = 'none';
+            } else {
+                document.getElementById('phoneBound').style.display = 'none';
+                document.getElementById('phoneUnbound').style.display = '';
+            }
+
+            if (emailProvider) {
+                const em = emailProvider.provider_uid;
+                const [local, domain] = em.split('@');
+                document.getElementById('emailMasked').textContent = local[0] + '***@' + domain;
+                document.getElementById('emailBound').style.display = '';
+                document.getElementById('emailUnbound').style.display = 'none';
+            } else {
+                document.getElementById('emailBound').style.display = 'none';
+                document.getElementById('emailUnbound').style.display = '';
+            }
+        } catch (e) {
+            console.error('加载账号绑定失败:', e);
+        }
+    }
+
+    async function bindPhone() {
+        const phone = document.getElementById('bindPhone').value.trim();
+        if (!/^1[3-9]\d{9}$/.test(phone)) {
+            showToast('请输入正确的手机号', 'warning');
+            return;
+        }
+        try {
+            const res = await fetch('/bind_phone', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ phone })
+            });
+            const result = await res.json();
+            if (result.status === 'success') {
+                showToast('手机号绑定成功', 'success');
+                document.getElementById('bindPhone').value = '';
+                loadAccountBindings();
+            } else {
+                showToast(result.message || '绑定失败', 'danger');
+            }
+        } catch (e) {
+            showToast('绑定失败: ' + e, 'danger');
+        }
+    }
+
+    async function bindEmail() {
+        const email = document.getElementById('bindEmail').value.trim();
+        if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+            showToast('请输入正确的邮箱地址', 'warning');
+            return;
+        }
+        try {
+            const res = await fetch('/bind_email', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ email })
+            });
+            const result = await res.json();
+            if (result.status === 'success') {
+                showToast('邮箱绑定成功', 'success');
+                document.getElementById('bindEmail').value = '';
+                loadAccountBindings();
+            } else {
+                showToast(result.message || '绑定失败', 'danger');
+            }
+        } catch (e) {
+            showToast('绑定失败: ' + e, 'danger');
+        }
+    }
+
+    async function unbindProvider(provider) {
+        const label = provider === 'phone' ? '手机号' : '邮箱';
+        if (!confirm(`确定要解绑${label}吗？解绑后将无法使用${label}登录。`)) return;
+        try {
+            const res = await fetch('/unbind_provider', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ provider })
+            });
+            const result = await res.json();
+            if (result.status === 'success') {
+                showToast('解绑成功', 'success');
+                loadAccountBindings();
+            } else {
+                showToast(result.message || '解绑失败', 'danger');
+            }
+        } catch (e) {
+            showToast('解绑失败: ' + e, 'danger');
+        }
+    }
+
+    async function importCsvFile(input) {
+        if (!input.files || !input.files[0]) return;
+        const file = input.files[0];
+        // 复用导入配置对话框，支持选择 CGM 模式
+        showImportConfigDialog(file);
+        input.value = '';
+    }
+
+    // 设置 modal 打开时加载用户列表
+    document.getElementById('userSettingsModal')?.addEventListener('show.bs.modal', function() {
+        loadSettingsUserList();
+        loadAccountBindings();
+        loadEnabledModules();
+        initBrandingSettings();
+        loadGarminStatus();
+    });
+
+    // ── Garmin 绑定：每个人绑自己的账号，数据各进各的 ──
+    async function loadGarminStatus() {
+        const statusEl = document.getElementById('garminBindStatus');
+        const form = document.getElementById('garminBindForm');
+        const actions = document.getElementById('garminBoundActions');
+        if (!statusEl || !form || !actions) return;
+        try {
+            const res = await apiCall('/api/garmin/status', { method: 'GET' }, { showLoading: false });
+            const bound = res && res.data && res.data.bound;
+            statusEl.textContent = bound
+                ? `已绑定 ${res.data.email}，运动数据只同步到当前账号`
+                : '每个人绑定自己的 Garmin 账号，运动数据只同步到自己名下';
+            form.classList.toggle('d-none', !!bound);
+            actions.classList.toggle('d-none', !bound);
+            if (!bound) {
+                document.getElementById('garminPassword').value = '';
+            }
+        } catch (e) {
+            statusEl.textContent = '绑定状态加载失败，请稍后重试';
+        }
+    }
+
+    async function bindGarmin() {
+        const email = document.getElementById('garminEmail').value.trim();
+        const password = document.getElementById('garminPassword').value;
+        const is_cn = document.getElementById('garminIsCn').checked;
+        if (!email || !password) {
+            showToast('请填写 Garmin 账号和密码', 'warning');
+            return;
+        }
+        const btn = document.getElementById('garminBindBtn');
+        btn.disabled = true;
+        btn.textContent = '正在登录 Garmin...';
+        try {
+            const res = await apiCall('/api/garmin/bind', {
+                method: 'POST',
+                body: JSON.stringify({ email, password, is_cn })
+            }, { showLoading: false });
+            showToast(res.message || '绑定成功', 'success');
+            document.getElementById('garminPassword').value = '';
+            await loadGarminStatus();
+        } catch (e) {
+            showToast(e.message || '绑定失败', 'danger');
+        } finally {
+            btn.disabled = false;
+            btn.textContent = '绑定 Garmin 账号';
+        }
+    }
+
+    async function unbindGarmin() {
+        if (!confirm('解绑后不再同步这个 Garmin 账号的运动数据，已同步的记录会保留。确定解绑吗？')) return;
+        try {
+            await apiCall('/api/garmin/unbind', { method: 'POST' }, { showLoading: false });
+            showToast('已解绑 Garmin 账号', 'success');
+            await loadGarminStatus();
+        } catch (e) {
+            showToast(e.message || '解绑失败', 'danger');
+        }
+    }
+
+    // ========== 功能模块开关 ==========
+    const MODULE_LABELS = {
+        glucose: { icon: '🩸', name: '血糖', desc: '血糖记录、预测、达标统计' },
+        blood_pressure: { icon: '❤️', name: '血压', desc: '收缩压/舒张压/脉搏' },
+        exercise: { icon: '🏃', name: '运动', desc: '跑步/步行/心率等数据' },
+        weight: { icon: '⚖️', name: '体重', desc: '体重/BMI 追踪' },
+        medication: { icon: '💊', name: '用药', desc: '用药计划与补剂管理' },
+        diet: { icon: '🥗', name: '餐食分析', desc: '饮食热量、碳水、升糖分析' },
+        bone_density: { icon: '🦴', name: '骨密度', desc: 'T 值/Z 值记录与趋势' },
+        checkup: { icon: '📋', name: '体检历史', desc: '上传体检报告，自动归档指标' }
+    };
+
+    function moduleRowHtml(m, checked) {
+        const info = MODULE_LABELS[m] || { icon: '', name: m, desc: '' };
+        return `
+            <label class="d-flex align-items-center gap-3 p-2 rounded" style="cursor: pointer; background: var(--bs-light); border: 1px solid #e0e0e0;">
+                <input type="checkbox" class="form-check-input module-checkbox" value="${m}" ${checked ? 'checked' : ''} style="flex-shrink: 0; margin: 0; width: 20px; height: 20px;">
+                <span style="font-size: 1.3rem; flex-shrink: 0;">${info.icon}</span>
+                <div class="d-flex flex-column" style="flex: 1;">
+                    <span class="fw-semibold" style="font-size: 1rem;">${info.name}</span>
+                    <small class="text-muted">${info.desc}</small>
+                </div>
+            </label>
+        `;
+    }
+
+    async function loadEnabledModules() {
+        try {
+            const result = await apiCall('/api/user/modules', { method: 'GET' }, { showLoading: false });
+            if (!result || !result.data) return;
+            const container = document.getElementById('moduleCheckboxes');
+            if (!container) return;
+            const active = new Set(result.data.enabled_modules || []);
+            const allModules = result.data.all_modules || [];
+            container.innerHTML = allModules.map(m => moduleRowHtml(m, active.has(m))).join('');
+        } catch (e) {
+            console.error('加载模块配置失败', e);
+            const container = document.getElementById('moduleCheckboxes');
+            if (container) container.innerHTML = '<div class="text-danger small">加载失败</div>';
+        }
+    }
+
+    async function saveEnabledModules() {
+        try {
+            const checked = [...document.querySelectorAll('#moduleCheckboxes .module-checkbox:checked')].map(i => i.value);
+            if (checked.length === 0) {
+                showToast('请至少保留一个功能模块', 'error');
+                return;
+            }
+            const appName = (document.getElementById('brandName')?.value || '').trim();
+            if (!appName) {
+                showToast('请填写应用名称', 'error');
+                return;
+            }
+            // 名称与模块一次提交：避免「改了名但模块没存」这类半成功状态
+            const result = await apiCall('/api/user/branding', {
+                method: 'POST',
+                body: JSON.stringify({
+                    app_name: appName,
+                    app_emoji: (document.getElementById('brandEmoji')?.value || '').trim(),
+                    app_tagline: (document.getElementById('brandTagline')?.value || '').trim(),
+                    persona: _selectedPersonaId,
+                    enabled_modules: checked
+                })
+            }, { showLoading: false });
+            if (result) {
+                showToast('设置已保存，正在刷新...', 'success');
+                setTimeout(() => window.location.reload(), 600);
+            }
+        } catch (e) {
+            showToast('保存失败: ' + (e.message || e), 'danger');
+        }
+    }
+
+    // ========== 应用品牌个性化（应用名 / 图标 / 标语 / 使用场景） ==========
+    // 场景模板只决定功能模块和标语；应用名、图标全家的默认值都是「蜜蜂健康」🐝，
+    // 想改随时在设置里改（只影响自己）。
+    const BRAND_DEFAULT_NAME = '蜜蜂健康';
+    const BRAND_DEFAULT_EMOJI = '🐝';
+    const BRAND_EMOJI_PICKS = ['🐝', '💗', '❤️', '🏃', '⚖️', '🏠', '🌱', '🍎', '🧓', '🐣'];
+    let _brandingData = null;
+    let _selectedPersonaId = B.persona;
+
+    async function loadBrandingData(force) {
+        if (_brandingData && !force) return _brandingData;
+        try {
+            const result = await apiCall('/api/user/branding', { method: 'GET' }, { showLoading: false });
+            _brandingData = (result && result.data) ? result.data : null;
+        } catch (e) {
+            console.error('加载品牌配置失败', e);
+            _brandingData = null;
+        }
+        return _brandingData;
+    }
+
+    function renderNameSuggestions(persona, prefix) {
+        const box = document.getElementById(prefix + 'NameSuggestions');
+        if (!box) return;
+        const names = (persona && persona.name_suggestions) || [];
+        box.innerHTML = names.map(n =>
+            `<button type="button" class="btn btn-sm btn-light border" data-suggest-name="${n}">${n}</button>`
+        ).join('');
+        box.querySelectorAll('[data-suggest-name]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const input = document.getElementById(prefix + 'Name');
+                if (input) input.value = btn.dataset.suggestName;
+            });
+        });
+    }
+
+    function highlightPersona(prefix, personaId) {
+        const scope = prefix === 'onboarding' ? '#onboardingPersonas' : '#brandPersonaChips';
+        document.querySelectorAll(scope + ' [data-persona]').forEach(el => {
+            const on = el.dataset.persona === personaId;
+            el.style.borderColor = on ? '#6366F1' : '#e0e0e0';
+            el.style.borderWidth = on ? '2px' : '1px';
+            el.style.background = on ? '#EEF2FF' : '#fff';
+        });
+    }
+
+    function applyPersona(persona, prefix) {
+        if (!persona) return;
+        _selectedPersonaId = persona.id;
+        const nameEl = document.getElementById(prefix + 'Name');
+        const emojiEl = document.getElementById(prefix + 'Emoji');
+        const taglineEl = document.getElementById(prefix + 'Tagline');
+        // 首次引导里才用默认值把名字/图标填好（所有场景都是「蜜蜂健康」🐝）；
+        // 设置页里点场景按钮只换功能模块，不动用户已经改好的名字和图标。
+        if (prefix === 'onboarding') {
+            if (nameEl) nameEl.value = (persona.name_suggestions || [])[0] || BRAND_DEFAULT_NAME;
+            if (emojiEl) emojiEl.value = persona.emoji || BRAND_DEFAULT_EMOJI;
+            if (taglineEl) taglineEl.value = persona.tagline || '';
+        }
+        // 按场景建议勾选模块（用户仍可手动改）
+        const scope = prefix === 'onboarding' ? '#onboardingModules' : '#moduleCheckboxes';
+        const wanted = new Set(persona.modules || []);
+        document.querySelectorAll(scope + ' .module-checkbox').forEach(cb => {
+            cb.checked = wanted.has(cb.value);
+        });
+        renderNameSuggestions(persona, prefix);
+        highlightPersona(prefix, persona.id);
+    }
+
+    async function initBrandingSettings() {
+        const data = await loadBrandingData();
+        const picks = document.getElementById('brandEmojiPicks');
+        if (picks && !picks.dataset.ready) {
+            picks.dataset.ready = '1';
+            picks.innerHTML = BRAND_EMOJI_PICKS.map(e =>
+                `<button type="button" class="btn btn-sm btn-light border" style="font-size:1.1rem;line-height:1.2" data-emoji="${e}">${e}</button>`
+            ).join('');
+            picks.querySelectorAll('[data-emoji]').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const input = document.getElementById('brandEmoji');
+                    if (input) input.value = btn.dataset.emoji;
+                });
+            });
+        }
+        const chips = document.getElementById('brandPersonaChips');
+        if (chips && data) {
+            chips.innerHTML = (data.personas || []).map(p =>
+                `<button type="button" class="btn btn-sm btn-light border" data-persona="${p.id}" title="${p.desc}">${p.icon || p.emoji} ${p.label}</button>`
+            ).join('');
+            chips.querySelectorAll('[data-persona]').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const p = (data.personas || []).find(x => x.id === btn.dataset.persona);
+                    applyPersona(p, 'brand');
+                });
+            });
+            highlightPersona('brand', _selectedPersonaId);
+        }
+    }
+
+    // ========== 首次使用引导（选场景 → 起名 → 选功能） ==========
+    async function initOnboarding() {
+        const data = await loadBrandingData();
+        if (!data) return;
+        const personaBox = document.getElementById('onboardingPersonas');
+        const moduleBox = document.getElementById('onboardingModules');
+        if (!personaBox || !moduleBox) return;
+
+        personaBox.innerHTML = (data.personas || []).map(p => `
+            <div class="col-6">
+                <button type="button" class="btn w-100 text-start h-100 persona-card" data-persona="${p.id}"
+                        style="border:1px solid #e0e0e0; background:#fff;">
+                    <div style="font-size:1.5rem; line-height:1.2">${p.icon || p.emoji}</div>
+                    <div class="fw-semibold">${p.label}</div>
+                    <div class="text-muted" style="font-size:.8rem">${p.desc}</div>
+                </button>
+            </div>
+        `).join('');
+        personaBox.querySelectorAll('[data-persona]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const p = (data.personas || []).find(x => x.id === btn.dataset.persona);
+                applyPersona(p, 'onboarding');
+            });
+        });
+
+        moduleBox.innerHTML = (data.all_modules || []).map(m => moduleRowHtml(m, true)).join('');
+
+        const nameInput = document.getElementById('onboardingName');
+        const emojiInput = document.getElementById('onboardingEmoji');
+        const raw = (data.branding && data.branding.enabled_modules) || [];
+        // 后端语义：空数组 = 「从未限制」= 全部启用（历史数据都是这样）。
+        // 这里必须用同一套语义解释，否则引导会把老账号的血糖模块当成「没勾」，
+        // 用户点「就这样开始」就把血糖关掉了 —— 而首页明明还显示着血糖。
+        const existing = raw.length ? raw : (data.all_modules || []);
+
+        if (existing.length) {
+            // 老账号升级：沿用已有的模块勾选。这里绝不能套用模板，
+            // 否则默认模板（不含血糖）会把老用户的血糖模块冲掉。
+            const wanted = new Set(existing);
+            moduleBox.querySelectorAll('.module-checkbox').forEach(cb => {
+                cb.checked = wanted.has(cb.value);
+            });
+            if (nameInput && !nameInput.value) nameInput.value = data.branding.app_name || '';
+            if (emojiInput && !emojiInput.value) emojiInput.value = data.branding.emoji || '';
+
+            const hint = document.getElementById('onboardingModulesHint');
+            if (hint) hint.textContent = '已保留你现在启用的功能，新功能可自行勾选。';
+
+            // 现有模块刚好等于某个模板时顺手高亮，让用户知道自己在哪个场景
+            const match = (data.personas || []).find(p =>
+                p.modules.length === existing.length && p.modules.every(m => wanted.has(m)));
+            _selectedPersonaId = match ? match.id : '';
+            if (match) {
+                renderNameSuggestions(match, 'onboarding');
+                highlightPersona('onboarding', match.id);
+            }
+        } else {
+            // 新账号：默认选中第一个场景（不覆盖用户已填内容，只在名称为空时填充）
+            const first = (data.personas || [])[0];
+            if (first && nameInput && !nameInput.value) applyPersona(first, 'onboarding');
+        }
+    }
+
+    function skipOnboarding() {
+        try {
+            localStorage.setItem('sbOnboardingSkipped:' + (currentUserId || 'self'), '1');
+        } catch (e) { /* 隐私模式下 localStorage 不可用，忽略 */ }
+        const el = document.getElementById('onboardingModal');
+        if (el) bootstrap.Modal.getInstance(el)?.hide();
+        // 名字可以以后再说，但「怎么记」得先教会
+        maybeShowTutorial();
+    }
+
+    // ========== 新手使用引导（教怎么用、怎么记准） ==========
+    const TUTORIAL_TOTAL = 4;
+    let _tutorialStep = 1;
+
+    function tutorialSeenKey() {
+        return 'sbTutorialSeen:' + (currentUserId || 'self');
+    }
+
+    function renderTutorialStep() {
+        document.querySelectorAll('#tutorialModal .tutorial-step').forEach(el => {
+            el.classList.toggle('d-none', Number(el.dataset.step) !== _tutorialStep);
+        });
+        const label = document.getElementById('tutorialStepLabel');
+        if (label) label.textContent = _tutorialStep + ' / ' + TUTORIAL_TOTAL;
+        const prev = document.getElementById('tutorialPrev');
+        if (prev) prev.classList.toggle('invisible', _tutorialStep === 1);
+        const next = document.getElementById('tutorialNext');
+        if (next) {
+            next.innerHTML = _tutorialStep === TUTORIAL_TOTAL
+                ? '<i class="bi bi-check-lg me-1"></i>开始使用'
+                : '下一步<i class="bi bi-chevron-right ms-1"></i>';
+        }
+    }
+
+    function openTutorial() {
+        _tutorialStep = 1;
+        renderTutorialStep();
+        const el = document.getElementById('tutorialModal');
+        if (el) bootstrap.Modal.getOrCreateInstance(el).show();
+    }
+
+    function tutorialGo(delta) {
+        _tutorialStep = Math.min(TUTORIAL_TOTAL, Math.max(1, _tutorialStep + delta));
+        renderTutorialStep();
+    }
+
+    function markTutorialSeen() {
+        try {
+            localStorage.setItem(tutorialSeenKey(), '1');
+        } catch (e) { /* 隐私模式下忽略 */ }
+    }
+
+    function closeTutorial() {
+        markTutorialSeen();
+        const el = document.getElementById('tutorialModal');
+        if (el) bootstrap.Modal.getInstance(el)?.hide();
+    }
+
+    function tutorialNext() {
+        if (_tutorialStep >= TUTORIAL_TOTAL) {
+            closeTutorial();
+            return;
+        }
+        tutorialGo(1);
+    }
+
+    function skipTutorial() {
+        closeTutorial();
+    }
+
+    function maybeShowTutorial() {
+        let seen = false;
+        try {
+            seen = localStorage.getItem(tutorialSeenKey()) === '1';
+        } catch (e) {
+            seen = false;
+        }
+        if (seen) return;
+        openTutorial();
+    }
+
+    async function saveOnboarding() {
+        const name = (document.getElementById('onboardingName')?.value || '').trim();
+        if (!name) {
+            showToast('先给应用起个名字吧', 'error');
+            return;
+        }
+        const modules = [...document.querySelectorAll('#onboardingModules .module-checkbox:checked')].map(i => i.value);
+        if (modules.length === 0) {
+            showToast('至少选择一个功能模块', 'error');
+            return;
+        }
+        const persona = ((_brandingData && _brandingData.personas) || []).find(p => p.id === _selectedPersonaId);
+        try {
+            const result = await apiCall('/api/user/branding', {
+                method: 'POST',
+                body: JSON.stringify({
+                    app_name: name,
+                    app_emoji: (document.getElementById('onboardingEmoji')?.value || '').trim(),
+                    // 引导弹窗里没有标语输入框，标语跟着场景模板走
+                    app_tagline: persona ? persona.tagline : '',
+                    persona: _selectedPersonaId,
+                    enabled_modules: modules
+                })
+            }, { showLoading: false });
+            if (result) {
+                showToast('设置完成，正在进入...', 'success');
+                setTimeout(() => window.location.reload(), 500);
+            }
+        } catch (e) {
+            showToast('保存失败: ' + (e.message || e), 'danger');
+        }
+    }
+
+    async function maybeShowOnboarding() {
+        if (B.onboarded) {
+            // 已经起过名字：直接看使用引导（没看过才弹）
+            maybeShowTutorial();
+            return;
+        }
+        let skipped = false;
+        try {
+            skipped = localStorage.getItem('sbOnboardingSkipped:' + (currentUserId || 'self')) === '1';
+        } catch (e) { skipped = false; }
+        if (skipped) {
+            maybeShowTutorial();
+            return;
+        }
+        await initOnboarding();
+        const el = document.getElementById('onboardingModal');
+        if (el) new bootstrap.Modal(el, { backdrop: 'static', keyboard: false }).show();
+    }
+
+    // ========== 骨密度（低频检查，独立弹窗） ==========
+    let _boneData = null;
+    let _boneChart = null;
+    let _bonePreviewItems = [];
+
+    async function openBoneModal() {
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('boneModal')).show();
+        await loadBoneData();
+    }
+
+    function toggleBoneForm(show) {
+        const form = document.getElementById('boneForm');
+        if (!form) return;
+        form.classList.toggle('d-none', !show);
+        if (show) {
+            const dateEl = document.getElementById('boneDate');
+            if (dateEl && !dateEl.value) dateEl.value = new Date().toISOString().slice(0, 10);
+        }
+    }
+
+    async function loadBoneData() {
+        try {
+            const res = await apiCall('/api/bone', { method: 'GET' }, { showLoading: false });
+            _boneData = (res && res.data) ? res.data : null;
+            renderBone();
+        } catch (e) {
+            showToast('加载骨密度失败: ' + (e.message || e), 'danger');
+        }
+    }
+
+    function renderBone() {
+        const d = _boneData || { records: [], trend: [], latest: null, sites: [] };
+        const sel = document.getElementById('boneSite');
+        if (sel && !sel.dataset.ready) {
+            sel.dataset.ready = '1';
+            sel.innerHTML = (d.sites || []).map(s => `<option>${s}</option>`).join('');
+        }
+
+        const latestBox = document.getElementById('boneLatest');
+        if (latestBox) {
+            const l = d.latest;
+            if (l && l.t_score !== null && l.t_score !== undefined) {
+                const g = l.grade || {};
+                latestBox.innerHTML = `最近一次：<strong>${escapeHtml(l.measure_date)}</strong> · ${escapeHtml(l.site)} · T 值 <strong>${escapeHtml(l.t_score)}</strong>`
+                    + (g.label ? ` <span class="badge" style="background:${g.color}">${escapeHtml(g.label)}</span>` : '');
+            } else {
+                latestBox.textContent = '还没有记录，点「＋ 新增」记一次骨密度检查';
+            }
+        }
+
+        const list = document.getElementById('boneList');
+        if (list) {
+            const rows = (d.records || []).slice().reverse();
+            list.innerHTML = rows.length ? rows.map(r => {
+                const g = r.grade || {};
+                return `<div class="d-flex justify-content-between align-items-center border-bottom py-2">
+                    <div>
+                        <div class="fw-semibold">${escapeHtml(r.measure_date)} · ${escapeHtml(r.site)}</div>
+                        <div class="small text-muted">
+                            T 值 ${r.t_score === null ? '-' : escapeHtml(r.t_score)}
+                            ${r.z_score !== null && r.z_score !== undefined ? ' · Z 值 ' + escapeHtml(r.z_score) : ''}
+                            ${r.bmd ? ' · ' + escapeHtml(r.bmd) + ' g/cm²' : ''}
+                            ${r.institution ? ' · ' + escapeHtml(r.institution) : ''}
+                        </div>
+                    </div>
+                    <div class="d-flex align-items-center gap-2">
+                        ${g.label ? `<span class="badge" style="background:${g.color}">${escapeHtml(g.label)}</span>` : ''}
+                        <button class="btn btn-sm btn-outline-danger" onclick="deleteBoneRecord(${r.id})">删除</button>
+                    </div>
+                </div>`;
+            }).join('') : '<div class="text-muted small">暂无记录</div>';
+        }
+
+        const trend = d.trend || [];
+        const trendSite = document.getElementById('boneTrendSite');
+        if (trendSite) {
+            const previous = trendSite.value;
+            const sites = [...new Set(trend.map(t => t.site))];
+            const preferred = sites.includes(previous) ? previous
+                : (d.latest && sites.includes(d.latest.site) ? d.latest.site : sites[0] || '');
+            trendSite.innerHTML = sites.map(site => `<option value="${escapeHtml(site)}">${escapeHtml(site)}</option>`).join('');
+            trendSite.value = preferred;
+        }
+        renderBoneChart(trend);
+        updateBoneEntry();
+    }
+
+    function renderBoneChart(trend) {
+        const canvas = document.getElementById('boneTrendChart');
+        if (!canvas || typeof Chart === 'undefined') return;
+        if (_boneChart) { _boneChart.destroy(); _boneChart = null; }
+        const site = document.getElementById('boneTrendSite')?.value;
+        const siteTrend = site ? trend.filter(t => t.site === site) : trend;
+        const distinctDates = new Set(siteTrend.map(t => t.date));
+        setChartEmptyState('boneTrendChart', 'boneTrendEmpty', distinctDates.size < 2, '同一部位至少有两个不同日期的记录后显示趋势');
+        if (distinctDates.size < 2) return;
+
+        const byDate = new Map();
+        siteTrend.forEach(t => {
+            const existing = byDate.get(t.date);
+            if (!existing || t.t_score < existing.t_score) byDate.set(t.date, t);
+        });
+        const points = [...byDate.values()];
+        _boneChart = createHealthChart(canvas, {
+            type: 'line',
+            data: {
+                labels: points.map(t => t.date),
+                datasets: [
+                    {
+                        label: 'T 值',
+                        data: points.map(t => t.t_score),
+                        borderColor: '#6366F1',
+                        backgroundColor: 'rgba(99,102,241,0.12)',
+                        tension: 0.3,
+                        fill: true
+                    },
+                    {
+                        label: 'Z 值',
+                        data: points.map(t => t.z_score),
+                        borderColor: '#94A3B8',
+                        borderDash: [4, 4],
+                        tension: 0.3,
+                        fill: false
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                plugins: { legend: { position: 'bottom' } },
+                scales: { y: { suggestedMin: -4, suggestedMax: 2 } }
+            }
+        });
+    }
+
+    async function saveBoneRecord() {
+        const payload = {
+            measure_date: document.getElementById('boneDate').value,
+            site: document.getElementById('boneSite').value,
+            t_score: document.getElementById('boneT').value,
+            z_score: document.getElementById('boneZ').value,
+            bmd: document.getElementById('boneBmd').value,
+            institution: document.getElementById('boneInst').value,
+            notes: document.getElementById('boneNotes').value
+        };
+        if (!payload.measure_date) { showToast('请选择检查日期', 'error'); return; }
+        try {
+            const res = await apiCall('/api/bone', { method: 'POST', body: JSON.stringify(payload) }, { showLoading: false });
+            _boneData = res.data;
+            renderBone();
+            toggleBoneForm(false);
+            ['boneT', 'boneZ', 'boneBmd', 'boneInst', 'boneNotes'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.value = '';
+            });
+            showToast('已保存', 'success');
+        } catch (e) {
+            showToast(e.message || '保存失败', 'danger');
+        }
+    }
+
+    async function parseBoneImage() {
+        const images = await collectReportImages('boneFile');
+        if (!images) return;
+        const btn = document.getElementById('boneParseBtn');
+        const original = btn ? btn.innerHTML : '';
+        if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>识别中...'; }
+        try {
+            const res = await apiCall('/api/bone/parse', {
+                method: 'POST',
+                body: JSON.stringify({ images })
+            }, { showLoading: false });
+            showBonePreview(res.data);
+        } catch (e) {
+            showToast(e.message || '识别失败', 'danger');
+        } finally {
+            if (btn) { btn.disabled = false; btn.innerHTML = original; }
+        }
+    }
+
+    function showBonePreview(data) {
+        _bonePreviewItems = (data.measurements || []).map(m => ({ ...m, selected: true }));
+        document.getElementById('bonePreviewDate').value = data.measure_date || new Date().toISOString().slice(0, 10);
+        document.getElementById('bonePreviewInst').value = data.institution || '';
+        renderBonePreview();
+        document.getElementById('bonePreview').classList.remove('d-none');
+        showReportResultToast(data, _bonePreviewItems.length, '个部位');
+    }
+
+    function renderBonePreview() {
+        const body = document.getElementById('bonePreviewBody');
+        if (!body) return;
+        body.innerHTML = _bonePreviewItems.map((m, idx) => {
+            const g = boneGrade(m.t_score);
+            return `<tr>
+                <td>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" ${m.selected ? 'checked' : ''}
+                               onchange="_bonePreviewItems[${idx}].selected=this.checked">
+                        <label class="form-check-label small">${escapeHtml(m.site)}</label>
+                    </div>
+                </td>
+                <td><input class="form-control form-control-sm" value="${m.t_score === null ? '' : escapeHtml(m.t_score)}"
+                        oninput="_bonePreviewItems[${idx}].t_score=this.value"></td>
+                <td><input class="form-control form-control-sm" value="${m.z_score === null ? '' : escapeHtml(m.z_score)}"
+                        oninput="_bonePreviewItems[${idx}].z_score=this.value"></td>
+                <td><button class="btn btn-sm btn-link text-danger p-0"
+                        onclick="_bonePreviewItems.splice(${idx},1);renderBonePreview()">×</button></td>
+            </tr>`;
+        }).join('');
+    }
+
+    function boneGrade(t) {
+        const v = parseFloat(t);
+        if (isNaN(v)) return null;
+        if (v <= -2.5) return { label: '骨质疏松', color: '#DC2626' };
+        if (v < -1.0) return { label: '骨量减少', color: '#F59E0B' };
+        return { label: '正常', color: '#16A34A' };
+    }
+
+    function cancelBonePreview() {
+        _bonePreviewItems = [];
+        document.getElementById('bonePreview').classList.add('d-none');
+        clearReportFileInput('boneFile', 'boneFileHint');
+    }
+
+    async function saveBonePreview() {
+        const picked = _bonePreviewItems.filter(m => m.selected);
+        if (!picked.length) { showToast('至少勾选一个部位', 'error'); return; }
+        const date = document.getElementById('bonePreviewDate').value;
+        if (!date) { showToast('请选择检查日期', 'error'); return; }
+        const institution = document.getElementById('bonePreviewInst').value;
+        let saved = 0;
+        try {
+            for (const m of picked) {
+                const res = await apiCall('/api/bone', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        measure_date: date,
+                        site: m.site,
+                        t_score: m.t_score,
+                        z_score: m.z_score,
+                        bmd: m.bmd,
+                        institution: institution
+                    })
+                }, { showLoading: false });
+                _boneData = res.data;
+                saved += 1;
+            }
+            renderBone();
+            cancelBonePreview();
+            showToast(`已保存 ${saved} 条`, 'success');
+        } catch (e) {
+            renderBone();
+            showToast(`保存到第 ${saved + 1} 条失败：${e.message || e}`, 'danger');
+        }
+    }
+
+    async function deleteBoneRecord(id) {
+        if (!confirm('删除这条骨密度记录？')) return;
+        try {
+            const res = await apiCall(`/api/bone/delete/${id}`, { method: 'POST' }, { showLoading: false });
+            _boneData = res.data;
+            renderBone();
+            showToast('已删除', 'success');
+        } catch (e) {
+            showToast(e.message || '删除失败', 'danger');
+        }
+    }
+
+    function updateBoneEntry() {
+        const box = document.getElementById('boneEntrySummary');
+        if (!box) return;
+        const l = _boneData && _boneData.latest;
+        if (l && l.t_score !== null && l.t_score !== undefined) {
+            const g = l.grade || {};
+            box.textContent = `${l.measure_date} · T 值 ${l.t_score}${g.label ? ' · ' + g.label : ''}`;
+        } else {
+            box.textContent = '暂无记录';
+        }
+    }
+
+    // ========== 体检历史（拍照上传 → AI 解析 → 确认归档） ==========
+    let _checkupPreviewItems = [];
+    // 非空表示当前预览的是已存记录（查看模式），避免重复保存出新记录
+    let _checkupViewingId = null;
+
+    function setCheckupPreviewMode(mode) {
+        const btn = document.getElementById('checkupSaveBtn');
+        if (!btn) return;
+        if (mode === 'view') {
+            btn.textContent = '关闭预览';
+            btn.onclick = cancelCheckupPreview;
+        } else {
+            btn.textContent = '保存这份体检';
+            btn.onclick = saveCheckupReport;
+        }
+    }
+
+    async function openCheckupModal() {
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('checkupModal')).show();
+        await loadCheckupList();
+    }
+
+    // 体检报告合并：勾选状态（同一次体检分批上传时合并为一条）
+    const _checkupMergeSelected = new Set();
+
+    function toggleCheckupMerge(id, checked) {
+        if (checked) {
+            _checkupMergeSelected.add(id);
+        } else {
+            _checkupMergeSelected.delete(id);
+        }
+        const bar = document.getElementById('checkupMergeBar');
+        const btn = document.getElementById('checkupMergeBtn');
+        if (bar) bar.classList.toggle('d-none', _checkupMergeSelected.size === 0);
+        if (btn) {
+            btn.disabled = _checkupMergeSelected.size < 2;
+            btn.textContent = `合并选中的 ${_checkupMergeSelected.size} 份`;
+        }
+    }
+
+    async function mergeCheckupReports() {
+        if (_checkupMergeSelected.size < 2) return;
+        if (!confirm(`把选中的 ${_checkupMergeSelected.size} 份报告合并为一条记录？\n\n只支持检查日期相同的报告（同一次体检分批上传的情况）；完全重复的项目会自动去重。`)) return;
+        try {
+            const res = await apiCall('/api/checkup/merge', {
+                method: 'POST',
+                body: JSON.stringify({ report_ids: [..._checkupMergeSelected] })
+            }, { showLoading: false });
+            _checkupMergeSelected.clear();
+            await loadCheckupList();
+            if (res.data && res.data.id) viewCheckup(res.data.id);
+            showToast(res.message || '已合并', 'success');
+        } catch (e) {
+            showToast(e.message || '合并失败', 'danger');
+        }
+    }
+
+    async function loadCheckupList() {
+        const box = document.getElementById('checkupList');
+        try {
+            const res = await apiCall('/api/checkup/list', { method: 'GET' }, { showLoading: false });
+            const reports = (res && res.data && res.data.reports) || [];
+            _checkupMergeSelected.clear();
+            const bar = document.getElementById('checkupMergeBar');
+            if (bar) bar.classList.add('d-none');
+            if (box) {
+                box.innerHTML = reports.length ? reports.map(r => `
+                    <div class="d-flex justify-content-between align-items-center border-bottom py-2">
+                        <div class="d-flex align-items-center gap-2" role="button" onclick="viewCheckup(${r.id})">
+                            <input type="checkbox" class="form-check-input mt-0" title="勾选后可合并"
+                                onchange="toggleCheckupMerge(${r.id}, this.checked)"
+                                onclick="event.stopPropagation()">
+                            <div>
+                                <div class="fw-semibold">${escapeHtml(r.checkup_date)}${r.institution ? ' · ' + escapeHtml(r.institution) : ''}</div>
+                                <div class="small text-muted">${escapeHtml(r.item_count)} 项${r.abnormal_count > 0 ? ' · 异常 ' + escapeHtml(r.abnormal_count) + ' 项' : ' · 全部正常'}</div>
+                            </div>
+                        </div>
+                        <button class="btn btn-sm btn-outline-danger" onclick="deleteCheckup(${r.id})">删除</button>
+                    </div>
+                `).join('') : '<div class="text-muted small">暂无体检记录</div>';
+            }
+            updateCheckupEntry(reports);
+        } catch (e) {
+            if (box) box.innerHTML = '<div class="text-danger small">加载失败</div>';
+        }
+    }
+
+    function updateCheckupEntry(reports) {
+        const box = document.getElementById('checkupEntrySummary');
+        if (!box) return;
+        if (reports && reports.length) {
+            const r = reports[0];
+            box.textContent = `最近 ${r.checkup_date} · ${r.item_count} 项`;
+        } else {
+            box.textContent = '暂无记录';
+        }
+    }
+
+    function readFileAsDataUrl(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result);
+            reader.onerror = reject;
+            reader.readAsDataURL(file);
+        });
+    }
+
+    // ========== 报告上传（体检 / 骨密度共用） ==========
+    // 后端逐页分批识别，每次模型调用最多 3 页；整份报告安全上限为 50 页。
+    const REPORT_MAX_FILES = 50;
+
+    function showReportFileHint(inputId, hintId) {
+        const input = document.getElementById(inputId);
+        const hint = document.getElementById(hintId);
+        if (!hint) return;
+        const files = [...((input && input.files) || [])];
+        if (!files.length) { hint.textContent = ''; return; }
+        const shown = files.slice(0, 5).map(f => f.name).join('、');
+        hint.textContent = `已选 ${files.length} 个：${shown}${files.length > 5 ? ' 等' : ''}`;
+    }
+
+    /** 读取全部报告文件，不静默丢弃用户选择的内容。 */
+    async function collectReportImages(inputId) {
+        const input = document.getElementById(inputId);
+        const files = [...((input && input.files) || [])];
+        if (!files.length) {
+            showToast('请先选择报告照片或 PDF', 'error');
+            return null;
+        }
+        if (files.length > REPORT_MAX_FILES) {
+            showToast(`一次最多识别 ${REPORT_MAX_FILES} 页，请拆分后上传`, 'error');
+            return null;
+        }
+        return await Promise.all(files.map(readFileAsDataUrl));
+    }
+
+    function showReportResultToast(data, count, unit) {
+        const failed = data.failed_pages || [];
+        if (!failed.length) {
+            showToast(`识别到 ${count} ${unit}，请核对`, 'success');
+            return;
+        }
+        const labels = failed.map(p => escapeHtml(p.label || `第 ${p.page} 页`)).join('、');
+        showToast(`识别到 ${count} ${unit}；${labels}识别失败，请重新上传对应页面`, 'warning');
+    }
+
+    function clearReportFileInput(inputId, hintId) {
+        const input = document.getElementById(inputId);
+        if (input) input.value = '';
+        const hint = document.getElementById(hintId);
+        if (hint) hint.textContent = '';
+    }
+
+    async function parseCheckupImage() {
+        const images = await collectReportImages('checkupFile');
+        if (!images) return;
+        const btn = document.getElementById('checkupParseBtn');
+        const original = btn ? btn.innerHTML : '';
+        if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>识别中...'; }
+        try {
+            const res = await apiCall('/api/checkup/parse', {
+                method: 'POST',
+                body: JSON.stringify({ images })
+            }, { showLoading: false });
+            showCheckupPreview(res.data);
+        } catch (e) {
+            showToast(e.message || '识别失败', 'danger');
+        } finally {
+            if (btn) { btn.disabled = false; btn.innerHTML = original; }
+        }
+    }
+
+    function showCheckupPreview(data) {
+        _checkupPreviewItems = (data.items || []).map(i => ({ ...i }));
+        _checkupViewingId = null;
+        setCheckupPreviewMode('edit');
+        document.getElementById('checkupDate').value = data.checkup_date || new Date().toISOString().slice(0, 10);
+        document.getElementById('checkupInst').value = data.institution || '';
+        renderCheckupPreview();
+        document.getElementById('checkupPreview').classList.remove('d-none');
+        showReportResultToast(data, _checkupPreviewItems.length, '项');
+    }
+
+    function renderCheckupPreview() {
+        const body = document.getElementById('checkupPreviewBody');
+        if (!body) return;
+        body.innerHTML = _checkupPreviewItems.map((it, idx) => {
+            const color = it.status === 'high' ? '#DC2626' : (it.status === 'low' ? '#2563EB' : '#475569');
+            // 文字多的栏位（如影像检查描述）用多行文本框完整展示，单行 input 放不下会被遮住
+            const valueEditor = String(it.value).length > 20
+                ? `<textarea class="form-control form-control-sm" rows="${Math.min(5, Math.max(2, Math.ceil(String(it.value).length / 45)))}"
+                        style="color:${color}" oninput="_checkupPreviewItems[${idx}].value=this.value">${escapeHtml(it.value)}</textarea>`
+                : `<input class="form-control form-control-sm" style="color:${color}" value="${escapeHtml(it.value)}"
+                        oninput="_checkupPreviewItems[${idx}].value=this.value">`;
+            return `<tr>
+                <td><div class="small fw-semibold">${escapeHtml(it.name)}</div><div class="text-muted" style="font-size:.75rem">${escapeHtml(it.category)}</div></td>
+                <td>${valueEditor}</td>
+                <td class="small text-muted">${escapeHtml(it.ref_range || '-')} ${escapeHtml(it.unit || '')}</td>
+                <td><button class="btn btn-sm btn-link text-danger p-0" onclick="_checkupPreviewItems.splice(${idx},1);renderCheckupPreview()">×</button></td>
+            </tr>`;
+        }).join('');
+    }
+
+    function cancelCheckupPreview() {
+        _checkupPreviewItems = [];
+        _checkupViewingId = null;
+        setCheckupPreviewMode('edit');
+        document.getElementById('checkupPreview').classList.add('d-none');
+        clearReportFileInput('checkupFile', 'checkupFileHint');
+    }
+
+    async function saveCheckupReport() {
+        if (_checkupViewingId) { cancelCheckupPreview(); return; }
+        if (!_checkupPreviewItems.length) { showToast('没有可保存的指标', 'error'); return; }
+        try {
+            const res = await apiCall('/api/checkup/save', {
+                method: 'POST',
+                body: JSON.stringify({
+                    checkup_date: document.getElementById('checkupDate').value,
+                    institution: document.getElementById('checkupInst').value,
+                    items: _checkupPreviewItems
+                })
+            }, { showLoading: false });
+            cancelCheckupPreview();
+            await loadCheckupList();
+            showToast(res.message || '已保存', 'success');
+        } catch (e) {
+            showToast(e.message || '保存失败', 'danger');
+        }
+    }
+
+    async function viewCheckup(id) {
+        try {
+            const res = await apiCall(`/api/checkup/${id}`, { method: 'GET' }, { showLoading: false });
+            const d = res.data;
+            _checkupPreviewItems = (d.items || []).map(i => ({ ...i }));
+            _checkupViewingId = id;
+            document.getElementById('checkupDate').value = d.checkup_date || '';
+            document.getElementById('checkupInst').value = d.institution || '';
+            renderCheckupPreview();
+            setCheckupPreviewMode('view');
+            document.getElementById('checkupPreview').classList.remove('d-none');
+            document.getElementById('checkupPreview').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        } catch (e) {
+            showToast(e.message || '加载失败', 'danger');
+        }
+    }
+
+    async function deleteCheckup(id) {
+        if (!confirm('删除这次体检记录？')) return;
+        try {
+            await apiCall(`/api/checkup/delete/${id}`, { method: 'POST' }, { showLoading: false });
+            await loadCheckupList();
+            showToast('已删除', 'success');
+        } catch (e) {
+            showToast(e.message || '删除失败', 'danger');
+        }
+    }
+
+    // ========== Garmin 同步 ==========
+    async function syncGarmin() {
+        showToast('正在同步 Garmin 活动...', 'info');
+        try {
+            const result = await apiCall('/sync_garmin', { method: 'POST' }, { showLoading: false });
+            if (result) {
+                showToast(result.message || '同步完成', 'success');
+                setTimeout(() => window.location.reload(), 1200);
+            }
+        } catch (e) {
+            showToast('Garmin 同步失败: ' + (e.message || e), 'danger');
+        }
+    }
+
+    async function findAndCleanDuplicates() {
+        try {
+            showToast('正在扫描重复记录...', 'info');
+            const res = await fetch('/find_duplicates');
+            const data = await res.json();
+
+            if (!data.data || data.data.total_groups === 0) {
+                showToast('未发现重复记录', 'success');
+                return;
+            }
+
+            const groups = data.data.duplicates;
+            const total = data.data.total_groups;
+            const totalDup = groups.reduce((sum, g) => sum + g.count - 1, 0);
+
+            let detail = groups.slice(0, 5).map(g =>
+                `  ${g.time} ${g.type} = ${g.value} (${g.count}条)`
+            ).join('\n');
+            if (total > 5) detail += `\n  ... 共 ${total} 组`;
+
+            if (!confirm(`发现 ${total} 组重复记录（共 ${totalDup} 条冗余）:\n\n${detail}\n\n是否自动清理？每组仅保留最早的一条。`)) {
+                return;
+            }
+
+            const delRes = await fetch('/delete_duplicates', { method: 'POST' });
+            const delData = await delRes.json();
+
+            if (delData.status === 'success') {
+                showToast(`已清理 ${delData.data.deleted_count} 条重复记录`, 'success');
+                setTimeout(() => location.reload(), 1500);
+            } else {
+                showToast('清理失败: ' + (delData.message || '未知错误'), 'danger');
+            }
+        } catch (e) {
+            console.error('Duplicate check error:', e);
+            showToast('查找重复记录失败: ' + e.message, 'danger');
+        }
+    }
+
+    // ========== User Switching Functions ==========
+    let currentUserId = null;
+
+    // Load current user on page load
+    document.addEventListener('DOMContentLoaded', async function() {
+        // 监听其他标签页的用户切换，强制刷新避免 session 竞态
+        const bc = new BroadcastChannel('user_switch');
+        bc.onmessage = (event) => {
+            if (event.data && event.data.action === 'reload') {
+                location.reload();
+            }
+        };
+        initElderlyMode();
+        await loadCurrentUser();
+        // 未完成初始化（没有自定义应用名）时弹出引导
+        maybeShowOnboarding();
+        // 检查类记录的入口摘要（模块开启时才请求）
+        if (ACTIVE_MODULES.has('bone_density')) loadBoneData();
+        if (ACTIVE_MODULES.has('checkup')) loadCheckupList();
+    });
+
+    // Load current user information
+    async function loadCurrentUser() {
+        try {
+            const res = await fetch('/get_current_user');
+            const user = await res.json();
+
+            currentUserId = user.id;
+            // 右上角优先显示个人资料里的「姓名」，没填时才用账号显示名
+            const displayName = user.name || user.display_name || user.username || '用户';
+            document.getElementById('currentUserName').textContent = displayName;
+
+            console.log('Current user loaded:', user);
+            // 加载右上角用户切换列表
+            loadUserSwitcher();
+        } catch (e) {
+            console.error('Load current user error:', e);
+            document.getElementById('currentUserName').textContent = '加载失败';
+        }
+    }
+
+    async function loadUserSwitcher() {
+        try {
+            const res = await fetch('/get_users');
+            const users = await res.json();
+            const container = document.getElementById('userSwitcherList');
+            if (!container) return;
+
+            let html = '';
+            users.forEach(user => {
+                if (user.id === currentUserId) return;
+                html += `
+                    <li>
+                        <a class="dropdown-item d-flex align-items-center gap-2 py-2" href="#" onclick="switchUser(${user.id}); return false;">
+                            <div class="rounded-circle d-flex align-items-center justify-content-center" style="width: 28px; height: 28px; background: linear-gradient(135deg, #6366F1, #A5B4FC);">
+                                <i class="bi bi-person-fill text-white" style="font-size: 0.8rem;"></i>
+                            </div>
+                            <span>${user.display_name || user.username}</span>
+                        </a>
+                    </li>
+                `;
+            });
+            container.innerHTML = html;
+        } catch (e) {
+            console.error('Load user switcher error:', e);
+        }
+    }
+
+    // Switch to a different user (with password verification)
+    async function switchUser(userId) {
+        if (userId === currentUserId) {
+            console.log('Already on this user, skipping switch');
+            return;
+        }
+
+        // 弹出密码输入框
+        const password = prompt('请输入目标用户的登录密码：');
+        if (password === null) return; // 用户取消
+
+        const result = await apiCall(`/switch_user/${userId}`, {
+            method: 'POST',
+            body: JSON.stringify({ password })
+        }, {
+            showLoading: false,
+            onError: (error) => {
+                console.error('Switch user error:', error);
+                if (error.httpStatus === 401) {
+                    alert('密码错误，切换失败');
+                } else {
+                    alert('切换失败: ' + error.message);
+                }
+            }
+        });
+
+        if (result) {
+            console.log('Switched to user:', result.data?.user);
+            const bc = new BroadcastChannel('user_switch');
+            bc.postMessage({ action: 'reload' });
+            location.reload();
+        }
+    }

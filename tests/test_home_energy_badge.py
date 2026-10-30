@@ -14,7 +14,7 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def _index_html():
-    with open(os.path.join(REPO_ROOT, 'templates/index.html'), encoding='utf-8') as f:
+    with open(os.path.join(REPO_ROOT, 'static/js/app.js'), encoding='utf-8') as f:
         return f.read()
 
 

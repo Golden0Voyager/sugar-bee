@@ -10,7 +10,13 @@ from flask import session
 
 from utils.auth import get_admin_usernames, is_current_user_admin
 
-TEMPLATE = Path(__file__).resolve().parent.parent / 'templates' / 'index.html'
+TEMPLATE_HTML = Path(__file__).resolve().parent.parent / 'templates' / 'index.html'
+APP_JS = Path(__file__).resolve().parent.parent / 'static/js/app.js'
+
+
+def _frontend():
+    """P1b：页面 JS 已拆到 app.js，拼接后结构/JS 断言都能命中。"""
+    return TEMPLATE_HTML.read_text(encoding='utf-8') + '\n' + APP_JS.read_text(encoding='utf-8')
 
 class TestAdminUsernames:
     def test_default_empty(self, monkeypatch):
@@ -65,7 +71,7 @@ class TestIndexGating:
         # 注释里也可能带「切换用户」字样，这里守的是菜单标题本身
         assert '<small class="text-muted fw-semibold">切换用户</small>' not in html
         assert '切换家人' not in html  # 新手引导也不再讲不存在的入口
-        assert 'const IS_ADMIN = false;' in html
+        assert 'isAdmin: false' in html  # P1b：已并入 window.__BOOT__
 
     def test_menu_visible_for_admin(self, client_admin):
         resp = client_admin.get('/')
@@ -74,11 +80,11 @@ class TestIndexGating:
         assert 'id="userSwitcherList"' in html
         assert '切换用户' in html
         assert '切换家人' in html
-        assert 'const IS_ADMIN = true;' in html
+        assert 'isAdmin: true' in html  # P1b：已并入 window.__BOOT__
 
 
 class TestSettingsSwitchButtonGating:
     def test_settings_switch_button_requires_admin(self):
         """设置页用户列表里的「切换」按钮同样只对管理员渲染"""
-        html = TEMPLATE.read_text(encoding='utf-8')
+        html = _frontend()
         assert '${!isCurrent && IS_ADMIN ? `' in html

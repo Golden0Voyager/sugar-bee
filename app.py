@@ -295,12 +295,21 @@ def index():
         from services.garmin_service import has_garmin_binding
         is_garmin_user = has_garmin_binding(current_user_id)
 
+        # P1b：页面 JS 拆到版本化静态文件后，数据统一经 window.__BOOT__ 传入。
+        # slotPredictions 原来在模板里用 Jinja 循环拼 JS 对象字面量，服务端直接
+        # 算好传 JSON。float(format(...)) 保持 "%.1f"|format 的 round-half-even 语义。
+        slot_predictions = {
+            slot['key']: (float(format(slot['value'], '.1f')) if slot.get('value') else None)
+            for slot in (stats.get('today_overview') or [])
+        }
+
         return render_template('index.html', records=records, stats=stats, timeline=sorted_dates,
                                enabled_modules=enabled_modules, is_garmin_user=is_garmin_user,
                                brand=brand, is_admin=is_current_user_admin(),
                                medication_plans=get_active_medication_plans(c, current_user_id),
                                avatar_catalog=DEFAULT_AVATARS,
-                               user_emoji_map=settings.USER_EMOJI_MAP)
+                               user_emoji_map=settings.USER_EMOJI_MAP,
+                               slot_predictions=slot_predictions)
     except Exception as e:
         traceback.print_exc()
         return f"Error loading index: {e}", 500

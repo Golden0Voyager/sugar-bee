@@ -12,6 +12,7 @@ from pathlib import Path
 from services.timeline_service import get_active_medication_plans
 
 TEMPLATE = Path(__file__).resolve().parent.parent / 'templates' / 'index.html'
+APP_JS = Path(__file__).resolve().parent.parent / 'static/js/app.js'
 
 
 class _FakeCursor:
@@ -47,29 +48,34 @@ class TestEmptyDayMedicationFrontend:
     def _html():
         return TEMPLATE.read_text(encoding='utf-8')
 
+    @staticmethod
+    def _js():
+        return APP_JS.read_text(encoding='utf-8')
+
     def test_backend_injects_all_active_plans(self):
         html = self._html()
-        assert 'const ACTIVE_MEDICATION_PLANS = {{ medication_plans | tojson }};' in html
+        # P1b：注入点已并入 window.__BOOT__，断言其 Jinja 来源不变
+        assert 'medicationPlans: {{ medication_plans|tojson }}' in html
 
     def test_empty_day_synthetic_node(self):
-        html = self._html()
+        html = self._js()
         assert 'function getMedicationPlansForDate(dateStr)' in html
         assert 'function getDayDataForDate(dateStr)' in html
         assert 'isEmptyDay: true' in html
         assert "end = plan.end_date || '9999-12-31'" in html
 
     def test_day_views_use_shared_lookup(self):
-        html = self._html()
+        html = self._js()
         # showDayStats + renderDayDetails 都必须走补齐逻辑，不能只改一处
         assert html.count('getDayDataForDate(dateStr)') >= 2
 
     def test_calendar_adds_med_badge_for_empty_days(self):
-        html = self._html()
+        html = self._js()
         assert 'function pushMedicationBadge(events, dateStr, medPlans)' in html
         assert '无记录日期也补用药打卡徽标' in html
         assert 'if (!loadedDates.has(dateStr))' in html
 
     def test_labels_use_selected_day_not_today(self):
-        html = self._html()
+        html = self._js()
         assert '当日用药（' in html
         assert '💊 当日用药方案' in html

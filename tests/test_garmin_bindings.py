@@ -226,5 +226,6 @@ class TestGarminRoutes:
         html = client_authenticated.get('/').data.decode('utf-8')
         assert 'id="garminBindingCard"' in html
         assert 'id="garminBindForm"' in html
-        assert 'function bindGarmin' in html
-        assert 'function loadGarminStatus' in html
+        js = open('static/js/app.js', encoding='utf-8').read()
+        assert 'function bindGarmin' in js
+        assert 'function loadGarminStatus' in js

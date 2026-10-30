@@ -127,9 +127,10 @@ def test_index_renders_all_default_avatar_choices(client_authenticated):
     assert '或上传自己的照片' in html
     assert '默认头像 · 人物' not in html
     assert '默认头像 · 动物' not in html
-    assert 'function selectDefaultAvatar' in html
-    assert "fetch('/select_avatar'" in html
-    assert 'function cropAndUploadAvatar' in html
+    js = open('static/js/app.js', encoding='utf-8').read()
+    assert 'function selectDefaultAvatar' in js
+    assert "fetch('/select_avatar'" in js
+    assert 'function cropAndUploadAvatar' in js
     # 统一保存入口：右下角一个保存按钮，按选中内容分派
-    assert 'function saveAvatar' in html
+    assert 'function saveAvatar' in js
     assert 'saveDefaultAvatarBtn' not in html

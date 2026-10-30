@@ -343,6 +343,7 @@ class TestFrontendContract:
     @staticmethod
     def _index_html():
         with open(os.path.join(REPO_ROOT, 'templates/index.html'), encoding='utf-8') as f:
+            return f.read() + '\n' + open(os.path.join(REPO_ROOT, 'static/js/app.js'), encoding='utf-8').read()
             return f.read()
 
     @pytest.mark.parametrize('module', branding.ALL_MODULES)
@@ -393,6 +394,7 @@ class TestModuleSemanticsConsistency:
     def test_onboarding_treats_empty_modules_as_all_enabled(self):
         """引导弹窗必须把「空」读成「全部启用」，不能读成「全不勾」。"""
         with open(os.path.join(REPO_ROOT, 'templates/index.html'), encoding='utf-8') as f:
+            return f.read() + '\n' + open(os.path.join(REPO_ROOT, 'static/js/app.js'), encoding='utf-8').read()
             html = f.read()
         assert "const existing = raw.length ? raw : (data.all_modules || []);" in html
 
@@ -403,6 +405,7 @@ class TestTutorialCopyMatchesModules:
     @staticmethod
     def _html():
         with open(os.path.join(REPO_ROOT, 'templates/index.html'), encoding='utf-8') as f:
+            return f.read() + '\n' + open(os.path.join(REPO_ROOT, 'static/js/app.js'), encoding='utf-8').read()
             return f.read()
 
     def test_compliance_line_only_for_glucose_users(self):

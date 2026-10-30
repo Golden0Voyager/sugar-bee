@@ -4,7 +4,13 @@ import re
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-INDEX = REPO_ROOT / "templates" / "index.html"
+INDEX_HTML = REPO_ROOT / "templates" / "index.html"
+APP_JS = REPO_ROOT / "static/js/app.js"
+
+
+def INDEX():
+    """P1b：页面 JS 已拆到 app.js，拼接后结构/JS 断言都能命中。"""
+    return INDEX_HTML.read_text(encoding="utf-8") + "\n" + APP_JS.read_text(encoding="utf-8")
 CSS = REPO_ROOT / "static" / "css" / "main.css"
 
 CHART_CANVASES = (
@@ -23,7 +29,7 @@ def _function_body(html: str, name: str, next_name: str) -> str:
 
 
 def test_every_chart_has_accessible_name_and_stable_empty_state():
-    html = INDEX.read_text(encoding="utf-8")
+    html = INDEX()
     for canvas_id in CHART_CANVASES:
         match = re.search(rf'<canvas id="{canvas_id}"[^>]*>', html)
         assert match, f"缺少 {canvas_id}"
@@ -34,7 +40,7 @@ def test_every_chart_has_accessible_name_and_stable_empty_state():
 
 
 def test_all_charts_share_theme_and_reduced_motion():
-    html = INDEX.read_text(encoding="utf-8")
+    html = INDEX()
     assert html.count("= createHealthChart(") == 8  # 血糖有正常/空区间两个配置
     assert "maintainAspectRatio: true" not in html
     assert "prefers-reduced-motion: reduce" in html
@@ -43,7 +49,7 @@ def test_all_charts_share_theme_and_reduced_motion():
 
 
 def test_prediction_empty_state_does_not_destroy_canvas():
-    html = INDEX.read_text(encoding="utf-8")
+    html = INDEX()
     body = _function_body(html, "renderPredictionComparisonChart", "renderComparisonStats")
     assert "parentElement.innerHTML" not in body
     assert "setChartEmptyState('predictionComparisonChart'" in body
@@ -51,7 +57,7 @@ def test_prediction_empty_state_does_not_destroy_canvas():
 
 
 def test_empty_ranges_keep_navigation_available():
-    html = INDEX.read_text(encoding="utf-8")
+    html = INDEX()
     bp_body = _function_body(html, "initBloodPressureChart", "initWeightChart")
     weight_body = _function_body(html, "initWeightChart", "getPointBorderColor")
     assert "bloodPressureChartCard').style.display = 'none'" not in bp_body
@@ -61,7 +67,7 @@ def test_empty_ranges_keep_navigation_available():
 
 
 def test_cgm_recent_range_does_not_silently_jump_to_stale_data():
-    html = INDEX.read_text(encoding="utf-8")
+    html = INDEX()
     body = _function_body(html, "initCgmChart", "initBloodPressureChart")
     assert "latestCgm" not in body
     assert "自动锚定" not in body
@@ -69,7 +75,7 @@ def test_cgm_recent_range_does_not_silently_jump_to_stale_data():
 
 
 def test_bone_trend_uses_one_site_and_requires_distinct_dates():
-    html = INDEX.read_text(encoding="utf-8")
+    html = INDEX()
     assert 'id="boneTrendSite"' in html
     body = _function_body(html, "renderBoneChart", "saveBoneRecord")
     assert "trend.filter" in body
