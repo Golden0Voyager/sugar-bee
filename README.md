@@ -44,6 +44,7 @@ uv run python app.py
 | [`docs/plans/260612-cloud-run-deployment-plan.md`](docs/plans/260612-cloud-run-deployment-plan.md) | Google Cloud Run 部署方案（已弃用，2026-10-28 起生产迁至腾讯云轻量应用服务器） |
 | [`docs/plans/260616-next-steps.md`](docs/plans/260616-next-steps.md) | 后续待办清单（P0/P1/P2） |
 | [`docs/plans/260616-report-mobile-security-plan.md`](docs/plans/260616-report-mobile-security-plan.md) | 综合报告 UX + 适老化 + 安全修复计划 |
+| [`docs/feature-backlog.md`](docs/feature-backlog.md) | 功能迭代备忘（已确认未排期的功能想法，如自定义预测/显示槽位） |
 
 ---
 
