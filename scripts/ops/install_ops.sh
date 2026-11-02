@@ -15,7 +15,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 HOST="${HOST:-$(cat "$HOME/.sugar_bee_host" 2>/dev/null || true)}"
 KEY="${KEY:-$HOME/.ssh/sugar_bee_new_agent}"
 USER_AT="root@${HOST}"
-FILES=(backup_db.py backup_host.sh backup_to_github.sh health_guard.sh run_container.sh)
+FILES=(backup_db.py backup_host.sh backup_to_github.sh gen_selfsigned_cert.sh health_guard.sh run_container.sh)
 
 DRY=0
 [ "${1:-}" = "--dry-run" ] && DRY=1
@@ -44,19 +44,25 @@ NGX="$HERE/nginx/sugar-bee.site.conf"
 if [ -f "$NGX" ]; then
   scp -q "${SSH_OPTS[@]}" "$NGX" "$USER_AT:/tmp/ops_nginx_site.conf"
 fi
+# Octop 的 HTTPS 站点（8443 + 自签证书）
+NGX_OCTOP="$HERE/nginx/octop-tls.conf"
+if [ -f "$NGX_OCTOP" ]; then
+  scp -q "${SSH_OPTS[@]}" "$NGX_OCTOP" "$USER_AT:/tmp/ops_nginx_octop_tls.conf"
+fi
 
 ssh "${SSH_OPTS[@]}" "$USER_AT" 'bash -s' <<'REMOTE'
 set -eu
 cd /opt/sugar_bee
 # 用显式 755 而不是 chmod +x：scp 覆盖已有文件时会保留目标原有权限
 # （服务器上历史遗留是 700），chmod +x 只会得到 711。
-chmod 755 backup_host.sh backup_to_github.sh health_guard.sh run_container.sh
+chmod 755 backup_host.sh backup_to_github.sh gen_selfsigned_cert.sh health_guard.sh run_container.sh
 chmod 644 backup_db.py
 
 # 语法自检，别把坏脚本装进 cron
 bash -n backup_host.sh
 bash -n health_guard.sh
 bash -n backup_to_github.sh
+bash -n gen_selfsigned_cert.sh
 bash -n run_container.sh
 python3 -m py_compile backup_db.py && rm -rf __pycache__
 
@@ -74,6 +80,28 @@ echo "--- 已安装 ---"
 ls -l /opt/sugar_bee/backup_db.py /opt/sugar_bee/backup_host.sh /opt/sugar_bee/health_guard.sh /opt/sugar_bee/run_container.sh
 echo "--- crontab ---"
 crontab -l | grep -E 'backup_host|backup_to_github|health_guard'
+
+# ---- Octop HTTPS 站点配置（8443 → 127.0.0.1:8088）----
+# 证书由 gen_selfsigned_cert.sh 生成，配置只引用路径，故可安全进仓库。
+if [ -f /tmp/ops_nginx_octop_tls.conf ]; then
+  CUR=/etc/nginx/sites-available/octop-tls
+  if [ -f "$CUR" ] && cmp -s /tmp/ops_nginx_octop_tls.conf "$CUR"; then
+    echo "--- nginx octop-tls: 配置一致，跳过 ---"
+  else
+    BAK=/tmp/octop-tls.bak.$$
+    [ -f "$CUR" ] && cp "$CUR" "$BAK"
+    install -m 644 /tmp/ops_nginx_octop_tls.conf "$CUR"
+    if nginx -t >/dev/null 2>&1; then
+      [ -e /etc/nginx/sites-enabled/octop-tls ] || ln -sf "$CUR" /etc/nginx/sites-enabled/octop-tls
+      systemctl reload nginx
+      echo "--- nginx octop-tls: 已更新并 reload ---"
+    else
+      [ -f "$BAK" ] && cp "$BAK" "$CUR"
+      echo "!! nginx octop-tls 配置非法，已回滚" >&2
+    fi
+    rm -f "$BAK"
+  fi
+fi
 
 # ---- nginx 站点配置（仓库为准，防"只改服务器"漂移）----
 if [ -f /tmp/ops_nginx_site.conf ]; then
