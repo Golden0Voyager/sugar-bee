@@ -141,6 +141,54 @@ def verify_snapshot(path):
         conn.close()
 
 
+def _safe_ident(name):
+    """表名只允许简单标识符，避免拼进 SQL 时变成注入点。
+
+    不引入 re / 新依赖 —— 本文件受 tests/test_backup_db.py 的 stdlib-only 守卫约束。
+    """
+    if not name or not name.replace('_', '').isalnum() or name[0].isdigit():
+        raise ValueError(f'invalid table name: {name!r}')
+    return name
+
+
+def make_cold_snapshot(src_path, dest_path, verify_table='users'):
+    """通用 SQLite 活库一致性冷备（Octop 配置库等，不依赖 glucose 的 records 表）。
+
+    和 make_backup() 共用 _copy_consistent()，即 SQLite Online Backup API —— 全仓
+    **唯一**的一致性拷贝实现。这里不新写第二份拷贝逻辑，否则就回到「外观合法、
+    恢复时却撕裂」的老问题（见文件头注释）。
+
+    与 glucose 快照的三点区别：
+      1. 源库/目标路径由调用方显式指定，不走 glucose_snap_ 的按业务日期命名；
+      2. 不触发 rotate()（冷备目录有自己的轮转策略）；
+      3. 校验表名可配，默认 users —— octop.db 没有 records 表。
+
+    目标快照会被切成 DELETE 模式，是自包含单文件；可直接用于恢复。
+    """
+    table = _safe_ident(verify_table)
+    if not os.path.isfile(src_path):
+        raise FileNotFoundError(f'source db not found: {src_path}')
+
+    parent = os.path.dirname(os.path.abspath(dest_path))
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+    # 覆盖前先删：残留旧页会和新快照混在一起（make_backup 同款处理）
+    if os.path.exists(dest_path):
+        os.remove(dest_path)
+
+    _copy_consistent(src_path, dest_path)
+
+    conn = sqlite3.connect(f'file:{dest_path}?mode=ro', uri=True)
+    try:
+        rows = [r[0] for r in conn.execute('pragma quick_check').fetchall()]
+        if rows != ['ok']:
+            raise RuntimeError(f'cold snapshot quick_check failed: {rows[:3]}')
+        n = conn.execute(f'select count(*) from {table}').fetchone()[0]
+    finally:
+        conn.close()
+    return dest_path, os.path.getsize(dest_path), n
+
+
 def make_snapshot():
     """CLI 用的带日期快照（保持旧签名：返回 (路径, 字节数, 行数)）。"""
     return make_backup()
@@ -165,6 +213,17 @@ def rotate():
 
 
 def main():
+    # --cold <src> <dest> <verify_table>：给 Octop 配置库等非 glucose 库用。
+    # 不用 argparse（本文件受 stdlib-only AST 守卫约束，且刻意保持零新依赖）。
+    if len(sys.argv) > 1 and sys.argv[1] == '--cold':
+        if len(sys.argv) != 5:
+            print('用法: backup_db.py --cold <src.db> <dest.db> <verify_table>',
+                  file=sys.stderr)
+            sys.exit(2)
+        path, size, n = make_cold_snapshot(sys.argv[2], sys.argv[3], sys.argv[4])
+        print(f'COLD={path} SIZE={size} ROWS={n}')
+        return
+
     path, size, n = make_snapshot()
     removed = rotate()
     print(f'SNAPSHOT={path} SIZE={size} RECORDS={n} REMOVED={len(removed)}')
