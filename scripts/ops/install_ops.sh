@@ -15,7 +15,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 HOST="${HOST:-$(cat "$HOME/.sugar_bee_host" 2>/dev/null || true)}"
 KEY="${KEY:-$HOME/.ssh/sugar_bee_new_agent}"
 USER_AT="root@${HOST}"
-FILES=(backup_db.py backup_host.sh backup_to_github.sh backup_octop_cold.sh gen_selfsigned_cert.sh health_guard.sh run_container.sh)
+FILES=(backup_db.py backup_host.sh backup_to_github.sh backup_octop_cold.sh gen_selfsigned_cert.sh health_guard.sh octop_mcp_guard.py run_container.sh)
 
 DRY=0
 [ "${1:-}" = "--dry-run" ] && DRY=1
@@ -56,7 +56,7 @@ cd /opt/sugar_bee
 # 用显式 755 而不是 chmod +x：scp 覆盖已有文件时会保留目标原有权限
 # （服务器上历史遗留是 700），chmod +x 只会得到 711。
 chmod 755 backup_host.sh backup_to_github.sh backup_octop_cold.sh gen_selfsigned_cert.sh health_guard.sh run_container.sh
-chmod 644 backup_db.py
+chmod 644 backup_db.py octop_mcp_guard.py
 
 # 语法自检，别把坏脚本装进 cron
 bash -n backup_host.sh
@@ -66,23 +66,29 @@ bash -n backup_octop_cold.sh
 bash -n gen_selfsigned_cert.sh
 bash -n run_container.sh
 python3 -m py_compile backup_db.py && rm -rf __pycache__
+# octop_mcp_guard.py 由 Octop 自己的 venv 跑（要 import octop.infra.auth.tokens）
+/root/.octop/venv/bin/python -m py_compile octop_mcp_guard.py && rm -rf __pycache__
 
 want_backup='10 3 * * * /opt/sugar_bee/backup_host.sh >> /var/log/sugar_bee_backup.log 2>&1'
 want_github='20 3 * * 0 /opt/sugar_bee/backup_to_github.sh >> /var/log/sugar_bee_github_backup.log 2>&1'
 want_health='*/10 * * * * /opt/sugar_bee/health_guard.sh >/dev/null 2>&1'
 want_octop_cold='25 3 * * * /opt/sugar_bee/backup_octop_cold.sh >> /var/log/sugar_bee_octop_cold.log 2>&1'
+# Octop MCP 工具缺失自愈：必须用 Octop 自己的 venv python，且不写日志到 /var/log
+# （健康时静默，出问题才打印）
+want_mcp_guard='*/10 * * * * /root/.octop/venv/bin/python /opt/sugar_bee/octop_mcp_guard.py >> /var/log/octop_mcp_guard.log 2>&1'
 
 crontab -l >/tmp/ct.ops 2>/dev/null || true
 grep -qF 'backup_host.sh' /tmp/ct.ops || echo "$want_backup" >>/tmp/ct.ops
 grep -qF 'health_guard.sh' /tmp/ct.ops || echo "$want_health" >>/tmp/ct.ops
 grep -qF 'backup_to_github.sh' /tmp/ct.ops || echo "$want_github" >>/tmp/ct.ops
 grep -qF 'backup_octop_cold.sh' /tmp/ct.ops || echo "$want_octop_cold" >>/tmp/ct.ops
+grep -qF 'octop_mcp_guard.py' /tmp/ct.ops || echo "$want_mcp_guard" >>/tmp/ct.ops
 crontab /tmp/ct.ops && rm -f /tmp/ct.ops
 
 echo "--- 已安装 ---"
-ls -l /opt/sugar_bee/backup_db.py /opt/sugar_bee/backup_host.sh /opt/sugar_bee/backup_octop_cold.sh /opt/sugar_bee/health_guard.sh /opt/sugar_bee/run_container.sh
+ls -l /opt/sugar_bee/backup_db.py /opt/sugar_bee/backup_host.sh /opt/sugar_bee/backup_octop_cold.sh /opt/sugar_bee/health_guard.sh /opt/sugar_bee/octop_mcp_guard.py /opt/sugar_bee/run_container.sh
 echo "--- crontab ---"
-crontab -l | grep -E 'backup_host|backup_to_github|backup_octop_cold|health_guard'
+crontab -l | grep -E 'backup_host|backup_to_github|backup_octop_cold|health_guard|octop_mcp_guard'
 
 # ---- Octop HTTPS 站点配置（8443 → 127.0.0.1:8088）----
 # 证书由 gen_selfsigned_cert.sh 生成，配置只引用路径，故可安全进仓库。
