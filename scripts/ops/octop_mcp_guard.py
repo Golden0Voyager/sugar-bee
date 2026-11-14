@@ -40,8 +40,17 @@
 
 ## 用法
 
-    /root/.octop/venv/bin/python /opt/sugar_bee/octop_mcp_guard.py --dry-run -v
+    # 按日志自愈（cron 用的就是这个）
     /root/.octop/venv/bin/python /opt/sugar_bee/octop_mcp_guard.py
+    /root/.octop/venv/bin/python /opt/sugar_bee/octop_mcp_guard.py --dry-run -v
+
+    # 部署完让新代码立刻生效（跳过检测与冷却）
+    /root/.octop/venv/bin/python /opt/sugar_bee/octop_mcp_guard.py --force --user 3 garmin
+
+`--force` 存在的理由：缓存 key 的指纹只含 `transport/url/headers/command/args/env`，
+**不含包版本**。重新装 wheel 后 spec 没变 → 指纹没变 → 缓存命中 → Octop 继续用
+加载当时建好的工具对象（里面的子进程跑的仍是旧代码）。不显式 invalidate，
+"服务器装好了新版但 Octop 还在跑旧版"这种静默错位不会自己消失。
 
 cron（由 install_ops.sh 幂等写入）：
 
@@ -245,30 +254,55 @@ def main() -> int:
     ap.add_argument("--state", default=STATE_DEFAULT)
     ap.add_argument("--window", type=int, default=20, help="回看分钟数（默认 20）")
     ap.add_argument("--rate", type=int, default=30, help="同一 server 自愈冷却分钟数（默认 30）")
+    ap.add_argument(
+        "--force",
+        action="append",
+        metavar="SERVER",
+        help="跳过日志检测与冷却，直接失效该连接器的工具缓存（可重复或逗号分隔）",
+    )
+    ap.add_argument("--user", type=int, default=None, help="--force 时必填，连接器所属用户 id")
     ap.add_argument("--dry-run", action="store_true", help="只报不修")
     ap.add_argument("-v", "--verbose", action="store_true")
     args = ap.parse_args()
 
     now = time.time()
-    cutoff = datetime.now() - timedelta(minutes=args.window)
-    starts, missings, readys, stores = read_events(args.log, cutoff)
-    pending = pending_servers(starts, missings, readys, stores)
 
-    if args.verbose:
-        print(
-            f"窗口 {args.window} 分钟：缺失事件 {len(missings)}、已就绪 {len(readys)}、"
-            f"缓存写入 {len(stores)} → 待处理 {sorted(pending) or '无'}"
-        )
-
-    if not pending:
-        return 0
-
-    state = load_state(args.state)
-    cooled = [s for s in pending if now - state.get(s, 0) >= args.rate * 60]
-    if not cooled:
+    if args.force:
+        # --force：部署完想让新代码立刻生效时用。跳过日志检测与冷却，
+        # 直接对指定连接器失效缓存。指纹不含包版本，spec 不变就会一直命中
+        # 旧工具对象，必须靠这个动作才会重新拉起子进程。
+        if args.user is None:
+            print("ERROR --force 需要同时指定 --user（连接器所属用户 id）", file=sys.stderr)
+            return 2
+        names = [n.strip() for chunk in args.force for n in chunk.split(",") if n.strip()]
+        if not names:
+            print("ERROR --force 没有给出连接器名", file=sys.stderr)
+            return 2
+        pending = {name: args.user for name in names}
+        cooled = sorted(pending)
+        state = load_state(args.state)
         if args.verbose:
-            print(f"冷却中，跳过: {sorted(pending)}")
-        return 0
+            print(f"强制模式：对 {cooled} 失效缓存（user={args.user}）")
+    else:
+        cutoff = datetime.now() - timedelta(minutes=args.window)
+        starts, missings, readys, stores = read_events(args.log, cutoff)
+        pending = pending_servers(starts, missings, readys, stores)
+
+        if args.verbose:
+            print(
+                f"窗口 {args.window} 分钟：缺失事件 {len(missings)}、已就绪 {len(readys)}、"
+                f"缓存写入 {len(stores)} → 待处理 {sorted(pending) or '无'}"
+            )
+
+        if not pending:
+            return 0
+
+        state = load_state(args.state)
+        cooled = [s for s in pending if now - state.get(s, 0) >= args.rate * 60]
+        if not cooled:
+            if args.verbose:
+                print(f"冷却中，跳过: {sorted(pending)}")
+            return 0
 
     if args.dry_run:
         print(f"[dry-run] 将对 {sorted(cooled)} 触发 connector reload（user={pending[cooled[0]]}）")
@@ -299,12 +333,16 @@ def main() -> int:
     save_state(args.state, state)
 
     if healed:
-        print(f"[{datetime.now():%F %T}] 已自愈: {', '.join(healed)} (user={uid})")
-        notify(
-            "Octop MCP 已自动恢复",
-            f"检测到工具缺失，已触发 connector reload：{', '.join(healed)}。"
-            "无需人工介入，但值得看一眼是不是 garmin token 出了问题。",
-        )
+        verb = "已强制重载" if args.force else "已自愈"
+        print(f"[{datetime.now():%F %T}] {verb}: {', '.join(healed)} (user={uid})")
+        # --force 是部署流程主动调的，不是"检测到故障"，不要发告警（否则每次
+        # 部署都推一条"检测到工具缺失"，措辞误导）；失败仍要发，那是真问题。
+        if not args.force:
+            notify(
+                "Octop MCP 已自动恢复",
+                f"检测到工具缺失，已触发 connector reload：{', '.join(healed)}。"
+                "无需人工介入，但值得看一眼是不是 garmin token 出了问题。",
+            )
     if failed:
         detail = "; ".join(f"{k}: {v}" for k, v in failed.items())
         print(f"ERROR 自愈失败: {detail}", file=sys.stderr)
