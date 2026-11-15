@@ -34,7 +34,9 @@
 
 - 不写生产库：jwt 密钥与用户行都从 `sqlite3.backup()` 快照读
 - 令牌只活 300 秒，不落盘、不进日志、不进进程参数
-- 每个 server 30 分钟内最多自愈 1 次，避免把真故障刷成风暴
+- **告警边沿触发**：同一故障只在「正常 → 故障」时推一次，恢复前不重复；
+  自愈成功不推送（已经好了，不必再报一条）。这一条是为了少打扰人，
+  不是限速——按时间冷却只能限流，故障持续时仍会一直推。
 - 健康时完全静默（与 health_guard.sh 的约定一致）
 - 自愈失败只告警，不降级成重启
 
@@ -225,16 +227,34 @@ def notify(title: str, body: str) -> None:
         print(f"WARN Bark 推送失败: {exc}", file=sys.stderr)
 
 
-def load_state(path: str) -> dict[str, float]:
+def load_state(path: str) -> dict[str, dict[str, float]]:
+    """状态文件结构：{"alerted": {server: ts}, "last_alert": {server: ts}}。
+
+    alerted   = 当前这一轮故障是否已经推过（边沿触发的核心）
+    last_alert= 上次真正推送的时间，仅用于防止「故障刚恢复又复发」时连续轰炸
+    兼容旧格式（扁平 {server: ts}）：一律视为 last_alert。
+    """
     try:
         with open(path, encoding="utf-8") as fh:
             raw = json.load(fh)
-        return {k: float(v) for k, v in raw.items() if isinstance(v, (int, float))}
     except (OSError, ValueError):
-        return {}
+        return {"alerted": {}, "last_alert": {}}
+    if not isinstance(raw, dict):
+        return {"alerted": {}, "last_alert": {}}
+    if "alerted" in raw or "last_alert" in raw:
+        out = {"alerted": {}, "last_alert": {}}
+        for key in out:
+            block = raw.get(key)
+            if isinstance(block, dict):
+                out[key] = {k: float(v) for k, v in block.items() if isinstance(v, (int, float))}
+        return out
+    return {
+        "alerted": {},
+        "last_alert": {k: float(v) for k, v in raw.items() if isinstance(v, (int, float))},
+    }
 
 
-def save_state(path: str, state: dict[str, float]) -> None:
+def save_state(path: str, state: dict[str, dict[str, float]]) -> None:
     try:
         os.makedirs(os.path.dirname(path), mode=0o750, exist_ok=True)
         tmp = path + ".tmp"
@@ -253,7 +273,12 @@ def main() -> int:
     ap.add_argument("--db", default=DB_DEFAULT)
     ap.add_argument("--state", default=STATE_DEFAULT)
     ap.add_argument("--window", type=int, default=20, help="回看分钟数（默认 20）")
-    ap.add_argument("--rate", type=int, default=30, help="同一 server 自愈冷却分钟数（默认 30）")
+    ap.add_argument(
+        "--rate",
+        type=int,
+        default=30,
+        help="同一 server 重复告警的最小间隔（分钟，默认 30），只在故障抖动时兜底",
+    )
     ap.add_argument(
         "--force",
         action="append",
@@ -294,14 +319,29 @@ def main() -> int:
                 f"缓存写入 {len(stores)} → 待处理 {sorted(pending) or '无'}"
             )
 
+        state = load_state(args.state)
+        alerted = state["alerted"]
+
         if not pending:
+            # 全部恢复正常：清掉边沿状态，之后再出问题才会重新推送。
+            # 不推「已恢复」——用户要的是少消息，不是每条故障配一条恢复。
+            if alerted:
+                state["alerted"] = {}
+                save_state(args.state, state)
+                if args.verbose:
+                    print(f"已恢复，清空告警状态: {sorted(alerted)}")
             return 0
 
-        state = load_state(args.state)
-        cooled = [s for s in pending if now - state.get(s, 0) >= args.rate * 60]
+        # 边沿触发：这一轮故障已经推过就不再推；只有「刚恢复又复发」的
+        # 短时间抖动才用 --rate 兜底，避免来回抖时连续轰炸。
+        cooled = [
+            s
+            for s in pending
+            if s not in alerted and now - state["last_alert"].get(s, 0) >= args.rate * 60
+        ]
         if not cooled:
             if args.verbose:
-                print(f"冷却中，跳过: {sorted(pending)}")
+                print(f"本轮不再重复推送（已报过或刚报过）: {sorted(pending)}")
             return 0
 
     if args.dry_run:
@@ -326,27 +366,26 @@ def main() -> int:
         try:
             status = patch_server(args.api, token, server)
             healed.append(f"{server}(HTTP {status})")
-            state[server] = now
         except Exception as exc:  # noqa: BLE001
             failed[server] = str(exc)
 
+    # 只有「自愈失败」才值得打扰人；自愈成功已经是结果，不必再报一条。
+    # 同一个 server 的失败在恢复之前只报一次（边沿触发）。
+    new_failed = {s: e for s, e in failed.items() if s not in state["alerted"]}
+    for server in new_failed:
+        state["alerted"][server] = now
+        state["last_alert"][server] = now
     save_state(args.state, state)
 
     if healed:
         verb = "已强制重载" if args.force else "已自愈"
         print(f"[{datetime.now():%F %T}] {verb}: {', '.join(healed)} (user={uid})")
-        # --force 是部署流程主动调的，不是"检测到故障"，不要发告警（否则每次
-        # 部署都推一条"检测到工具缺失"，措辞误导）；失败仍要发，那是真问题。
-        if not args.force:
-            notify(
-                "Octop MCP 已自动恢复",
-                f"检测到工具缺失，已触发 connector reload：{', '.join(healed)}。"
-                "无需人工介入，但值得看一眼是不是 garmin token 出了问题。",
-            )
-    if failed:
-        detail = "; ".join(f"{k}: {v}" for k, v in failed.items())
+
+    if new_failed:
+        detail = "; ".join(f"{k}: {v}" for k, v in new_failed.items())
         print(f"ERROR 自愈失败: {detail}", file=sys.stderr)
         notify("Octop MCP 自愈失败", detail)
+    if failed:
         return 1
     return 0
 

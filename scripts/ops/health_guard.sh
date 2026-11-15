@@ -102,12 +102,14 @@ BARK_KEY=$(cat /opt/sugar_bee/.bark_key 2>/dev/null || true)
 notify() {
   local title="$1" body="$2" level="${3:-active}"
   [ -n "$BARK_KEY" ] || return 0
-  local key_id stamp last=0
+  local key_id stamp
   key_id=$(printf '%s' "$title" | md5sum | cut -c1-8)
-  stamp="/var/run/sugar_bee_notify_$key_id"
-  [ -f "$stamp" ] && last=$(cat "$stamp" 2>/dev/null || echo 0)
-  case "$last" in ''|*[!0-9]*) last=0 ;; esac
-  [ $(( $(date +%s) - last )) -lt 1800 ] && return 0
+  stamp="/var/run/sugar_bee_notify_edge_$key_id"
+  # 边沿触发（2026-11-15 改）：同一事件只在「正常 → 故障」这一次推送；
+  # 故障持续期间不再重复（原实现是 1800s 冷却，等于每 30 分钟推一次，
+  # 故障持续一天就是 48 条，这就是用户投诉的「持续骚扰」）。
+  # 状态由下方 reset_notify_state 在恢复正常时清除，之后再次故障才会重新推送。
+  [ -f "$stamp" ] && return 0
   date +%s >"$stamp" 2>/dev/null || true
   python3 - "$BARK_KEY" "$title" "$body" "$level" <<'PYBARK' 2>/dev/null || true
 import json, sys, urllib.request
@@ -117,6 +119,12 @@ req = urllib.request.Request("https://api.day.app/" + key, data=payload,
                              headers={"Content-Type": "application/json"})
 urllib.request.urlopen(req, timeout=10)
 PYBARK
+}
+
+# 恢复正常时调用：清掉所有「已在告警」的边沿状态，下次真出问题才会再推。
+# 不推「已恢复」通知——用户要的是少消息，不是把每条故障配一条恢复。
+reset_notify_state() {
+  rm -f /var/run/sugar_bee_notify_edge_* 2>/dev/null || true
 }
 
 state_of() { docker inspect -f '{{.State.Status}}' "$NAME" 2>/dev/null; }
@@ -151,6 +159,7 @@ if [ "$st" = "paused" ]; then
   docker unpause "$NAME" >/dev/null 2>&1
   if wait_healthy 60; then
     log "OK unpause 后服务恢复"
+    reset_notify_state
     exit 0
   fi
   log "CRIT unpause 后 60s 仍不健康，转重启流程"
@@ -159,6 +168,7 @@ elif [ "$st" != "running" ]; then
   docker start "$NAME" >/dev/null 2>&1
   if wait_healthy 60; then
     log "OK docker start 后服务恢复"
+    reset_notify_state
     exit 0
   fi
   log "CRIT docker start 后 60s 仍不健康，转重启流程"
@@ -166,7 +176,7 @@ fi
 
 # 2) 三次探活（间隔 3s），健康就静默退出
 for _ in 1 2 3; do
-  healthy && exit 0
+  healthy && { reset_notify_state; exit 0; }
   sleep 3
 done
 
@@ -190,6 +200,7 @@ if can_restart; then
   docker restart "$NAME" >/dev/null 2>&1
   if wait_healthy 90; then
     log "OK 重启后恢复，耗时约 $(( $(date +%s) - _t0 ))s"
+    reset_notify_state
     exit 0
   fi
   log "CRIT 重启后 90s 仍不健康，需人工介入"

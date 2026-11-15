@@ -156,6 +156,7 @@ while IFS= read -r old; do
 done < <(ls -1t "$COLD_DIR"/octop_*.db.gz.enc 2>/dev/null | tail -n +$((KEEP + 1)))
 log "轮转完成: 删除 $REMOVED 份，保留最多 $KEEP 份"
 
-notify "Octop 本地冷备完成" "$ASSET ($SIZE 字节), users=${SNAP_ROWS:-?}" "passive"
+# 成功不再推送（2026-11-15）：备份正常是默认预期，每天一条「完成」只会稀释
+# 真告警的信噪比。失败分支仍会 notify。需要确认时看 /var/log/sugar_bee_octop_cold.log。
 log "OK 本地冷备完成并已验证（注意：不是异地备份）"
 exit 0
