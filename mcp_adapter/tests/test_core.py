@@ -170,6 +170,34 @@ class TestNormalizeInput:
     def test_garbage_falls_back_to_now(self):
         assert re.match(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$", timefmt.normalize_input("明天早上"))
 
+    def test_bare_time_anchored_to_today(self):
+        """裸时间按今天补全——2026-11-15 线上事故的回归用例。"""
+        today = timefmt.now().date().isoformat()
+        for raw in ("6:35", "06:35", "6点35", "6时35分", " 6:35 "):
+            assert timefmt.normalize_input(raw) == f"{today} 06:35:00", raw
+
+    def test_relative_day_time(self):
+        import datetime as _dt
+
+        today = timefmt.now().date()
+        assert (
+            timefmt.normalize_input("昨天 6:35")
+            == f"{(today - _dt.timedelta(days=1)).isoformat()} 06:35:00"
+        )
+        assert (
+            timefmt.normalize_input("前天7点15")
+            == f"{(today - _dt.timedelta(days=2)).isoformat()} 07:15:00"
+        )
+
+    def test_bare_time_is_not_now(self):
+        """事故现场：agent 传「6:35」，落库却是收到消息的时刻（偏 51 分钟）。"""
+        got = timefmt.normalize_input("6:35")
+        assert "06:35:00" in got, f"裸时间被当成了当前时间: {got}"
+
+    def test_full_timestamp_without_seconds_preserved(self):
+        """沿用既有约定：有秒留秒、没秒不加，不擅自改格式。"""
+        assert timefmt.normalize_input("2026-05-02 06:30") == "2026-05-02 06:30"
+
 
 class TestDurationMinutes:
     @pytest.mark.parametrize(

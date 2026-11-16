@@ -13,10 +13,13 @@
 from __future__ import annotations
 
 import datetime
+import logging
 import os
 import re
 
 from utils.timezone import app_timezone, now, timestamp_str, utc_now
+
+logger = logging.getLogger(__name__)
 
 LOCAL = "local"
 UTC = "utc"
@@ -105,16 +108,44 @@ def shift_minutes(ts: str, minutes: int) -> str:
 def normalize_input(ts: str | None = None) -> str:
     """校验并补全用户/agent 传入的时间戳，确保格式为 ``YYYY-MM-DD HH:MM:SS``。
 
-    支持三种输入：
-    - 完整时间戳（原样返回）
-    - 缺年份的 ``-MM-DD HH:MM`` / ``MM-DD HH:MM``（补当年）
-    - 其他无法识别的格式（回退到当前时间）
+    支持：
+    - 完整时间戳 ``YYYY-MM-DD HH:MM[:SS]``（补秒）
+    - 裸时间 ``H:MM`` / ``HH:MM`` / ``H点MM`` / ``H时MM分``（补**今天**）
+    - 相对日期 + 时间 ``今天/昨天/前天 6:35``
+    - 缺年份的 ``-MM-DD HH:MM`` / ``MM-DD HH:MM``（补当年，保持原样不加秒）
+    - 其他无法识别的格式（回退到当前时间，并打 WARNING）
+
+    2026-11-16 修复：原来只认「完整时间戳」和「缺年份」两种，``6:35`` 这类
+    **静默退化成「此刻」**。后果是 agent 按用户说的「6:35」记录，实际落库成
+    收到消息的时间（实测偏 51 分钟），而工具照样返回「记录成功」，两边都看不出错。
+    裸时间现在按今天补全；仍然认不出的才回退，并留一条 WARNING 便于排查。
     """
     if not ts:
         return now_str()
-    if re.match(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}", ts):
-        return ts
-    m = re.match(r"^-?(\d{2}-\d{2} \d{2}:\d{2}.*)$", ts)
+    s = str(ts).strip()
+    # 1) 完整时间戳：保留原有语义（有秒留秒、没秒不加），只把 T 分隔统一成空格
+    m = re.match(r"^(\d{4}-\d{2}-\d{2})[ T](\d{1,2}):(\d{2})(?::(\d{2}))?", s)
+    if m:
+        day, hh, mm, ss = m.groups()
+        out = f"{day} {int(hh):02d}:{mm}"
+        return f"{out}:{ss}" if ss is not None else out
+    # 2) 相对日期 + 时间：今天 6:35 / 昨天6点35 / 前天 6:35
+    m = re.match(r"^(今天|昨天|前天)\s*(\d{1,2})\s*[:：点时]\s*(\d{1,2})\s*分?", s)
+    if m:
+        delta = {"今天": 0, "昨天": -1, "前天": -2}[m.group(1)]
+        day = (now() + datetime.timedelta(days=delta)).date().isoformat()
+        hh, mm = int(m.group(2)), int(m.group(3))
+        if 0 <= hh <= 23 and 0 <= mm <= 59:
+            return f"{day} {hh:02d}:{mm:02d}:00"
+    # 3) 裸时间：6:35 / 06:35 / 6点35 / 6时35分（按今天补全）
+    m = re.match(r"^(\d{1,2})\s*[:：点时]\s*(\d{1,2})\s*分?$", s)
+    if m:
+        hh, mm = int(m.group(1)), int(m.group(2))
+        if 0 <= hh <= 23 and 0 <= mm <= 59:
+            return f"{now().date().isoformat()} {hh:02d}:{mm:02d}:00"
+    # 4) 缺年份：-05-02 06:30 / 05-02 06:30（保持原样，不擅自加秒）
+    m = re.match(r"^-?(\d{2}-\d{2} \d{2}:\d{2}.*)$", s)
     if m:
         return f"{now().year}-{m.group(1)}"
+    logger.warning("normalize_input: 无法识别 %r，回退到当前时间", ts)
     return now_str()
