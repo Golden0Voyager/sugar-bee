@@ -17,7 +17,12 @@ venv/
 
 # 数据库
 *.db
+*.db-wal
+*.db-shm
 data/
+
+# 本地草稿
+.scratch/
 
 # Coverage 产物
 .coverage*
