@@ -18,7 +18,12 @@ set -uo pipefail
 #   echo 1.2.3.4 > ~/.sugar_bee_host
 SSH_HOST="${SB_HOST:-$(cat "$HOME/.sugar_bee_host" 2>/dev/null || echo 124.220.181.225)}"
 SSH_USER="${SB_USER:-root}"
-SSH_KEY="${SB_KEY:-$HOME/.ssh/lighthouse_sh}"
+# 密钥优先级：SB_KEY > sugar_bee_new_agent（当前生产运维密钥）> lighthouse_sh（旧密钥）
+# 2026-11-16：lighthouse_sh 被移入 ~/.ssh/_removed_20261116/，脚本默认路径失效。
+SSH_KEY="${SB_KEY:-$HOME/.ssh/sugar_bee_new_agent}"
+if [ -z "${SB_KEY:-}" ] && [ ! -r "$SSH_KEY" ] && [ -r "$HOME/.ssh/lighthouse_sh" ]; then
+  SSH_KEY="$HOME/.ssh/lighthouse_sh"
+fi
 
 REMOTE_DIR="${SB_REMOTE_DIR:-/opt/sugar_bee/app/backups}"
 REMOTE_PY="${SB_REMOTE_PY:-/opt/sugar_bee/backup_db.py}"
