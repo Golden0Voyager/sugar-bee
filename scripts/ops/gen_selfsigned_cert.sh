@@ -60,8 +60,14 @@ cd "$SSL_DIR"
 if [ "$MODE" = "create" ] || [ ! -f ca.key ] || [ ! -f ca.crt ]; then
   echo "[1/3] 生成 CA（${CA_DAYS} 天）"
   openssl genrsa -out ca.key 4096 2>/dev/null
+  # iOS 对自签 CA 的扩展要求比桌面浏览器严格得多：
+  # 缺 keyUsage=keyCertSign 时，iPhone 即使手工打开「证书信任」也会拒绝，
+  # 表现为"已安装但仍提示连接不是私密的"。这三个扩展缺一不可。
   openssl req -x509 -new -nodes -key ca.key -sha256 -days "$CA_DAYS" -out ca.crt \
-    -subj "/C=CN/O=SugarBee Home/CN=SugarBee Local CA" 2>/dev/null
+    -subj "/C=CN/O=SugarBee Home/CN=SugarBee Local CA" \
+    -addext "basicConstraints=critical,CA:TRUE" \
+    -addext "keyUsage=critical,keyCertSign,cRLSign" \
+    -addext "subjectKeyIdentifier=hash" 2>/dev/null
 else
   echo "[1/3] 复用已有 CA（已装过 CA 的设备无需重装）"
 fi
@@ -70,8 +76,12 @@ echo "[2/3] 生成服务器证书（${CERT_DAYS} 天，SAN=${SAN}）"
 openssl genrsa -out server.key 2048 2>/dev/null
 openssl req -new -key server.key -out server.csr -subj "/C=CN/O=SugarBee Home/CN=${CN}" 2>/dev/null
 cat > san.cnf <<EOF
-subjectAltName = ${SAN}
+basicConstraints = critical,CA:FALSE
+keyUsage = critical,digitalSignature,keyEncipherment
 extendedKeyUsage = serverAuth
+subjectAltName = ${SAN}
+subjectKeyIdentifier = hash
+authorityKeyIdentifier = keyid,issuer
 EOF
 openssl x509 -req -in server.csr -CA ca.crt -CAkey ca.key -CAcreateserial \
   -out server.crt -days "$CERT_DAYS" -sha256 -extfile san.cnf 2>/dev/null
